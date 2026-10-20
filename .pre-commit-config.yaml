@@ -1,0 +1,39 @@
+# Run with prek (a drop-in pre-commit runner): `uv run prek install` installs the git hook,
+# `uv run prek run --all-files` checks the whole tree.
+# Everything runs through `uv run` so the versions are the ones pinned in uv.lock, not whatever is on PATH.
+# .tmp/ holds local scratch files and is not checked.
+exclude: ^\.tmp/
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+
+      - id: ruff
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+
+      - id: pydocstyle
+        name: pydocstyle
+        entry: uv run pydocstyle
+        language: system
+        types: [python]
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: just-fmt
+        name: just --fmt --check
+        entry: uv run just --fmt --check
+        language: system
+        files: ^justfile$
+        pass_filenames: false

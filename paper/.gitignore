@@ -1,0 +1,10 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+/*.pdf
+
+# arXiv distribution staging (make zip)
+tarball/
