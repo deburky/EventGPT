@@ -8,3 +8,5 @@
 
 # arXiv distribution staging (make zip)
 tarball/
+*.fdb_latexmk
+*.fls

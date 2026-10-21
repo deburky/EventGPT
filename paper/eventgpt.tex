@@ -383,8 +383,9 @@ event to the cut. The token decoder gives $P(\tok{name=trx\_X})$ at \tok{[EVT]} 
 $P(\tok{sub=Y} \mid \tok{name=trx\_X}, \tok{dt=g})$ at the \tok{dt} token, and the score is their product,
 the probability that the next event is of kind $(X, Y)$. A client who already had the kind before the cut
 cannot be positive under the label's definition, so that client's score is set to zero. This rule uses
-no labels, and we apply it to the supervised scores as well when comparing the two. The history stages run
-once per row and the token decoder once per type $X$.
+no labels, and we apply it to the supervised scores as well when comparing the two. For EventGPT the
+history stages run once per row and the token decoder once per type $X$; the flat decoder is scored the
+same way and runs whole once per type.
 
 Zero-shot scoring is evaluated on every test row positive for one of the five event targets and on
 20,000 rows sampled uniformly from the test fold. Each target's ROC-AUC uses its own positives and the
@@ -462,23 +463,29 @@ The zero-shot score is higher on 48/31 and 50/19, within 0.012 on 23/49, and low
 26/28 and 48/10. The two seeds differ by at most 0.014, on 48/31, which has 59 positives. On 23/49 the
 zero-shot score also exceeds gradient boosting on the hand-built aggregates, which is fitted on labels.
 
+Zero-shot scoring needs only a model trained on next events, and the flat decoder scored the same way
+reaches 0.78 to 0.92 (mean of two seeds). It is level with EventGPT on 48/31 and 48/10, 0.010 higher on
+50/19, and 0.013 and 0.029 lower on 23/49 and 26/28. Its zero-shot scores exceed a logistic head on its
+own last-token state on all five targets.
+
 \begin{table}[htbp]
 \centering
-\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels; both EventGPT columns set
-the score of clients who already had the kind to zero (Section~\ref{sec:zs-protocol}). The supervised
+\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients
+who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of
+two seeds. The supervised
 head is the logistic head on the seed-42 embedding, on the same rows. The aggregates column is the
 full test fold, so it is comparable in expectation but not row for row.}
 \label{tab:zero-shot}
-\begin{tabular}{lrcccc}
+\begin{tabular}{lrccccc}
 \toprule
- & & \multicolumn{2}{c}{EventGPT zero-shot} & EventGPT & aggregates \\
-target & positives & seed 42 & seed 43 & supervised head & (CatBoost) \\
+ & & \multicolumn{2}{c}{EventGPT zero-shot} & flat decoder & EventGPT & aggregates \\
+target & positives & seed 42 & seed 43 & zero-shot & supervised head & (CatBoost) \\
 \midrule
-first 48/31 & 59 & 0.916 & 0.902 & 0.891 & 0.913 \\
-first 23/49 & 195 & 0.918 & 0.918 & 0.930 & 0.909 \\
-first 26/28 & 252 & 0.829 & 0.827 & 0.875 & 0.869 \\
-first 48/10 & 290 & 0.791 & 0.784 & 0.836 & 0.842 \\
-first 50/19 & 770 & 0.906 & 0.904 & 0.896 & 0.936 \\
+first 48/31 & 59 & 0.916 & 0.902 & 0.909 & 0.891 & 0.913 \\
+first 23/49 & 195 & 0.918 & 0.918 & 0.905 & 0.930 & 0.909 \\
+first 26/28 & 252 & 0.829 & 0.827 & 0.799 & 0.875 & 0.869 \\
+first 48/10 & 290 & 0.791 & 0.784 & 0.784 & 0.836 & 0.842 \\
+first 50/19 & 770 & 0.906 & 0.904 & 0.915 & 0.896 & 0.936 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -589,7 +596,8 @@ marked.
 
 \begin{table}[htbp]
 \centering
-\caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds.}
+\caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds; the transactions-only
+and loss rows marked $^\dagger$ are seed 42.}
 \label{tab:ablations}
 \begin{tabular}{llc}
 \toprule
@@ -599,11 +607,27 @@ architecture & hierarchy (EventGPT), last state & 0.774 \\
  & flat decoder, last token & 0.714 \\
  & flat decoder, recency over tokens & 0.777 \\
 sources & transactions + geolocation & 0.774 \\
- & transactions only & \tbd \\
+ & transactions only$^\dagger$ & 0.795 \\
+training loss & all tokens & 0.774 \\
+ & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5}$^\dagger$ & 0.775 \\
 readout & last / mean / recency & 0.774 / 0.755 / 0.765 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+Pretraining and probing on transactions alone raises the official mean from 0.774 to 0.795 and churn
+from 0.828 to 0.859 (seed 42), and the supervised head improves on all five event targets. Without daily
+geolocation events the 2,048-token window holds more transactions, and token counts show the same
+effect: on transactions alone they lose 0.008 to the window (0.793 against 0.785), against 0.026 with
+geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.010 and is level with
+token counts over the full transaction history. Zero-shot scores fall to 0.71 to 0.89 without
+geolocation, against 0.79 to 0.92 with it; we have not found the cause.
+
+Removing the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to
+need, leaves the official mean at 0.775 against 0.774. The tokens stay in the input and only their
+prediction is dropped. Churn rises from 0.828 to 0.854 (seed 42), and the zero-shot scores change by $-0.023$ to
+$+0.003$. Predicting these tokens costs the embedding nothing on the product targets and does not help
+it.
 
 \subsection{Length of history}\label{sec:context}
 

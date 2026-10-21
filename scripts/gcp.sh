@@ -35,7 +35,7 @@ MACHINE="${GCP_MACHINE:-g2-standard-8}"
 IMAGE_FAMILY="common-cu129-ubuntu-2204-nvidia-580"
 MAX_HOURS="${MAX_HOURS:-6}"
 PROBE="${PROBE:-1}"  # 1 probes the final checkpoint before the VM deletes itself; only skips training and probes the run's checkpoint
-PROBE_ARGS="${PROBE_ARGS:---batch 32}"  # flags for eventgpt.probe, space-separated (no commas: metadata is comma-separated)
+PROBE_ARGS="${PROBE_ARGS:---batch 32}"  # flags for eventgpt.probe, space-separated (no semicolons: the metadata delimiter)
 SPOT="${SPOT:-0}"
 DATA_PREFIX="${DATA_PREFIX:-data}"  # bucket folder of the token streams the VM trains and probes on
 LABEL="project=event-gpt"
@@ -144,7 +144,7 @@ up() {
             --service-account="$SA" \
             --scopes=cloud-platform \
             --labels="$LABEL,run=$run" \
-            --metadata="install-nvidia-driver=True,bucket=$BUCKET,run=$run,probe=$PROBE,probe-args=$PROBE_ARGS,data-prefix=$DATA_PREFIX,train-args=$args" \
+            --metadata="^;^install-nvidia-driver=True;bucket=$BUCKET;run=$run;probe=$PROBE;probe-args=$PROBE_ARGS;data-prefix=$DATA_PREFIX;train-args=$args" \
             --metadata-from-file=startup-script="$ROOT/scripts/gcp_startup.sh" 2>"$err"; then
             echo "started egpt-$run in $zone (deleted after training, or after ${MAX_HOURS}h at most)"
             echo "log: scripts/gcp.sh logs $run"
