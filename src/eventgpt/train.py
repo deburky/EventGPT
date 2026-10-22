@@ -19,6 +19,7 @@ import torch
 from eventgpt.flat import GPT, GPTConfig
 from eventgpt.hierarchy import EventGPT, EventGPTConfig
 from eventgpt.vocab import EVT, USR, Vocab
+from eventgpt.windows import AlignedStream, PackedStream
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("MBD_OUT", "/Volumes/WD_BLACK/datasets/MBD-mini/tokens"))
@@ -38,16 +39,10 @@ def token_class(vocab: Vocab) -> list[str]:
     return [names[t][1:-1].lower() if names[t].startswith("[") else names[t].split("=")[0] for t in range(vocab.size)]
 
 
-def get_batch(stream: np.ndarray, block: int, bsz: int, rng: np.random.Generator, dev: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-    """Random windows of `block` tokens from the packed stream, with the stream shifted by one as targets."""
-    ix = rng.integers(0, len(stream) - block - 1, size=bsz)
-    x = np.stack([stream[i : i + block] for i in ix]).astype(np.int64)
-    y = np.stack([stream[i + 1 : i + 1 + block] for i in ix]).astype(np.int64)
-    return torch.from_numpy(x).to(dev), torch.from_numpy(y).to(dev)
-
-
 @torch.no_grad()
-def evaluate(model: Any, stream: np.ndarray, block: int, bsz: int, iters: int, dev: torch.device, classes: list[str]) -> dict[str, float]:
+def evaluate(
+    model: Any, stream: PackedStream | AlignedStream, block: int, bsz: int, iters: int, dev: torch.device, classes: list[str]
+) -> dict[str, float]:
     """Validation loss over fixed-seed batches, overall and per target class above 1% of tokens; restores train mode."""
     model.eval()
     rng = np.random.default_rng(0)
@@ -55,7 +50,7 @@ def evaluate(model: Any, stream: np.ndarray, block: int, bsz: int, iters: int, d
     losses: list[float] = []
     tot: dict[str, list[float]] = {}
     for _ in range(iters):
-        x, y = get_batch(stream, block, bsz, rng, dev)
+        x, y = stream.batch(block, bsz, rng, dev)
         logits, loss = model(x, y, None, True)
         losses.append(loss.item())
         flat_y = y.view(-1)
@@ -89,6 +84,7 @@ def build(a: argparse.Namespace, vocab: Vocab) -> tuple[Any, Any]:
             rope=a.rope,
             n_experts=3 if a.moe else 1,  # kinds: other, trx, geo (EventGPT.set_vocab_tables)
             qk_norm=a.qk_norm,
+            aligned=a.aligned,
         )
         model: Any = EventGPT(cfg)
         model.set_vocab_tables(vocab.structured)
@@ -102,6 +98,7 @@ def build(a: argparse.Namespace, vocab: Vocab) -> tuple[Any, Any]:
         causal=True,
         usr_id=vocab.id(USR),
         qk_norm=a.qk_norm,
+        aligned=a.aligned,
     )
     return GPT(cfg), cfg
 
@@ -126,6 +123,9 @@ def main() -> None:
     p.add_argument("--moe", action="store_true", help="eventgpt: one feed-forward per event kind in the event encoder, hard-routed")
     p.add_argument("--qk-norm", action="store_true", help="RMSNorm on queries and keys inside each head")
     p.add_argument(
+        "--aligned", action="store_true", help="client-aligned windows with the gap from the client's first event (eventgpt.windows)"
+    )
+    p.add_argument(
         "--no-loss-on", type=str, default="", help="comma-separated token classes (dt,amt_bin,g4,g5) left out of the training loss"
     )
     a = p.parse_args()
@@ -133,8 +133,12 @@ def main() -> None:
     dev = device()
     torch.manual_seed(a.seed)
     vocab = Vocab.load(DATA / "vocab")
-    train = np.load(DATA / "pretrain" / "train_tokens.npy", mmap_mode="r")
-    val = np.load(DATA / "pretrain" / "val_tokens.npy", mmap_mode="r")
+    train: PackedStream | AlignedStream
+    val: PackedStream | AlignedStream
+    if a.aligned:
+        train, val = AlignedStream("train", vocab), AlignedStream("val", vocab)
+    else:
+        train, val = PackedStream("train"), PackedStream("val")
     classes = token_class(vocab)
     # targets of these classes are still read as input and still scored in evaluation, but give no gradient
     skip = {c for c in a.no_loss_on.split(",") if c}
@@ -145,7 +149,8 @@ def main() -> None:
     model = model.to(dev)
     use_amp = dev.type == "cuda"
     print(
-        f"device={dev} arch={a.arch} rope={a.rope} moe={a.moe} qk_norm={a.qk_norm} no_loss_on={sorted(skip)} vocab={vocab.size} "
+        f"device={dev} arch={a.arch} rope={a.rope} moe={a.moe} qk_norm={a.qk_norm} aligned={a.aligned} no_loss_on={sorted(skip)} "
+        f"vocab={vocab.size} "
         f"params={model.n_params() / 1e6:.2f}M train_tokens={len(train):,} val_tokens={len(val):,}",
         flush=True,
     )
@@ -181,7 +186,7 @@ def main() -> None:
             g["lr"] = lr_at(step)
         opt.zero_grad(set_to_none=True)
         for _ in range(a.accum):
-            x, y = get_batch(train, a.block, a.batch, rng, dev)
+            x, y = train.batch(a.block, a.batch, rng, dev)
             y = y.masked_fill(no_loss[y], -100)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_amp):
                 _, loss = model(x, y, None, True)

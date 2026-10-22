@@ -23,6 +23,7 @@ class GPTConfig:
     causal: bool = True  # False = bidirectional encoder trained with masked modelling (PRAGMA style)
     usr_id: int = 1  # [USR] token id; segment boundaries for the block-diagonal mask
     qk_norm: bool = False  # RMSNorm on queries and keys inside each head (Qwen3), bounds attention logits
+    aligned: bool = False  # trained on client-aligned windows (eventgpt.windows); the probe builds histories the same way
 
 
 class RMSNorm(nn.Module):

@@ -69,6 +69,7 @@ class Fold:
         self.client_events = np.load(d / "client_events.npy")
         self.event_start = np.load(d / "event_start.npy")
         self.event_time = np.load(d / "event_time.npy")
+        self.vocab = vocab
         self.index = {c: i for i, c in enumerate(self.ids)}
         names = {i: t for t, i in vocab.structured.items()}
         name_tok = np.asarray(self.tokens[self.event_start + 1])
@@ -144,26 +145,31 @@ def labels() -> list[str]:
 # -------------------------------------------------------------------------------
 # Embeddings
 # -------------------------------------------------------------------------------
-def history_tokens(fold: Fold, ci: int, n: int, block: int, now: np.ndarray | None = None) -> np.ndarray:
+def history_tokens(fold: Fold, ci: int, n: int, block: int, now: np.ndarray | None = None, aligned: bool = False) -> np.ndarray:
     """[USR], then the client's first n events, cut to the most recent `block` tokens at an event boundary.
 
     The profile event is the client's first, so a truncated window gets [USR] and the profile event put back in
     front: static attributes would otherwise drop out of exactly the clients with the longest histories. `now`,
-    when given, is appended after the window and counts against `block`.
+    when given, is appended after the window and counts against `block`. With `aligned` (a checkpoint trained on
+    eventgpt.windows.AlignedStream), the first event after the profile carries the gap from the profile event.
     """
     if now is not None:
-        return np.concatenate([history_tokens(fold, ci, n, block - len(now)), now])
+        return np.concatenate([history_tokens(fold, ci, n, block - len(now), aligned=aligned), now])
     a = fold.client_events[ci]
     usr = int(fold.event_start[a] - 1)
     end = int(fold.event_start[a + n]) if a + n < fold.client_events[ci + 1] else fold.end_of_client(ci)
     if end - usr <= block:
-        return np.asarray(fold.tokens[usr:end])
-    has_profile = n > 1
-    head_end = int(fold.event_start[a + 1]) if has_profile else usr + 1
-    budget = block - (head_end - usr)
-    starts = fold.event_start[a + 1 : a + n] if has_profile else fold.event_start[a : a + n]
-    snap = int(starts[np.searchsorted(starts, end - budget, side="left")])
-    return np.concatenate([fold.tokens[usr:head_end], fold.tokens[snap:end]])
+        out, kept, at = np.array(fold.tokens[usr:end]), a + 1, int(fold.event_start[min(a + 1, len(fold.event_start) - 1)]) - usr
+    else:
+        has_profile = n > 1
+        head_end = int(fold.event_start[a + 1]) if has_profile else usr + 1
+        budget = block - (head_end - usr)
+        starts = fold.event_start[a + 1 : a + n] if has_profile else fold.event_start[a : a + n]
+        j = int(np.searchsorted(starts, end - budget, side="left"))
+        out, kept, at = np.concatenate([fold.tokens[usr:head_end], fold.tokens[int(starts[j]) : end]]), a + 1 + j, head_end - usr
+    if aligned and n > 1:
+        out[at + 2] = fold.vocab.dt_tokens(np.array([fold.event_time[kept] - fold.event_time[a]], dtype=np.float64))[0]
+    return out
 
 
 @torch.no_grad()
@@ -268,7 +274,8 @@ def embed_rows(
     uniq = sorted({k for k in key if k[1] > 0})
     pos = {k: i for i, k in enumerate(uniq)}
     evt = vocab.id("[EVT]") if vocab is not None else 0
-    seqs = [history_tokens(fold, int(c), int(n), block, None if vocab is None else np.array([evt, g])) for c, n, g in uniq]
+    aligned = bool(getattr(model.cfg, "aligned", False))
+    seqs = [history_tokens(fold, int(c), int(n), block, None if vocab is None else np.array([evt, g]), aligned) for c, n, g in uniq]
     d = model.cfg.d_model
     if cache is None:
         got = embed(model, seqs, dev, bsz) if uniq else {}

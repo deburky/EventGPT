@@ -18,6 +18,7 @@ Example: `uv run python -m eventgpt.zero_shot data/runs/hier-rope-s42/hier-rope-
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -93,13 +94,14 @@ def main() -> None:
     p.add_argument("ckpt", type=Path)
     p.add_argument("--probe-dir", type=Path, required=True, help="probe output with test_rows, train_rows and embeddings")
     p.add_argument("--n-random", type=int, default=20_000, help="test rows sampled uniformly beside the positives")
-    p.add_argument("--block", type=int, default=2048)
+    p.add_argument("--block", type=int, default=0, help="history window in tokens; 0 takes the probe run's window")
     p.add_argument("--batch", type=int, default=16)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=Path, default=None, help="csv path; default <ckpt dir>/zero_shot.csv")
     a = p.parse_args()
 
     t0 = time.time()
+    block = a.block or int(json.loads((a.probe_dir / "results.json").read_text())["block"])
     vocab = Vocab.load(OUT / "vocab")
     for t in [*(f"name=trx_{x}" for x, _ in FIRST_KINDS), *(f"sub={y}" for _, y in FIRST_KINDS)]:
         if t not in vocab.structured:
@@ -119,7 +121,7 @@ def main() -> None:
     last = fold.event_time[np.maximum(fold.client_events[ci] + n_hist - 1, 0)]
     gap = vocab.dt_tokens(np.maximum(rows["cut"].to_numpy() - last, 0).astype(np.float64))
     head = np.array([vocab.id("[EVT]"), vocab.id(f"name=trx_{FIRST_KINDS[0][0]}")])
-    seqs = [history_tokens(fold, int(c), int(n), a.block, np.r_[head, g]) for c, n, g in zip(ci, n_hist, gap, strict=True)]
+    seqs = [history_tokens(fold, int(c), int(n), block, np.r_[head, g], model.cfg.aligned) for c, n, g in zip(ci, n_hist, gap, strict=True)]
     order = np.argsort([len(s) for s in seqs])
     zs = np.zeros((len(seqs), len(FIRST_KINDS)))
     for i in range(0, len(order), a.batch):
