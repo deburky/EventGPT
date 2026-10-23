@@ -60,16 +60,18 @@ A model pretrained to predict a customer's next event can score questions about 
 labels. We pretrain EventGPT, a causal transformer, by next-token prediction on the public Multimodal
 Banking Dataset (MBD-mini, 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings)
 and score five targets of the form ``the client makes a transaction of a given kind for the first time
-next month'' from its next-event distribution alone. These zero-shot scores reach ROC-AUC 0.79 to 0.92,
-against 0.84 to 0.93 for a logistic head fitted on labels, and exceed the head on two of the five
-targets. Read as a frozen embedding, EventGPT reaches a mean ROC-AUC of 0.774 on MBD's four product
-targets, level with a table of token counts over the same 2,048-token window (0.777), which needs no
-knowledge of the schema. Gradient boosting on 114 hand-built features of the full history reaches 0.815,
-and the 0.038 between the two tables decomposes into history length (0.026) and schema knowledge (0.012). The embedding at a cut
-depends only on events before it, so it can be stored as a point-in-time feature. EventGPT pools each
-event into one vector and decodes the next event from the history state before it; as an embedding it is
-level with a flat decoder of the same size (0.774 against 0.777), from one state where the flat decoder
-pools 256, and it trains 2.5 times faster.
+next month'' from its next-event distribution alone. These zero-shot scores reach ROC-AUC 0.78 to 0.91,
+against 0.84 to 0.94 for a logistic head fitted on labels, and exceed the head on two of the five
+targets. Trained on windows that open as the histories it embeds do, with the client's profile and the
+time since its first event, EventGPT reaches a mean ROC-AUC of 0.787 on MBD's four product targets as a
+frozen embedding, above a table of token counts over the same 2,048-token window (0.777), which needs no
+knowledge of the schema. Gradient boosting on 114 hand-built features of the full history reaches 0.815.
+Fine-tuning leaves the product targets at 0.788 and raises churn to 0.945, against 0.961 for the
+hand-built features, and a window four times longer does not raise the product targets. The embedding at
+a cut depends only on events before it, so it can be stored as a point-in-time feature. EventGPT pools
+each event into one vector and decodes the next event from the history state before it; trained on the
+same windows as a flat decoder of the same size, it is level with it as an embedding (0.774 against
+0.777), from one state where the flat decoder pools 256, and it trains 2.5 times faster.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -92,7 +94,9 @@ about events, the labels.
 We measure three things. First, how well the next-event distribution scores event targets with no labels
 (Section~\ref{sec:zero-shot}). Second, how a frozen embedding compares with a flat decoder of the same
 size and with aggregate tables, one built by hand and one computed mechanically from the token stream
-(Section~\ref{sec:propensity}). Third, where the remaining gap to hand-built aggregates comes from
+(Section~\ref{sec:propensity}). Third, which training choices move these numbers: the layout and length
+of the training windows and fine-tuning (Sections~\ref{sec:aligned}, \ref{sec:finetune}
+and~\ref{sec:context}). Fourth, where the remaining gap to hand-built aggregates comes from
 (Section~\ref{sec:gap}).
 
 Several financial institutions describe foundation models of this kind. Nubank's nuFormer is a flat
@@ -109,12 +113,15 @@ results can be reproduced.
 \paragraph{Contributions.}
 \begin{enumerate}
 \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next
-event, which reaches ROC-AUC within 0.05 of a supervised head on five first-occurrence targets with no
-labels (Section~\ref{sec:zero-shot}).
-\item \textbf{An evaluation of frozen embeddings on MBD} against a schema-free token-count table, which
-is level with the embedding inside the same window, and against hand-built aggregates, with the gap to
-the latter decomposed into history length, schema knowledge and amount resolution
+event, which scores five first-occurrence targets at ROC-AUC 0.78 to 0.91 with no labels and exceeds a
+supervised head on two of them (Section~\ref{sec:zero-shot}).
+\item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against a schema-free
+token-count table, which the embedding exceeds inside the same window, and against hand-built
+aggregates, with the remaining gap located in history length, schema knowledge and amount resolution
 (Sections~\ref{sec:protocol}--\ref{sec:results}).
+\item \textbf{Aligned training windows} that open as the embedded histories do, with the time since the
+client's first event, which raise the product targets by 0.013 and churn by 0.08 over windows drawn at
+random offsets (Section~\ref{sec:aligned}).
 \item \textbf{Embeddings as point-in-time features}: the conditions under which a stored embedding holds
 nothing after its cut, in the architecture and in the data (Section~\ref{sec:pit}).
 \item \textbf{A hierarchical decoder} that matches a flat decoder of the same size as an embedding at 2.5
@@ -230,6 +237,20 @@ cut, in one of three ways: the state after the last event (\emph{last}), the mea
 (\emph{recency}). One forward pass gives all three. Each history ends in a \emph{now} event,
 \tok{[EVT] dt=<gap>}, whose gap runs from the last event to the cut, so the readout sits at the cut time and
 two customers with the same events but different silences before the cut get different embeddings.
+A history longer than the window keeps \tok{[USR]} and the profile event in front of its most recent
+events, so the static attributes stay in view for the clients with the longest histories.
+
+\subsection{Training windows and tenure}\label{sec:windows}
+
+Windows drawn at random offsets of the packed stream usually start inside a client's history, without
+\tok{[USR]} or the profile event, while every history the probe embeds opens with both. In an
+\emph{aligned} window that starts inside a client, \tok{[USR]} and the client's first event are put back
+in front, as the probe cuts a long history, and the first event after them carries in its \tok{dt} token
+the gap from the client's first event instead of the gap from the event cut away before it. Every \tok{dt}
+then measures the gap to the previous event in the sequence the model reads, and the time positions of
+Eq.~(\ref{eq:pos}) count from the client's first event, so the model can read how long a client has
+banked. The probe and the zero-shot scorer build histories by the same rule for a model trained this way.
+An aligned window holds the same tokens as a random one apart from the profile head and one \tok{dt}.
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
@@ -452,6 +473,13 @@ client. On one NVIDIA L4 in bfloat16 a run of 655 million tokens takes 1.5 hours
 per second), against 3.9 hours (about 47,000) for the flat decoder. Every model is trained with two
 seeds, 42 and 43, and model results are the mean of the two unless stated.
 
+The final configuration, labelled \emph{aligned} in the tables, trains on aligned windows
+(Section~\ref{sec:windows}) and normalizes queries and keys in every attention head by their root mean
+square \cite{qknorm}. Without the normalization, the seed-43 run on aligned windows diverged at step
+4,400, at the peak learning rate: its validation loss rose from 1.16 to 1.5 and did not recover. With it
+both seeds train smoothly to a validation loss of 1.020 and 1.019, at about 90,000 tokens per second. The
+comparisons with the flat decoder use windows at random offsets for both models.
+
 % -------------------------------------------------------------------------------
 \section{Results}\label{sec:results}
 
@@ -463,6 +491,9 @@ The zero-shot score is higher on 48/31 and 50/19, within 0.012 on 23/49, and low
 26/28 and 48/10. The two seeds differ by at most 0.014, on 48/31, which has 59 positives. On 23/49 the
 zero-shot score also exceeds gradient boosting on the hand-built aggregates, which is fitted on labels.
 
+On aligned windows (mean of two seeds) the zero-shot scores are 0.78 to 0.91, within 0.009 of those
+above, and they exceed a head fitted on the aligned embedding on 48/31 and 50/19.
+
 Zero-shot scoring needs only a model trained on next events, and the flat decoder scored the same way
 reaches 0.78 to 0.92 (mean of two seeds). It is level with EventGPT on 48/31 and 48/10, 0.010 higher on
 50/19, and 0.013 and 0.029 lower on 23/49 and 26/28. Its zero-shot scores exceed a logistic head on its
@@ -472,20 +503,22 @@ own last-token state on all five targets.
 \centering
 \caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients
 who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of
-two seeds. The supervised
-head is the logistic head on the seed-42 embedding, on the same rows. The aggregates column is the
+two seeds, as is the aligned column. The supervised
+head is the logistic head on the seed-42 embedding (random windows), on the same rows. The aggregates column is the
 full test fold, so it is comparable in expectation but not row for row.}
 \label{tab:zero-shot}
-\begin{tabular}{lrccccc}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrcccccc}
 \toprule
- & & \multicolumn{2}{c}{EventGPT zero-shot} & flat decoder & EventGPT & aggregates \\
-target & positives & seed 42 & seed 43 & zero-shot & supervised head & (CatBoost) \\
+ & & \multicolumn{3}{c}{EventGPT zero-shot} & flat decoder & EventGPT & aggregates \\
+target & positives & seed 42 & seed 43 & aligned & zero-shot & supervised head & (CatBoost) \\
 \midrule
-first 48/31 & 59 & 0.916 & 0.902 & 0.909 & 0.891 & 0.913 \\
-first 23/49 & 195 & 0.918 & 0.918 & 0.905 & 0.930 & 0.909 \\
-first 26/28 & 252 & 0.829 & 0.827 & 0.799 & 0.875 & 0.869 \\
-first 48/10 & 290 & 0.791 & 0.784 & 0.784 & 0.836 & 0.842 \\
-first 50/19 & 770 & 0.906 & 0.904 & 0.915 & 0.896 & 0.936 \\
+first 48/31 & 59 & 0.916 & 0.902 & 0.913 & 0.909 & 0.891 & 0.913 \\
+first 23/49 & 195 & 0.918 & 0.918 & 0.909 & 0.905 & 0.930 & 0.909 \\
+first 26/28 & 252 & 0.829 & 0.827 & 0.826 & 0.799 & 0.875 & 0.869 \\
+first 48/10 & 290 & 0.791 & 0.784 & 0.780 & 0.784 & 0.836 & 0.842 \\
+first 50/19 & 770 & 0.906 & 0.904 & 0.905 & 0.915 & 0.896 & 0.936 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -505,26 +538,27 @@ Table~\ref{tab:main} gives every label for the embeddings and the baselines.
 \small
 \setlength{\tabcolsep}{4pt}
 \caption{ROC-AUC on the test fold. Model columns are the mean of two seeds, with a logistic head on the
-frozen readout. Token counts and aggregates are fitted with CatBoost. PR-AUC for the official targets
+frozen readout; EventGPT is trained on windows at random offsets or on aligned windows
+(Section~\ref{sec:windows}). Token counts and aggregates are fitted with CatBoost. PR-AUC for the official targets
 is in Table~\ref{tab:main-pr}.}
 \label{tab:main}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccccc}
 \toprule
- & aggregates & \multicolumn{2}{c}{token counts} & \multicolumn{2}{c}{flat decoder} & EventGPT \\
-target & full history & full history & 2,048 tokens & last & recency & last \\
+ & aggregates & \multicolumn{2}{c}{token counts} & \multicolumn{2}{c}{flat decoder} & \multicolumn{2}{c}{EventGPT, last} \\
+target & full history & full history & 2,048 tokens & last & recency & random & aligned \\
 \midrule
-\tok{target\_1} & 0.787 & 0.781 & 0.757 & 0.692 & 0.738 & 0.740 \\
-\tok{target\_2} & 0.835 & 0.849 & 0.792 & 0.725 & 0.823 & 0.829 \\
-\tok{target\_3} & 0.818 & 0.809 & 0.788 & 0.729 & 0.783 & 0.776 \\
-\tok{target\_4} & 0.819 & 0.774 & 0.770 & 0.709 & 0.765 & 0.753 \\
-mean & 0.815 & 0.803 & 0.777 & 0.714 & 0.777 & 0.774 \\
+\tok{target\_1} & 0.787 & 0.781 & 0.757 & 0.692 & 0.738 & 0.740 & 0.756 \\
+\tok{target\_2} & 0.835 & 0.849 & 0.792 & 0.725 & 0.823 & 0.829 & 0.850 \\
+\tok{target\_3} & 0.818 & 0.809 & 0.788 & 0.729 & 0.783 & 0.776 & 0.789 \\
+\tok{target\_4} & 0.819 & 0.774 & 0.770 & 0.709 & 0.765 & 0.753 & 0.752 \\
+mean & 0.815 & 0.803 & 0.777 & 0.714 & 0.777 & 0.774 & 0.787 \\
 \midrule
-first 48/31 & 0.913 & 0.905 & 0.913 & 0.794 & 0.909 & 0.889 \\
-first 23/49 & 0.909 & 0.905 & 0.915 & 0.796 & 0.918 & 0.918 \\
-first 26/28 & 0.869 & 0.879 & 0.874 & 0.745 & 0.844 & 0.860 \\
-first 48/10 & 0.842 & 0.857 & 0.846 & 0.715 & 0.793 & 0.804 \\
-first 50/19 & 0.936 & 0.935 & 0.922 & 0.769 & 0.856 & 0.837 \\
-churn & 0.961 & 0.960 & 0.958 & 0.776 & 0.804 & 0.830 \\
+first 48/31 & 0.913 & 0.905 & 0.913 & 0.794 & 0.909 & 0.889 & 0.900 \\
+first 23/49 & 0.909 & 0.905 & 0.915 & 0.796 & 0.918 & 0.918 & 0.929 \\
+first 26/28 & 0.869 & 0.879 & 0.874 & 0.745 & 0.844 & 0.860 & 0.868 \\
+first 48/10 & 0.842 & 0.857 & 0.846 & 0.715 & 0.793 & 0.804 & 0.807 \\
+first 50/19 & 0.936 & 0.935 & 0.922 & 0.769 & 0.856 & 0.837 & 0.849 \\
+churn & 0.961 & 0.960 & 0.958 & 0.776 & 0.804 & 0.830 & 0.910 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -535,20 +569,21 @@ churn & 0.961 & 0.960 & 0.958 & 0.776 & 0.804 & 0.830 \\
 \setlength{\tabcolsep}{4pt}
 \caption{PR-AUC on the official targets, with the prevalence a random ranking would reach.}
 \label{tab:main-pr}
-\begin{tabular}{lccccccc}
+\begin{tabular}{lcccccccc}
 \toprule
- & & aggregates & \multicolumn{2}{c}{token counts} & \multicolumn{2}{c}{flat decoder} & EventGPT \\
-target & prevalence & full history & full & 2,048 tokens & last & recency & last \\
+ & & aggregates & \multicolumn{2}{c}{token counts} & \multicolumn{2}{c}{flat decoder} & \multicolumn{2}{c}{EventGPT, last} \\
+target & prevalence & full history & full & 2,048 tokens & last & recency & random & aligned \\
 \midrule
-\tok{target\_1} & 0.0044 & 0.021 & 0.020 & 0.016 & 0.011 & 0.012 & 0.013 \\
-\tok{target\_2} & 0.0005 & 0.012 & 0.009 & 0.016 & 0.006 & 0.008 & 0.010 \\
-\tok{target\_3} & 0.0038 & 0.021 & 0.020 & 0.015 & 0.011 & 0.015 & 0.012 \\
-\tok{target\_4} & 0.0026 & 0.017 & 0.013 & 0.010 & 0.007 & 0.011 & 0.010 \\
+\tok{target\_1} & 0.0044 & 0.021 & 0.020 & 0.016 & 0.011 & 0.012 & 0.013 & 0.014 \\
+\tok{target\_2} & 0.0005 & 0.012 & 0.009 & 0.016 & 0.006 & 0.008 & 0.010 & 0.008 \\
+\tok{target\_3} & 0.0038 & 0.021 & 0.020 & 0.015 & 0.011 & 0.015 & 0.012 & 0.014 \\
+\tok{target\_4} & 0.0026 & 0.017 & 0.013 & 0.010 & 0.007 & 0.011 & 0.010 & 0.011 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Hierarchy against the flat decoder.} As embeddings the two are level. EventGPT's state after
+\paragraph{Hierarchy against the flat decoder.} Both are trained on windows at random offsets, and as
+embeddings the two are level. EventGPT's state after
 the last event reaches a mean of 0.774 on the official targets, and the flat decoder reaches 0.777 when
 its recency readout pools about 256 token states (0.786 and 0.768 on the two seeds, against 0.7741 and
 0.7745 for EventGPT). Read at one state, the flat decoder's last token reaches 0.714 and is lower than
@@ -560,21 +595,72 @@ event. The fields that repeat from recent events show it most: the flat decoder 
 \tok{geohash\_5} cell with top-1 accuracy 0.68, EventGPT with 0.57, while for the event name, which
 depends on the history as a whole, they are level (0.574 and 0.58). Next-token loss therefore does not rank the two as embeddings.
 
-\paragraph{Against aggregate tables.} With the same 2,048-token window, EventGPT's last state (0.774)
-and the token-count table (0.777) are level on the official targets. CatBoost fitted on EventGPT's last
-and mean states reaches 0.786 (seed 42). Over the full history, token counts reach 0.803 and the
+\paragraph{Against aggregate tables.} With the same 2,048-token window, EventGPT on random windows
+(0.774) and the token-count table (0.777) are level on the official targets, and EventGPT on aligned
+windows exceeds the table by 0.010 (0.787). Over the full history, token counts reach 0.803 and the
 hand-built aggregates 0.815. On churn the token-count table reaches 0.958 even within the window, against
-0.830 for EventGPT. The table keeps the profile event's timestamp in every window and so knows how long a
-client has banked, while EventGPT sees only gaps between events.
+0.830 for EventGPT on random windows. The table keeps the profile event's timestamp in every window and so
+knows how long a client has banked, while a random window shows EventGPT only the gaps between recent
+events.
+
+\subsection{Aligned training windows}\label{sec:aligned}
+
+Aligned windows raise the official mean from 0.774 to 0.787 and churn from 0.830 to 0.910
+(Table~\ref{tab:main}); the two seeds give 0.786 and 0.788 on the official targets. Every event target
+gains 0.003 to 0.012 with the supervised head, and the zero-shot scores stay within 0.009 of those on
+random windows (Table~\ref{tab:zero-shot}). Churn gains most: an aligned window shows the time since the
+client's first event in one \tok{dt} token and in the time positions of every later event. The official
+targets gain as well, which suggests that the mismatch between random training windows, which contain
+the profile event only when they reach the start of a client, and the probe's histories, which always
+open with it, also cost something.
+
+\subsection{Fine-tuning and gradient boosting on the embedding}\label{sec:finetune}
+
+Fine-tuning the whole model does not raise the official targets (Table~\ref{tab:boost}). Starting from
+the aligned checkpoint of seed 42 (frozen 0.788), we train it end to end with one logistic output per
+label on the probe's training rows: the head alone for the first 2,000 steps, then every weight, at a
+peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head, for one
+pass. The step is chosen by the official mean on a tenth of the training clients. The test mean stays at
+0.788, while churn rises from 0.911 to 0.945 and the event targets gain 0.005 to 0.035, reaching 0.940
+on 48/31 and 0.931 on 23/49, both above the hand-built aggregates (0.913 and 0.909). The validation
+clients belong to the pretraining folds, and their official mean (0.849) overstates the test mean by
+0.06.
+
+Gradient boosting reads the embedding less well than the logistic head. CatBoost takes it either as 384
+numeric columns or as one embedding feature, from which it derives its own features (by default linear
+discriminant projections and counts of nearest training rows per class). As numeric columns the
+embedding reaches 0.775, and as an embedding feature 0.700, which fails on \tok{target\_4} (0.501).
+Added as an embedding feature to the hand-built table, it lowers the mean from 0.815 to 0.808 and leaves
+churn at 0.961.
+
+\begin{table}[htbp]
+\centering
+\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42. ROC-AUC on the test fold;
+the CatBoost rows use the same training rows, labels and early stopping as the aggregates.}
+\label{tab:boost}
+\begin{tabular}{lcc}
+\toprule
+model & official mean & churn \\
+\midrule
+logistic head, frozen & 0.788 & 0.911 \\
+fine-tuned & 0.788 & 0.945 \\
+CatBoost, embedding as numeric columns & 0.775 & 0.916 \\
+CatBoost, embedding feature & 0.700 & 0.873 \\
+CatBoost, aggregates & 0.815 & 0.961 \\
+CatBoost, aggregates and embedding feature & 0.808 & 0.961 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Where the gap to aggregates comes from}\label{sec:gap}
 
-Three measurements locate the gap of 0.041 on the official targets between EventGPT (0.774) and the
-hand-built aggregates (0.815).
+Three measurements locate the gap of 0.028 on the official targets between EventGPT on aligned windows
+(0.787) and the hand-built aggregates (0.815).
 
 \paragraph{History length.} Token counts lose 0.026 when they are restricted to EventGPT's window (0.803
-against 0.777), and within the window they and EventGPT are level. A longer window is the change most
-likely to close the gap (Section~\ref{sec:context}).
+against 0.777). A longer window does not recover this for EventGPT: at 8,192 tokens token counts regain
+0.024 of the 0.026, while EventGPT gains nothing on the official targets (Section~\ref{sec:context}).
+At this model size the history that a longer window adds does not reach the product targets.
 
 \paragraph{Schema knowledge.} Hand-built features add 0.012 over full-history token counts (0.815 against
 0.803). This is the part that needs someone who knows which field is the amount and which event types
@@ -586,8 +672,9 @@ the hand-built table by the mean of its bin gives 0.810 with 21 bins and 0.815 w
 positives make it the noisiest target; the other three official targets lose 0.001 to 0.003.
 
 Adding 32 principal components of the EventGPT embedding to the hand-built table leaves the mean at
-0.815 (seed 42, embedding read without the now event). Where good aggregates exist, the embedding adds
-nothing measurable on these targets.
+0.815 (seed 42, embedding read without the now event), and adding the aligned embedding as a CatBoost
+embedding feature lowers it to 0.808 (Section~\ref{sec:finetune}). Where good aggregates exist, the
+embedding adds nothing measurable on these targets.
 
 \subsection{Ablations}
 
@@ -596,8 +683,8 @@ marked.
 
 \begin{table}[htbp]
 \centering
-\caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds; the transactions-only
-and loss rows marked $^\dagger$ are seed 42.}
+\caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds; rows marked
+$^\dagger$ are seed 42. Every row but the windows row uses windows at random offsets.}
 \label{tab:ablations}
 \begin{tabular}{llc}
 \toprule
@@ -611,6 +698,10 @@ sources & transactions + geolocation & 0.774 \\
 training loss & all tokens & 0.774 \\
  & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5}$^\dagger$ & 0.775 \\
 readout & last / mean / recency & 0.774 / 0.755 / 0.765 \\
+training windows & random offsets & 0.774 \\
+ & aligned, with QK-norm & 0.787 \\
+attention & QK-norm$^\dagger$ & 0.779 \\
+event encoder & one feed-forward per event kind$^\dagger$ & 0.779 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -629,17 +720,43 @@ prediction is dropped. Churn rises from 0.828 to 0.854 (seed 42), and the zero-s
 $+0.003$. Predicting these tokens costs the embedding nothing on the product targets and does not help
 it.
 
+Normalizing queries and keys, and giving the event encoder one feed-forward network per event kind
+(transactions, geolocation and the rest, routed by the event name) each add 0.005 on seed 42. That is
+small beside the 0.018 between the two seeds of the flat decoder, and both leave the zero-shot scores
+within 0.016. Per-kind feed-forward networks raise churn from 0.828 to 0.848.
+
 \subsection{Length of history}\label{sec:context}
 
-A flat decoder's history is bounded by tokens and its attention cost grows with their square. The
-history decoder of EventGPT attends over events, and with packed attention its token stages grow
-linearly with the window. MBD histories are long (the 90th percentile client has about 1,000
-transactions and 300 days of geolocation), while a 2,048-token window holds about 250 events. Token
-counts lose 0.026 on the official targets when cut to this window (Section~\ref{sec:gap}), which bounds
-what a longer window could give EventGPT. A window also hides how long a client has banked; a tenure
-token in the profile event would restore it for churn.
-\note{Figure: mean ROC-AUC against window length (2,048, 4,096, 8,192 tokens) for EventGPT and the flat
-decoder, with training throughput and memory per window.}
+Longer windows do not raise the official targets for either model (Table~\ref{tab:window}). MBD
+histories are long (the 90th percentile client has about 1,000 transactions and 300 days of
+geolocation), while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to
+8,192 tokens. EventGPT gains nothing on random windows and loses 0.008 on aligned ones, and the flat
+decoder is level at 4,096 tokens (0.785 against 0.786). Churn does gain with the window, from 0.828 to
+0.906 on random windows and from 0.911 to 0.930 on aligned ones, since a longer window shows more of how
+long a client has banked. One state of width 384 may hold no more of what the product targets need; a
+larger model would test this.
+
+The cost of a longer window differs between the two models. The history decoder of EventGPT attends over
+events, and with packed attention its token stages grow linearly with the window: it trains at about
+126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. The flat decoder falls from 47,000 at
+2,048 tokens to about 30,000 at 4,096.
+
+\begin{table}[htbp]
+\centering
+\caption{Mean ROC-AUC over the official targets (churn in parentheses) against the window, seed 42 for
+the models. Token counts at full history reach 0.803.}
+\label{tab:window}
+\begin{tabular}{lcccc}
+\toprule
+ & token counts & \multicolumn{2}{c}{EventGPT} & flat decoder \\
+window & (CatBoost) & random & aligned & recency \\
+\midrule
+2,048 & 0.777 & 0.774 (0.828) & 0.788 (0.911) & 0.786 (0.804) \\
+4,096 & 0.782 & 0.772 (0.878) & & 0.785 (0.822) \\
+8,192 & 0.801 & 0.772 (0.906) & 0.780 (0.930) & \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % -------------------------------------------------------------------------------
 \section{Pretraining per institution}\label{sec:per-institution}
@@ -667,9 +784,10 @@ that another institution could not use one without its issuer's schema.
 \section{Limitations}\label{sec:limits}
 
 The results are on MBD-mini, for which no published numbers exist, so the comparison with the MBD paper's
-methods (Table~\ref{tab:published}) waits for a run on full MBD. The embeddings are evaluated frozen with
-a linear head; the supervised recurrent network of \cite{mbd} is trained on the labels end to end, and a
-fair answer to it is a fine-tuned or fused model. The events of MBD are mostly
+methods (Table~\ref{tab:published}) waits for a run on full MBD. Fine-tuning was run once, on one seed
+with one setting of its learning rates, and its step was chosen on clients from the pretraining folds.
+The model has one size, so whether a wider history state turns a longer window into better product
+scores is untested. The events of MBD are mostly
 transactions with one field layout, which gives the event encoder less to do than histories that mix
 applications, repayments and other kinds of event with different fields. Zero-shot scoring covers only targets that are events in
 the stream: MBD's product targets are external labels and need a head. It scores the next event rather
@@ -692,6 +810,10 @@ available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite
 \bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A.
 (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the
 2022 International Conference on Management of Data (SIGMOD)}. \note{verify author list and venue}
+
+\bibitem{qknorm} Henry, A., Dachapally, P.~R., Pawar, S., and Chen, Y. (2020). Query-key normalization for
+transformers. In \emph{Findings of the Association for Computational Linguistics: EMNLP 2020}.
+\note{verify author list and venue}
 
 \bibitem{catboost} Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A.~V., and Gulin, A. (2018).
 CatBoost: unbiased boosting with categorical features. In \emph{Advances in Neural Information
