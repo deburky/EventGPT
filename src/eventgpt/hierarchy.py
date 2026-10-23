@@ -343,6 +343,12 @@ class EventGPT(nn.Module):
         for blk in self.hist_blocks:
             h = blk(h, hist_mask, pos=rope_pos)
         h = self.ln_hist(h)
+        # an event with no tokens (event 0 when a window opens on [USR], as every aligned window does) pools to
+        # an exact zero vector that stays zero through every layer at initialisation, and the layer norms' factor
+        # of 1/sqrt(eps) on it compounds into gradients near 1e18 at width 384 and past float32 range at 512; its
+        # state feeds only the context of the next event, so it is zeroed, which also cuts that gradient path
+        occupied = torch.zeros(h.shape[:2], dtype=torch.bool, device=h.device).scatter_(1, event, True)
+        h = h * occupied.unsqueeze(-1).to(h.dtype)
         return h, event, ev, pos_in_event, tok
 
     def history(self, idx: torch.Tensor, key_mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

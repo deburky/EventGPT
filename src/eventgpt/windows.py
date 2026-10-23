@@ -32,7 +32,7 @@ class PackedStream:
         """Random windows of `block` tokens, with the stream shifted by one as targets."""
         ix = rng.integers(0, len(self.stream) - block - 1, size=bsz)
         w = np.stack([self.stream[i : i + block + 1] for i in ix]).astype(np.int64)
-        return torch.from_numpy(w[:, :-1]).to(dev), torch.from_numpy(w[:, 1:]).to(dev)
+        return torch.from_numpy(np.ascontiguousarray(w[:, :-1])).to(dev), torch.from_numpy(np.ascontiguousarray(w[:, 1:])).to(dev)
 
 
 class AlignedStream:
@@ -110,4 +110,4 @@ class AlignedStream:
             if w is not None:
                 rows.append(w)
         x = np.stack(rows).astype(np.int64)
-        return torch.from_numpy(x[:, :-1]).to(dev), torch.from_numpy(x[:, 1:]).to(dev)
+        return torch.from_numpy(np.ascontiguousarray(x[:, :-1])).to(dev), torch.from_numpy(np.ascontiguousarray(x[:, 1:])).to(dev)
