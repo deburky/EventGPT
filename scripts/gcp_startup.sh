@@ -11,7 +11,7 @@ ZONE="$(md zone | awk -F/ '{print $NF}')"
 BUCKET="$(md attributes/bucket)"
 RUN="$(md attributes/run)"
 ARGS="$(md attributes/train-args)"
-PROBE="$(md attributes/probe || echo 1)"  # 1 trains, probes and scores zero-shot; 0 only trains; only probes; zero-shot only scores
+PROBE="$(md attributes/probe || echo 1)"  # 1 trains, probes and scores zero-shot; 0 only trains; only probes; zero-shot only scores; finetune fine-tunes on the probe's rows
 PROBE_ARGS="$(md attributes/probe-args || echo --batch 32)"
 DATA_PREFIX="$(md attributes/data-prefix || echo data)"  # bucket folder of the token streams, e.g. data-trx for a variant
 WORK=/opt/egpt
@@ -80,4 +80,9 @@ fi
 if [[ "$PROBE" == "1" || "$PROBE" == "only" || "$PROBE" == "zero-shot" ]]; then
     # zero-shot event targets on the probe's rows, which the probe wrote (or a previous VM mirrored) to ckpt/probe
     uv run --no-dev python -m eventgpt.zero_shot "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" --out "$WORK/ckpt/zero_shot.csv"
+fi
+if [[ "$PROBE" == "finetune" ]]; then
+    # the checkpoint and the probe's rows were copied into this run's ckpt folder before launch
+    # shellcheck disable=SC2086  # PROBE_ARGS is a list of flags
+    uv run --no-dev python -m eventgpt.finetune "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" $PROBE_ARGS --out "$WORK/ckpt/finetune.csv"
 fi
