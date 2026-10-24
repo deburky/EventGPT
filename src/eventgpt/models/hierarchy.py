@@ -287,7 +287,7 @@ class EventGPT(nn.Module):
         self.register_buffer("kind_lut", torch.zeros(cfg.vocab_size, dtype=torch.long))
         self.register_buffer("dt_seconds", torch.zeros(cfg.vocab_size))
         # static path: the profile event's field embeddings, projected and added to the client's later events;
-        # zero-initialised, so a model starts out as one without the path
+        # zero-initialized, so a model starts out as one without the path
         self.profile_proj: nn.Linear | None = None
         self.profile_name: torch.Tensor
         if cfg.profile_path:
@@ -359,7 +359,7 @@ class EventGPT(nn.Module):
             h = blk(h, hist_mask, pos=rope_pos)
         h = self.ln_hist(h)
         # an event with no tokens (event 0 when a window opens on [USR], as every aligned window does) pools to
-        # an exact zero vector that stays zero through every layer at initialisation, and the layer norms' factor
+        # an exact zero vector that stays zero through every layer at initialization, and the layer norms' factor
         # of 1/sqrt(eps) on it compounds into gradients near 1e18 at width 384 and past float32 range at 512; its
         # state feeds only the context of the next event, so it is zeroed, which also cuts that gradient path
         occupied = torch.zeros(h.shape[:2], dtype=torch.bool, device=h.device).scatter_(1, event, True)

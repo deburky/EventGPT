@@ -12,7 +12,7 @@ the profile event states them once, stamped at the client's first event so any n
 includes it. The first real event after it still gets the top dt bucket.
 
 Geo is thinned to one event per client per Moscow day: the day's most frequent geohash_5 with the
-geohash_4 it sits in, stamped at the day's last ping so the event never runs ahead of what it summarises.
+geohash_4 it sits in, stamped at the day's last ping so the event never runs ahead of what it summarizes.
 Raw geo is 66M pings against 39M transactions; one a day is 15M. Dialogue embeddings are left out.
 
 Vocabulary values and amount bins are fitted on the pretraining folds only. Rare values of the

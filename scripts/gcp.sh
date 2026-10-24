@@ -11,9 +11,9 @@
 #
 # Three things stop a VM from outliving its run: the startup script deletes the VM when training ends
 # or fails, --max-run-duration makes Google delete it after MAX_HOURS whatever happens, and `down`
-# deletes anything labelled project=event-gpt. Checkpoints and logs live in the bucket under runs/<run>/.
+# deletes anything labeled project=event-gpt. Checkpoints and logs live in the bucket under runs/<run>/.
 #
-# The project's organisation policy forbids external IPs on VMs, so the VM gets none and reaches PyPI and the
+# The project's organization policy forbids external IPs on VMs, so the VM gets none and reaches PyPI and the
 # uv installer through a Cloud NAT on the default network, created by init.
 
 set -euo pipefail
