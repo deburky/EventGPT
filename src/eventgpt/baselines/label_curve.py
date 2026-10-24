@@ -1,7 +1,7 @@
-"""Labels against zero-shot: the aggregates baseline fitted on n labelled rows, beside the zero-shot score on the event targets.
+"""Labels against zero-shot: the aggregates baseline fitted on n labeled rows, beside the zero-shot score on the event targets.
 
-Zero-shot scoring (eventgpt.evaluation.zero_shot) uses no labels; the aggregates need a labelled training set per
-target. For each budget n we draw n client-months uniformly from the pretraining folds, as a team labelling
+Zero-shot scoring (eventgpt.evaluation.zero_shot) uses no labels; the aggregates need a labeled training set per
+target. For each budget n we draw n client-months uniformly from the pretraining folds, as a team labeling
 rows at random would, fit CatBoost on their hand-built features (eventgpt.baselines.catboost.features) for each
 event target and score the whole test fold. A draw with no positive gives no model and is scored 0.5. Each
 budget is drawn several times. CatBoost's scores are also reported under the zero-shot rule, which sets

@@ -20,7 +20,7 @@ class GPTConfig:
     n_head: int = 8
     d_model: int = 256
     dropout: float = 0.1
-    causal: bool = True  # False = bidirectional encoder trained with masked modelling (PRAGMA style)
+    causal: bool = True  # False = bidirectional encoder trained with masked modeling (PRAGMA style)
     usr_id: int = 1  # [USR] token id; segment boundaries for the block-diagonal mask
     qk_norm: bool = False  # RMSNorm on queries and keys inside each head (Qwen3), bounds attention logits
     aligned: bool = False  # trained on client-aligned windows (eventgpt.data.windows); the probe builds histories the same way
@@ -35,7 +35,7 @@ class RMSNorm(nn.Module):
         self.scale = nn.Parameter(torch.ones(d))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Normalise (..., d) and rescale."""
+        """Normalize (..., d) and rescale."""
         h = x.float()
         h = h * torch.rsqrt(h.pow(2).mean(dim=-1, keepdim=True) + self.eps)
         return (h * self.scale).to(x.dtype)

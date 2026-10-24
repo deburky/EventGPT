@@ -63,7 +63,7 @@ hierarchical causal transformer, by next-token prediction on the public Multimod
 next-event distribution alone it scores five targets of the form ``the client makes a transaction of a
 given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, against 0.84 to 0.93 for a logistic
 head fitted on labels, and exceeds the head on two. Gradient boosting on hand-built features needs 10,000 to more than 300,000
-randomly labelled client-months to pass these scores. As a frozen embedding it reaches a mean ROC-AUC of
+randomly labeled client-months to pass these scores. As a frozen embedding it reaches a mean ROC-AUC of
 0.787 on MBD's four product targets. That is above a schema-free table of token counts over the same
 2,048-token window (0.777) and below gradient boosting on 114 hand-built features (0.816). The gap lies in
 the client's static attributes and in the history before the window. Read beside the embedding, the token
@@ -106,7 +106,7 @@ and close most of it at readout (Section~\ref{sec:gap}).
 Several financial institutions describe foundation models of this kind. Nubank's nuFormer is a flat
 causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGMA is a masked model with
 separate encoders for profile state, single events and history \cite{pragma}, and Visa's TransactionGPT
-encodes the aspects of each transaction before modelling across transactions \cite{transactiongpt}. None
+encodes the aspects of each transaction before modeling across transactions \cite{transactiongpt}. None
 of these releases checkpoints or evaluates on shared data, and a released checkpoint would be of little use
 to another institution: its vocabulary is the issuer's own event schema, so each institution pretrains its
 own backbone (Section~\ref{sec:per-institution}). EventGPT combines a per-event encoder, as in
@@ -119,7 +119,7 @@ results can be reproduced.
 \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next
 event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a
 supervised head on two of them; the hand-built aggregates pass it only after 10,000 to more than
-300,000 randomly labelled client-months, depending on the target (Section~\ref{sec:zero-shot}).
+300,000 randomly labeled client-months, depending on the target (Section~\ref{sec:zero-shot}).
 \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against a schema-free
 token-count table, which the embedding exceeds inside the same window, and against hand-built
 aggregates, with paired standard errors clustered by client. The gap to the aggregates lies in the static
@@ -410,9 +410,9 @@ the client's history for the first time during the month) and a \emph{churn} tar
 during the month from a client with at least one before the cut). These are read from the stream.
 
 \paragraph{The last month.} The transaction tables end on 31 December 2022, so in January 2023 no client
-has a transaction and 99.1\% of that month's rows are labelled churn, against 12.7\% to 20.4\% in the
+has a transaction and 99.1\% of that month's rows are labeled churn, against 12.7\% to 20.4\% in the
 other months. That month holds 20,032 of the test fold's 55,920 churn positives. A model that can tell
-the month of the cut scores those rows without reading any behaviour, and the time since a client's
+the month of the cut scores those rows without reading any behavior, and the time since a client's
 first event tells it: with January 2023 included, EventGPT on aligned windows (Section~\ref{sec:windows})
 reached 0.910 on churn against 0.830 on random windows, and without it both reach 0.93. We therefore
 leave January 2023 out of the churn label, in training and in testing, which keeps 35,888 test positives.
@@ -533,7 +533,7 @@ client. On one NVIDIA L4 in bfloat16 a run of 655 million tokens takes 1.5 hours
 per second), against 3.9 hours (about 47,000) for the flat decoder. Every model is trained with two
 seeds, 42 and 43, and model results are the mean of the two unless stated.
 
-The final configuration, labelled \emph{aligned} in the tables, trains on aligned windows
+The final configuration, labeled \emph{aligned} in the tables, trains on aligned windows
 (Section~\ref{sec:windows}) and normalizes queries and keys in every attention head by their root mean
 square \cite{qknorm}. Without the normalization, the seed-43 run on aligned windows diverged at step
 4,400, at the peak learning rate: its validation loss rose from 1.16 to 1.5 and did not recover. With it
@@ -591,11 +591,11 @@ and testing for the kind would match the label's horizon; we have not run it.
 
 The aggregates need labels for every target, and zero-shot scoring needs none. To put a number on that
 difference, we fit the aggregates on $n$ client-months drawn uniformly from the 699,380 rows of the
-pretraining folds, as a team labelling rows at random would, and score the whole test fold
+pretraining folds, as a team labeling rows at random would, and score the whole test fold
 (Table~\ref{tab:labels}). Each budget is drawn five times up to 30,000 rows, three times at 100,000 and
 twice at 300,000, and a draw without a positive is scored 0.5. CatBoost's scores take the same rule for
 earlier occurrences, which raises them by up to 0.15 at the smallest budgets. The aggregates pass the
-zero-shot score between 10,000 and 30,000 labelled rows on 50/19, the most common kind, and between 30,000
+zero-shot score between 10,000 and 30,000 labeled rows on 50/19, the most common kind, and between 30,000
 and 100,000 on 26/28. On 48/10 and 48/31 they need 100,000 to 300,000 rows. On 23/49 they stay below it at
 300,000 rows and reach 0.920 only with every positive of the pretraining folds. Measured in positives, the
 crossings lie between about 20 and 400, and above 260 on 23/49. The zero-shot scores come from a sample of the test fold and the
@@ -603,7 +603,7 @@ aggregates from the whole fold, so the two are comparable in expectation.
 
 \begin{table}[htbp]
 \centering
-\caption{Aggregates fitted on $n$ labelled client-months drawn at random, against EventGPT zero-shot (mean of
+\caption{Aggregates fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of
 the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws, with
 the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The
 last column is the aggregates baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the
@@ -613,7 +613,7 @@ pretraining folds and 60,000 negatives.}
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{lcccccccc}
 \toprule
- & zero-shot & \multicolumn{6}{c}{aggregates, labelled rows $n$} & all \\
+ & zero-shot & \multicolumn{6}{c}{aggregates, labeled rows $n$} & all \\
 \cmidrule(lr){3-8}
 target & (no labels) & 1,000 & 3,000 & 10,000 & 30,000 & 100,000 & 300,000 & labels \\
 \midrule
@@ -719,7 +719,7 @@ Aligned windows raise the official mean from 0.774 to 0.787 (Table~\ref{tab:main
 0.786 and 0.788. Every event target gains 0.003 to 0.012 with the supervised head, and the zero-shot
 scores stay within 0.009 of those on random windows (Table~\ref{tab:zero-shot}). Churn stays where it
 was (0.932 against 0.935): the gain of 0.08 that aligned windows appeared to give it came from
-recognising the last month (Section~\ref{sec:protocol}). Without January 2023 the official mean is
+recognizing the last month (Section~\ref{sec:protocol}). Without January 2023 the official mean is
 0.784 on aligned windows (two seeds) and 0.775 on random ones (seed 42), so the gain on the product
 targets holds. It suggests that the mismatch between random training windows, which contain the profile
 event only when they reach the start of a client, and the probe's histories, which always open with it,

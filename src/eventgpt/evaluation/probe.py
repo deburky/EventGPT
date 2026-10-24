@@ -132,7 +132,7 @@ def mark_undefined(t: pd.DataFrame) -> pd.DataFrame:
 
     MBD-mini's transactions end on 31 December 2022, so every client looks churned in January 2023: 99% of
     that month's rows would be positive, and a model that can tell the month of the cut, as the time since a
-    client's first event does, would score them without reading any behaviour. Applied to rows read back from
+    client's first event does, would score them without reading any behavior. Applied to rows read back from
     a probe run as well, so outputs written before the rule existed are scored the same way.
     """
     t.loc[t["cut"].to_numpy() > data_end(), "churn"] = UNDEFINED
