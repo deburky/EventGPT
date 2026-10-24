@@ -21,6 +21,7 @@ COMMANDS = {
     "catboost": ("eventgpt.baselines.catboost", "CatBoost on hand-built features"),
     "token-counts": ("eventgpt.baselines.token_counts", "CatBoost on token counts over time windows"),
     "emb-boost": ("eventgpt.baselines.emb_boost", "CatBoost on a frozen embedding"),
+    "label-curve": ("eventgpt.baselines.label_curve", "CatBoost on n labelled rows beside the zero-shot score"),
 }
 
 

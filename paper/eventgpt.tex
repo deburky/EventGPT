@@ -62,7 +62,8 @@ hierarchical causal transformer, by next-token prediction on the public Multimod
 (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its
 next-event distribution alone it scores five targets of the form ``the client makes a transaction of a
 given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, against 0.84 to 0.93 for a logistic
-head fitted on labels, and exceeds the head on two. As a frozen embedding it reaches a mean ROC-AUC of
+head fitted on labels, and exceeds the head on two. Gradient boosting on hand-built features needs 10,000 to more than 300,000
+randomly labelled client-months to pass these scores. As a frozen embedding it reaches a mean ROC-AUC of
 0.787 on MBD's four product targets. That is above a schema-free table of token counts over the same
 2,048-token window (0.777) and below gradient boosting on 114 hand-built features (0.816). The gap lies in
 the client's static attributes and in the history before the window. Read beside the embedding, the token
@@ -117,7 +118,8 @@ results can be reproduced.
 \begin{enumerate}
 \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next
 event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a
-supervised head on two of them (Section~\ref{sec:zero-shot}).
+supervised head on two of them; the hand-built aggregates pass it only after 10,000 to more than
+300,000 randomly labelled client-months, depending on the target (Section~\ref{sec:zero-shot}).
 \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against a schema-free
 token-count table, which the embedding exceeds inside the same window, and against hand-built
 aggregates, with paired standard errors clustered by client. The gap to the aggregates lies in the static
@@ -586,6 +588,43 @@ The rule for earlier occurrences matters most where the kind is common. Without 
 month; the rule changes 48/31, a rare kind, by 0.001. The score is the probability of the kind as the
 \emph{next} event, while the label covers the whole month. Sampling a month of events from the model
 and testing for the kind would match the label's horizon; we have not run it.
+
+The aggregates need labels for every target, and zero-shot scoring needs none. To put a number on that
+difference, we fit the aggregates on $n$ client-months drawn uniformly from the 699,380 rows of the
+pretraining folds, as a team labelling rows at random would, and score the whole test fold
+(Table~\ref{tab:labels}). Each budget is drawn five times up to 30,000 rows, three times at 100,000 and
+twice at 300,000, and a draw without a positive is scored 0.5. CatBoost's scores take the same rule for
+earlier occurrences, which raises them by up to 0.15 at the smallest budgets. The aggregates pass the
+zero-shot score between 10,000 and 30,000 labelled rows on 50/19, the most common kind, and between 30,000
+and 100,000 on 26/28. On 48/10 and 48/31 they need 100,000 to 300,000 rows. On 23/49 they stay below it at
+300,000 rows and reach 0.920 only with every positive of the pretraining folds. Measured in positives, the
+crossings lie between about 20 and 400, and above 260 on 23/49. The zero-shot scores come from a sample of the test fold and the
+aggregates from the whole fold, so the two are comparable in expectation.
+
+\begin{table}[htbp]
+\centering
+\caption{Aggregates fitted on $n$ labelled client-months drawn at random, against EventGPT zero-shot (mean of
+the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws, with
+the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The
+last column is the aggregates baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the
+pretraining folds and 60,000 negatives.}
+\label{tab:labels}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccccccc}
+\toprule
+ & zero-shot & \multicolumn{6}{c}{aggregates, labelled rows $n$} & all \\
+\cmidrule(lr){3-8}
+target & (no labels) & 1,000 & 3,000 & 10,000 & 30,000 & 100,000 & 300,000 & labels \\
+\midrule
+first 48/31 & 0.909 & 0.573 (0) & 0.650 (0) & 0.718 (2) & 0.871 (6) & 0.894 (19) & 0.912 (66) & 0.920 \\
+first 23/49 & 0.918 & 0.784 (2) & 0.809 (2) & 0.866 (7) & 0.856 (25) & 0.896 (81) & 0.902 (263) & 0.920 \\
+first 26/28 & 0.828 & 0.735 (2) & 0.739 (4) & 0.776 (11) & 0.817 (34) & 0.858 (128) & 0.849 (355) & 0.868 \\
+first 48/10 & 0.787 & 0.739 (2) & 0.668 (5) & 0.695 (11) & 0.763 (34) & 0.771 (134) & 0.826 (394) & 0.835 \\
+first 50/19 & 0.905 & 0.746 (2) & 0.821 (8) & 0.854 (34) & 0.921 (95) & 0.929 (342) & 0.932 (992) & 0.937 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Frozen embeddings with a supervised head}\label{sec:propensity}
 
