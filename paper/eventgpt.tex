@@ -397,6 +397,20 @@ leave January 2023 out of the churn label, in training and in testing, which kee
 The event targets have no positives in that month and change by at most 0.014 without it; the official
 targets are the dataset's own labels and keep all twelve months.
 
+Figure~\ref{fig:labels} shows the monthly rate of every label over the five folds. The product targets
+are rare and drift: \tok{target\_1} falls from 0.56\% of rows in February 2022 to 0.16\% in January
+2023, while \tok{target\_2} stays near 0.05\%. The event targets lie between 0.01\% and 0.4\%, and
+churn rises from 12.7\% to 20.1\% before the last month.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/labels.pdf}
+\caption{Share of rows positive for each label by month, over all five folds (the test fold in full, the
+training rows weighted back to their share). Open markers are January 2023, the month after the last
+transaction, where the event targets cannot occur and churn is not defined.}
+\label{fig:labels}
+\end{figure}
+
 \subsection{Heads and metrics}
 
 Embeddings are frozen. For each label we fit a logistic regression on standardized embeddings
