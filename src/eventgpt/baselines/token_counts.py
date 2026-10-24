@@ -107,6 +107,7 @@ def main() -> None:
     stop = tr["client_id"].isin(set(rng.choice(clients, size=len(clients) // 10, replace=False))).to_numpy()
     w = tr["weight"].to_numpy()
     res = []
+    preds = te[["client_id", "mon"]].copy()
     for lab in labels():
         ytr, yte = tr[lab].to_numpy(), te[lab].to_numpy()
         fit_rows, stop_rows = ~stop & (ytr != UNDEFINED), stop & (ytr != UNDEFINED)
@@ -125,7 +126,8 @@ def main() -> None:
         )
         fit, held = Pool(xtr[fit_rows], ytr[fit_rows], weight=w[fit_rows]), Pool(xtr[stop_rows], ytr[stop_rows], weight=w[stop_rows])
         model.fit(fit, eval_set=held, use_best_model=True)
-        s = score(yte, model.predict_proba(xte)[:, 1])
+        preds[lab] = model.predict_proba(xte)[:, 1]
+        s = score(yte, preds[lab].to_numpy())
         res.append((lab, s["roc_auc"], s["pr_auc"]))
         print(f"{lab} {s['roc_auc']:.4f} {s['pr_auc']:.4f} ({time.time() - t0:.0f}s)", flush=True)
     r = pd.DataFrame(res, columns=["label", "roc", "pr"]).set_index("label")
@@ -133,6 +135,7 @@ def main() -> None:
     print("official mean", r.iloc[:4].mean().round(4).to_dict())
     out = a.out or a.probe_dir / f"token_counts_{a.window}.csv"
     r.to_csv(out)
+    preds.to_parquet(out.with_name(f"preds_token_counts_{a.window}.parquet"))  # test predictions, for eventgpt.evaluation.auc_se
     print(f"written to {out}")
 
 

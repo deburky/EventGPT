@@ -6,6 +6,15 @@ last event. Here the input embeddings of its field tokens, one learned vector pe
 the history state at readout, so a head sees every attribute directly. The tokens are read off the client's
 own stream, so the readout needs no knowledge of what the attributes are.
 
+With --timing, five numbers read off the event timestamps join as well: days since the last and since the
+first event, events in the last 30 and 90 days, and all events, each as log(1 + x). The hand-built baseline's
+timing features are its strongest group after the profile, and the 2,048-token window can hold less than
+a client's whole history, so these test what the history state is missing on recency and tenure.
+
+With --counts, the token-count table of eventgpt.baselines.token_counts over the full history (counts of the
+200 most frequent tokens over all history, 91 and 30 days), as log(1 + x), joins as well: it holds what lies
+before the 2,048-token window.
+
 Rows, labels, weights and the history states are a probe run's own (its output directory); the token
 embeddings come from the same checkpoint.
 
@@ -15,6 +24,7 @@ Example with R=data/runs/hier-alq-s42: `uv run egpt profile-readout $R/hier-alq-
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 import numpy as np
@@ -22,8 +32,9 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
+from eventgpt.baselines.token_counts import build
 from eventgpt.data.mbd import OUT
-from eventgpt.data.vocab import Vocab
+from eventgpt.data.vocab import SPECIALS, Vocab
 from eventgpt.evaluation.probe import OFFICIAL, UNDEFINED, Fold, labels, mark_undefined, score
 from eventgpt.models.flat import load_checkpoint
 
@@ -44,12 +55,48 @@ def profile_tokens(rows: pd.DataFrame, vocab: Vocab) -> np.ndarray:
     return out
 
 
+def timing(rows: pd.DataFrame, vocab: Vocab) -> np.ndarray:
+    """(rows, 5) log(1 + x) of days since the last and first event, events in the last 30 and 90 days, and all events."""
+    out = np.zeros((len(rows), 5))
+    day = 86_400
+    for k in np.unique(rows["fold"].to_numpy()).tolist():
+        fold = Fold(int(k), vocab)
+        m = np.flatnonzero((rows["fold"] == k).to_numpy())
+        start = fold.client_events[rows["client_id"].iloc[m].map(fold.index).to_numpy()]
+        n = rows["n_hist"].to_numpy()[m]
+        cut = rows["cut"].to_numpy()[m]
+        for j, (a, h, c) in enumerate(zip(start, n, cut, strict=True)):
+            if h == 0:
+                continue
+            t = fold.event_time[a : a + h]
+            out[m[j]] = [
+                (c - t[-1]) / day,
+                (c - t[0]) / day,
+                h - np.searchsorted(t, c - 30 * day),
+                h - np.searchsorted(t, c - 90 * day),
+                h,
+            ]
+    return np.log1p(np.maximum(out, 0))
+
+
+def counts(rows: pd.DataFrame, vocab: Vocab, ref_fold: int, top: int = 200) -> np.ndarray:
+    """log(1 + x) of eventgpt.baselines.token_counts' full-history table, counting the most frequent tokens of ref_fold."""
+    freq = np.bincount(np.asarray(Fold(ref_fold, vocab).tokens), minlength=vocab.size)
+    freq[: len(SPECIALS)] = 0
+    col = np.full(vocab.size, -1)
+    col[np.argsort(freq)[::-1][:top]] = np.arange(top)
+    x = build(rows, vocab, col, top, 0, time.time()).to_numpy()
+    return np.log1p(np.nan_to_num(np.maximum(x, 0)))
+
+
 def main() -> None:
     """Logistic heads on the history state alone and with the profile path, ROC-AUC on the test fold."""
     p = argparse.ArgumentParser()
     p.add_argument("ckpt", type=Path)
     p.add_argument("--probe-dir", type=Path, required=True, help="probe output with train_rows, test_rows and embeddings")
     p.add_argument("--readout", default="last", choices=["last", "mean", "recency"])
+    p.add_argument("--timing", action="store_true", help="also fit heads with the five timing numbers")
+    p.add_argument("--counts", action="store_true", help="also fit heads with the full-history token counts")
     p.add_argument("--out", type=Path, default=None, help="csv path; default <probe-dir>/profile_readout.csv")
     a = p.parse_args()
 
@@ -64,6 +111,17 @@ def main() -> None:
         "history": (z[f"train_{a.readout}"], z[f"test_{a.readout}"]),
         "history + profile": (np.hstack([z[f"train_{a.readout}"], ptr]), np.hstack([z[f"test_{a.readout}"], pte])),
     }
+    if a.timing:
+        ttr, tte = timing(tr, vocab), timing(te, vocab)
+        for name in list(variants):
+            xtr, xte = variants[name]
+            variants[f"{name} + timing"] = (np.hstack([xtr, ttr]), np.hstack([xte, tte]))
+    if a.counts:
+        ref = int(tr["fold"].iloc[0])  # the fold eventgpt.baselines.token_counts takes its tokens from
+        ctr, cte = counts(tr, vocab, ref), counts(te, vocab, ref)
+        for name in ["history", "history + profile"]:
+            xtr, xte = variants[name]
+            variants[f"{name} + counts"] = (np.hstack([xtr, ctr]), np.hstack([xte, cte]))
     w = tr["weight"].to_numpy()
     res = []
     preds = {name: te[["client_id", "mon"]].copy() for name in variants}
@@ -82,8 +140,9 @@ def main() -> None:
     out = a.out or a.probe_dir / "profile_readout.csv"
     r.to_csv(out, index=False)
     # test predictions, for eventgpt.evaluation.auc_se
-    preds["history"].to_parquet(out.with_name("preds_history.parquet"))
-    preds["history + profile"].to_parquet(out.with_name("preds_profile.parquet"))
+    for name, pr in preds.items():
+        slug = name.removeprefix("history + ").replace(" + ", "_")
+        pr.to_parquet(out.with_name(f"preds_{slug}.parquet"))
     print(f"written to {out}")
 
 
