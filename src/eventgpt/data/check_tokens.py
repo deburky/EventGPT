@@ -4,15 +4,15 @@ Checks per fold that event_start points at [EVT], that each client's first event
 [USR] count matches the client count, that events are time-ordered within a client and how much of the stream
 is [UNK]. Then prints the first client of fold 1 decoded and the share of stream tokens per key.
 
-Example: `uv run python -m eventgpt.check_tokens`
+Example: `uv run python -m eventgpt.data.check_tokens`
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from eventgpt.mbd import N_FOLDS, OUT
-from eventgpt.vocab import EVT, UNK, USR, Vocab
+from eventgpt.data.mbd import N_FOLDS, OUT
+from eventgpt.data.vocab import EVT, UNK, USR, Vocab
 
 
 def check_fold(k: int, vocab: Vocab) -> None:

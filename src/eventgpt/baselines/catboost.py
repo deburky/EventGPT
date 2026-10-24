@@ -1,7 +1,7 @@
 """Aggregation baseline: hand-built features of the history before each cut, CatBoost, ROC-AUC and PR-AUC on the test fold.
 
 The MBD paper's "Aggregation" row, rebuilt on MBD-mini, which has no published numbers of its own. Rows,
-labels, the training sample and the test fold are the probe's own (eventgpt.probe.load_rows and
+labels, the training sample and the test fold are the probe's own (eventgpt.evaluation.probe.load_rows and
 sample_train with the same seed), so the two AUC tables compare row for row.
 
 Features per (client, month), all from events strictly before the cut, over three windows (all history,
@@ -17,7 +17,7 @@ the last month, the last three months):
 Months are calendar months in Moscow time, which is what makes the windows exact: the cut is the first of a
 month, so "before the cut" is a whole number of months.
 
-Example: `uv run python -m eventgpt.baseline --max-clients 2000`
+Example: `uv run python -m eventgpt.baselines.catboost --max-clients 2000`
 """
 
 from __future__ import annotations
@@ -31,11 +31,11 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, Pool
 
-from eventgpt.mbd import N_FOLDS, OUT, RAW
-from eventgpt.probe import UNDEFINED, Fold, labels, load_rows, report, sample_train, score
-from eventgpt.vocab import Vocab
+from eventgpt.data.mbd import N_FOLDS, OUT, RAW
+from eventgpt.data.vocab import Vocab
+from eventgpt.evaluation.probe import UNDEFINED, Fold, labels, load_rows, report, sample_train, score
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 TOP_TYPES = 15
 WINDOWS = {"all": 10_000, "m1": 1, "m3": 3}  # months before the cut
 PROFILE = ["src_type21", "src_type22", "src_type31", "src_type32"]
@@ -144,6 +144,7 @@ def main() -> None:
     w = train["weight"].to_numpy()
 
     res: dict[str, dict[str, float]] = {}
+    preds = test[["client_id", "mon"]].copy()
     for lab in labels():
         ytr, yte = train[lab].to_numpy(), test[lab].to_numpy()
         fit_rows, stop_rows = ~is_stop & (ytr != UNDEFINED), is_stop & (ytr != UNDEFINED)
@@ -164,8 +165,10 @@ def main() -> None:
         fit = Pool(xtr[fit_rows], ytr[fit_rows], cat_features=PROFILE, weight=w[fit_rows])
         stop = Pool(xtr[stop_rows], ytr[stop_rows], cat_features=PROFILE, weight=w[stop_rows])
         model.fit(fit, eval_set=stop, use_best_model=True)
-        res[lab] = score(yte, model.predict_proba(Pool(xte, cat_features=PROFILE))[:, 1])
+        preds[lab] = model.predict_proba(Pool(xte, cat_features=PROFILE))[:, 1]
+        res[lab] = score(yte, preds[lab].to_numpy())
     a.out.mkdir(parents=True, exist_ok=True)
+    preds.to_parquet(a.out / "preds.parquet")  # test predictions, for eventgpt.evaluation.auc_se
     report({"catboost": res}, test, a.out, {"n_features": int(xtr.shape[1]), "elapsed_s": round(time.time() - t0)})
 
 

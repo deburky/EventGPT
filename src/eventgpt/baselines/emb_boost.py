@@ -3,13 +3,13 @@
 CatBoost's embedding feature type takes the vector as a whole and derives its own features from it (LDA
 projections and distances to the nearest training rows of each class), where numeric columns give the trees
 one coordinate at a time. Rows, labels, weights and the train/test split are a probe run's own, read from its
-output directory with the embeddings it saved, and the hand-built aggregates are eventgpt.baseline's.
+output directory with the embeddings it saved, and the hand-built aggregates are eventgpt.baselines.catboost's.
 
     emb          the embedding as one embedding feature
     emb_numeric  the embedding as d numeric columns
     agg_emb      the aggregates plus the embedding feature
 
-Example: `uv run python -m eventgpt.emb_boost --probe-dir data/runs/hier-al-s42/probe-now-2k`
+Example: `uv run python -m eventgpt.baselines.emb_boost --probe-dir data/runs/hier-al-s42/probe-now-2k`
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, Pool
 
-from eventgpt.baseline import PROFILE, features
-from eventgpt.probe import UNDEFINED, labels, mark_undefined, score
+from eventgpt.baselines.catboost import PROFILE, features
+from eventgpt.evaluation.probe import UNDEFINED, labels, mark_undefined, score
 
 VARIANTS = ["emb", "emb_numeric", "agg_emb"]
 
@@ -60,7 +60,7 @@ def main() -> None:
     agg = features(pd.concat([tr, te])) if "agg_emb" in variants else pd.DataFrame()
     print(f"{len(tr):,} train rows, {len(te):,} test rows, embedding {etr.shape[1]} ({time.time() - t0:.0f}s)", flush=True)
 
-    # a tenth of the training clients is held out for early stopping, by client, as in eventgpt.baseline
+    # a tenth of the training clients is held out for early stopping, by client, as in eventgpt.baselines.catboost
     rng = np.random.default_rng(a.seed)
     clients = tr["client_id"].unique()
     stop = tr["client_id"].isin(set(rng.choice(clients, size=len(clients) // 10, replace=False))).to_numpy()

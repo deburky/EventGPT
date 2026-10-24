@@ -9,7 +9,7 @@ own stream, so the readout needs no knowledge of what the attributes are.
 Rows, labels, weights and the history states are a probe run's own (its output directory); the token
 embeddings come from the same checkpoint.
 
-Example: `uv run python -m eventgpt.profile_readout data/runs/hier-alq-s42/hier-alq-s42.pt --probe-dir data/runs/hier-alq-s42/probe-now-2k`
+Example with R=data/runs/hier-alq-s42: `uv run python -m eventgpt.evaluation.profile_readout $R/hier-alq-s42.pt --probe-dir $R/probe-now-2k`
 """
 
 from __future__ import annotations
@@ -22,10 +22,10 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from eventgpt.flat import load_checkpoint
-from eventgpt.mbd import OUT
-from eventgpt.probe import OFFICIAL, UNDEFINED, Fold, labels, mark_undefined, score
-from eventgpt.vocab import Vocab
+from eventgpt.data.mbd import OUT
+from eventgpt.data.vocab import Vocab
+from eventgpt.evaluation.probe import OFFICIAL, UNDEFINED, Fold, labels, mark_undefined, score
+from eventgpt.models.flat import load_checkpoint
 
 FIELDS = 4  # tokens after [EVT] name=profile dt=<b>: s21 s22 s31 s32
 
@@ -66,19 +66,24 @@ def main() -> None:
     }
     w = tr["weight"].to_numpy()
     res = []
+    preds = {name: te[["client_id", "mon"]].copy() for name in variants}
     for name, (xtr, xte) in variants.items():
         sc = StandardScaler().fit(xtr)
         xtr, xte = sc.transform(xtr), sc.transform(xte)
         for lab in labels():
             ok = (tr[lab] != UNDEFINED).to_numpy()
             head = LogisticRegression(C=0.1, max_iter=3000).fit(xtr[ok], tr[lab].to_numpy()[ok], sample_weight=w[ok])
-            s = score(te[lab].to_numpy(), head.predict_proba(xte)[:, 1])
+            preds[name][lab] = head.predict_proba(xte)[:, 1]
+            s = score(te[lab].to_numpy(), preds[name][lab].to_numpy())
             res.append((name, lab, s["roc_auc"], s["pr_auc"]))
     r = pd.DataFrame(res, columns=["variant", "label", "roc", "pr"])
     print(r.pivot(index="label", columns="variant", values="roc").loc[labels()].round(4).to_string())
     print("official mean", r[r["label"].isin(OFFICIAL)].groupby("variant")["roc"].mean().round(4).to_dict())
     out = a.out or a.probe_dir / "profile_readout.csv"
     r.to_csv(out, index=False)
+    # test predictions, for eventgpt.evaluation.auc_se
+    preds["history"].to_parquet(out.with_name("preds_history.parquet"))
+    preds["history + profile"].to_parquet(out.with_name("preds_profile.parquet"))
     print(f"written to {out}")
 
 

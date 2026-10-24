@@ -7,7 +7,7 @@ The head trains alone for the first --head-steps steps, then the pretrained weig
 untrained head does not disturb them. The state is saved at every evaluation next to the output, so a run cut
 off part way (a spot VM preempted) continues from its last evaluation.
 
-Example: `uv run python -m eventgpt.finetune data/runs/hier-al-s42/hier-al-s42.pt --probe-dir data/runs/hier-al-s42/probe-now-2k`
+Example: `uv run python -m eventgpt.training.finetune data/runs/hier-al-s42/hier-al-s42.pt --probe-dir data/runs/hier-al-s42/probe-now-2k`
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from eventgpt.flat import load_checkpoint
-from eventgpt.mbd import OUT
-from eventgpt.probe import OFFICIAL, UNDEFINED, Fold, history_tokens, labels, mark_undefined, score
-from eventgpt.train import device
-from eventgpt.vocab import Vocab
+from eventgpt.data.mbd import OUT
+from eventgpt.data.vocab import Vocab
+from eventgpt.evaluation.probe import OFFICIAL, UNDEFINED, Fold, history_tokens, labels, mark_undefined, score
+from eventgpt.models.flat import load_checkpoint
+from eventgpt.training.train import device
 
 
 class Scorer(nn.Module):
@@ -151,7 +151,7 @@ def main() -> None:
     y_tr = torch.from_numpy(tr[labs].to_numpy(dtype=np.float32))
     w_tr = torch.from_numpy(tr["weight"].to_numpy(dtype=np.float32))
 
-    # a tenth of the training clients picks the step, by client as in eventgpt.baseline
+    # a tenth of the training clients picks the step, by client as in eventgpt.baselines.catboost
     clients = tr["client_id"].unique()
     held = tr["client_id"].isin(set(rng.choice(clients, size=len(clients) // 10, replace=False))).to_numpy()
     fit_idx = np.flatnonzero(~held)

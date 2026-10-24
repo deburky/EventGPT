@@ -30,7 +30,7 @@ Per fold the build writes, under OUT/fold=<k>/:
 and OUT/pretrain/ holds train_tokens.npy and val_tokens.npy, the packed streams of every fold except the test
 fold, split by client hash, which is what train.py samples windows from.
 
-    uv run python -m eventgpt.mbd --test-fold 0
+    uv run python -m eventgpt.data.mbd --test-fold 0
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from eventgpt.vocab import EVT, USR, Vocab
+from eventgpt.data.vocab import EVT, USR, Vocab
 
 RAW = Path(os.environ.get("MBD_ROOT", "/Volumes/WD_BLACK/datasets/MBD-mini/extracted"))
 OUT = Path(os.environ.get("MBD_OUT", "/Volumes/WD_BLACK/datasets/MBD-mini/tokens"))

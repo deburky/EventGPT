@@ -23,7 +23,7 @@ class GPTConfig:
     causal: bool = True  # False = bidirectional encoder trained with masked modelling (PRAGMA style)
     usr_id: int = 1  # [USR] token id; segment boundaries for the block-diagonal mask
     qk_norm: bool = False  # RMSNorm on queries and keys inside each head (Qwen3), bounds attention logits
-    aligned: bool = False  # trained on client-aligned windows (eventgpt.windows); the probe builds histories the same way
+    aligned: bool = False  # trained on client-aligned windows (eventgpt.data.windows); the probe builds histories the same way
 
 
 class RMSNorm(nn.Module):
@@ -227,7 +227,7 @@ def load_checkpoint(path: str, map_location: str = "cpu") -> Any:
     """Rebuild a saved model from its checkpoint, flat GPT or EventGPT."""
     ck = torch.load(path, map_location=map_location)
     if ck.get("arch") == "eventgpt":
-        from eventgpt.hierarchy import EventGPT, EventGPTConfig
+        from eventgpt.models.hierarchy import EventGPT, EventGPTConfig
 
         model: nn.Module = EventGPT(EventGPTConfig(**ck["cfg"]))
     else:

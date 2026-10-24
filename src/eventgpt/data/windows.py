@@ -2,11 +2,11 @@
 
 A slice at a random offset of the packed stream usually starts inside a client's history, without [USR] or the
 profile event and with nothing that says how long the client has banked. An aligned window that starts inside a
-client gets [USR] and the client's first event put back in front, as eventgpt.probe cuts a long history, and the
+client gets [USR] and the client's first event put back in front, as eventgpt.evaluation.probe cuts a long history, and the
 first event after them carries the gap from the client's first event instead of from the event cut away before
 it. Every dt token then measures the gap to the previous event in the sequence the model reads, and the time
 positions of the history decoder count from the client's first event, so tenure is visible to the model.
-eventgpt.probe.history_tokens applies the same rule to checkpoints trained with aligned windows.
+eventgpt.evaluation.probe.history_tokens applies the same rule to checkpoints trained with aligned windows.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from eventgpt.mbd import N_FOLDS, OUT, VAL_SHARE, client_slices
-from eventgpt.vocab import Vocab
+from eventgpt.data.mbd import N_FOLDS, OUT, VAL_SHARE, client_slices
+from eventgpt.data.vocab import Vocab
 
 
 class PackedStream:

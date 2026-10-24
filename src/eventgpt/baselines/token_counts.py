@@ -12,7 +12,7 @@ The profile event (the client's first) stays in every window, as it does in Even
 history is cut to the most recent tokens exactly as the probe cuts it, so the table sees what EventGPT sees. Rows,
 labels, weights and the train/test split are a probe run's own, read from its output directory.
 
-Example: `uv run python -m eventgpt.token_counts --probe-dir data/runs/hier-rope-s42/probe-now-2k --window 2046`
+Example: `uv run python -m eventgpt.baselines.token_counts --probe-dir data/runs/hier-rope-s42/probe-now-2k --window 2046`
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, Pool
 
-from eventgpt.mbd import OUT
-from eventgpt.probe import UNDEFINED, Fold, labels, mark_undefined, score
-from eventgpt.vocab import SPECIALS, Vocab
+from eventgpt.data.mbd import OUT
+from eventgpt.data.vocab import SPECIALS, Vocab
+from eventgpt.evaluation.probe import UNDEFINED, Fold, labels, mark_undefined, score
 
 WINDOWS = {"all": np.inf, "d91": 91 * 86400, "d30": 30 * 86400}
 
@@ -101,7 +101,7 @@ def main() -> None:
     xtr, xte = build(tr, vocab, col, a.top, a.window, t0), build(te, vocab, col, a.top, a.window, t0)
     xtr.columns = xte.columns = [f"{w}:{t}" for w in WINDOWS for t in [*names, "n_events"]] + ["days_since_last", "days_since_first"]
 
-    # a tenth of the training clients is held out for early stopping, by client, as in eventgpt.baseline
+    # a tenth of the training clients is held out for early stopping, by client, as in eventgpt.baselines.catboost
     rng = np.random.default_rng(a.seed)
     clients = tr["client_id"].unique()
     stop = tr["client_id"].isin(set(rng.choice(clients, size=len(clients) // 10, replace=False))).to_numpy()

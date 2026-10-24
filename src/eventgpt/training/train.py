@@ -1,6 +1,6 @@
 """Next-token pretraining on packed client token streams. Runs on MPS when available, CUDA otherwise.
 
-Example: `uv run python -m eventgpt.train --run mbd-hier --arch eventgpt --rope --steps 20000`
+Example: `uv run python -m eventgpt.training.train --run mbd-hier --arch eventgpt --rope --steps 20000`
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ from typing import Any
 import numpy as np
 import torch
 
-from eventgpt.flat import GPT, GPTConfig
-from eventgpt.hierarchy import EventGPT, EventGPTConfig
-from eventgpt.vocab import EVT, USR, Vocab
-from eventgpt.windows import AlignedStream, PackedStream
+from eventgpt.data.vocab import EVT, USR, Vocab
+from eventgpt.data.windows import AlignedStream, PackedStream
+from eventgpt.models.flat import GPT, GPTConfig
+from eventgpt.models.hierarchy import EventGPT, EventGPTConfig
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DATA = Path(os.environ.get("MBD_OUT", "/Volumes/WD_BLACK/datasets/MBD-mini/tokens"))
 CKPT = Path(os.environ.get("EGPT_CKPT", ROOT / "data" / "ckpt"))
 
@@ -125,7 +125,7 @@ def main() -> None:
     p.add_argument("--qk-norm", action="store_true", help="RMSNorm on queries and keys inside each head")
     p.add_argument("--profile-path", action="store_true", help="eventgpt: profile field embeddings added to every later event")
     p.add_argument(
-        "--aligned", action="store_true", help="client-aligned windows with the gap from the client's first event (eventgpt.windows)"
+        "--aligned", action="store_true", help="client-aligned windows with the gap from the client's first event (eventgpt.data.windows)"
     )
     p.add_argument(
         "--no-loss-on", type=str, default="", help="comma-separated token classes (dt,amt_bin,g4,g5) left out of the training loss"

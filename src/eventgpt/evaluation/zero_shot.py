@@ -12,7 +12,7 @@ positive for an event target plus a uniform sample, read from a probe run's outp
 scores and the probe's logistic head (refitted on its saved embeddings) are compared on the same rows. Each
 target's ROC-AUC uses its own positives and the uniform sample, which leaves it unbiased.
 
-Example: `uv run python -m eventgpt.zero_shot data/runs/hier-rope-s42/hier-rope-s42.pt --probe-dir data/runs/hier-rope-s42/probe-now-2k`
+Example with R=data/runs/hier-rope-s42: `uv run python -m eventgpt.evaluation.zero_shot $R/hier-rope-s42.pt --probe-dir $R/probe-now-2k`
 """
 
 from __future__ import annotations
@@ -30,11 +30,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from eventgpt.flat import load_checkpoint
-from eventgpt.mbd import OUT
-from eventgpt.probe import FIRST_KINDS, Fold, history_tokens, score
-from eventgpt.train import device
-from eventgpt.vocab import Vocab
+from eventgpt.data.mbd import OUT
+from eventgpt.data.vocab import Vocab
+from eventgpt.evaluation.probe import FIRST_KINDS, Fold, history_tokens, score
+from eventgpt.models.flat import load_checkpoint
+from eventgpt.training.train import device
 
 FIRST = [f"first_{x}_{y}" for x, y in FIRST_KINDS]
 

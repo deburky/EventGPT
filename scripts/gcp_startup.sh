@@ -71,18 +71,18 @@ export MBD_OUT="$WORK/data" MBD_ROOT="$WORK/raw" EGPT_CKPT="$WORK/ckpt"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # length-sorted batches grow steadily; avoid fragmentation
 if [[ "$PROBE" == "1" || "$PROBE" == "0" ]]; then
     # shellcheck disable=SC2086  # ARGS is a list of flags
-    uv run --no-dev python -m eventgpt.train --run "$RUN" $ARGS || exit 1
+    uv run --no-dev python -m eventgpt.training.train --run "$RUN" $ARGS || exit 1
 fi
 if [[ "$PROBE" == "1" || "$PROBE" == "only" ]]; then
     # shellcheck disable=SC2086  # PROBE_ARGS is a list of flags
-    uv run --no-dev python -m eventgpt.probe "$WORK/ckpt/$RUN.pt" $PROBE_ARGS
+    uv run --no-dev python -m eventgpt.evaluation.probe "$WORK/ckpt/$RUN.pt" $PROBE_ARGS
 fi
 if [[ "$PROBE" == "1" || "$PROBE" == "only" || "$PROBE" == "zero-shot" ]]; then
     # zero-shot event targets on the probe's rows, which the probe wrote (or a previous VM mirrored) to ckpt/probe
-    uv run --no-dev python -m eventgpt.zero_shot "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" --out "$WORK/ckpt/zero_shot.csv"
+    uv run --no-dev python -m eventgpt.evaluation.zero_shot "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" --out "$WORK/ckpt/zero_shot.csv"
 fi
 if [[ "$PROBE" == "finetune" ]]; then
     # the checkpoint and the probe's rows were copied into this run's ckpt folder before launch
     # shellcheck disable=SC2086  # PROBE_ARGS is a list of flags
-    uv run --no-dev python -m eventgpt.finetune "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" $PROBE_ARGS --out "$WORK/ckpt/finetune.csv"
+    uv run --no-dev python -m eventgpt.training.finetune "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" $PROBE_ARGS --out "$WORK/ckpt/finetune.csv"
 fi

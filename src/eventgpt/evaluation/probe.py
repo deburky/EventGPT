@@ -21,7 +21,7 @@ are rare (target_2 is 0.05% of rows), so the training rows are every row positiv
 uniform sample of the rest; the test fold is scored in full. Rows with no history before the cut are kept,
 with a zero embedding, since the MBD protocol scores every client every month.
 
-Example: `uv run python -m eventgpt.probe data/runs/smoke-l4/smoke-l4.pt --max-clients 500`
+Example: `uv run python -m eventgpt.evaluation.probe data/runs/smoke-l4/smoke-l4.pt --max-clients 500`
 """
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from eventgpt.flat import load_checkpoint
-from eventgpt.mbd import N_FOLDS, OUT, RAW
-from eventgpt.train import device
-from eventgpt.vocab import Vocab
+from eventgpt.data.mbd import N_FOLDS, OUT, RAW
+from eventgpt.data.vocab import Vocab
+from eventgpt.models.flat import load_checkpoint
+from eventgpt.training.train import device
 
 READOUTS = ("last", "mean", "recency")
 RECENCY_EVENTS = 32.0  # e-folding length of the recency-weighted pool, in events
@@ -172,7 +172,7 @@ def history_tokens(fold: Fold, ci: int, n: int, block: int, now: np.ndarray | No
     The profile event is the client's first, so a truncated window gets [USR] and the profile event put back in
     front: static attributes would otherwise drop out of exactly the clients with the longest histories. `now`,
     when given, is appended after the window and counts against `block`. With `aligned` (a checkpoint trained on
-    eventgpt.windows.AlignedStream), the first event after the profile carries the gap from the profile event.
+    eventgpt.data.windows.AlignedStream), the first event after the profile carries the gap from the profile event.
     """
     if now is not None:
         return np.concatenate([history_tokens(fold, ci, n, block - len(now), aligned=aligned), now])

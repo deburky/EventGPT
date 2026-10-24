@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from eventgpt.flat import Block, GPTConfig
+from eventgpt.models.flat import Block, GPTConfig
 
 
 @dataclass
