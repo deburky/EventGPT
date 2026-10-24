@@ -14,6 +14,9 @@ dependencies = [
     "torch>=2.10.0",
 ]
 
+[project.scripts]
+egpt = "eventgpt.cli:main"
+
 [dependency-groups]
 dev = [
     "mypy>=2.4.0",

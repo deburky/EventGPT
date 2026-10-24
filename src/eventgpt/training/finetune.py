@@ -7,7 +7,7 @@ The head trains alone for the first --head-steps steps, then the pretrained weig
 untrained head does not disturb them. The state is saved at every evaluation next to the output, so a run cut
 off part way (a spot VM preempted) continues from its last evaluation.
 
-Example: `uv run python -m eventgpt.training.finetune data/runs/hier-al-s42/hier-al-s42.pt --probe-dir data/runs/hier-al-s42/probe-now-2k`
+Example: `uv run egpt finetune data/runs/hier-al-s42/hier-al-s42.pt --probe-dir data/runs/hier-al-s42/probe-now-2k`
 """
 
 from __future__ import annotations

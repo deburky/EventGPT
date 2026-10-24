@@ -9,7 +9,7 @@ output directory with the embeddings it saved, and the hand-built aggregates are
     emb_numeric  the embedding as d numeric columns
     agg_emb      the aggregates plus the embedding feature
 
-Example: `uv run python -m eventgpt.baselines.emb_boost --probe-dir data/runs/hier-al-s42/probe-now-2k`
+Example: `uv run egpt emb-boost --probe-dir data/runs/hier-al-s42/probe-now-2k`
 """
 
 from __future__ import annotations

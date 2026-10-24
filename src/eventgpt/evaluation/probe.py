@@ -21,7 +21,7 @@ are rare (target_2 is 0.05% of rows), so the training rows are every row positiv
 uniform sample of the rest; the test fold is scored in full. Rows with no history before the cut are kept,
 with a zero embedding, since the MBD protocol scores every client every month.
 
-Example: `uv run python -m eventgpt.evaluation.probe data/runs/smoke-l4/smoke-l4.pt --max-clients 500`
+Example: `uv run egpt probe data/runs/smoke-l4/smoke-l4.pt --max-clients 500`
 """
 
 from __future__ import annotations

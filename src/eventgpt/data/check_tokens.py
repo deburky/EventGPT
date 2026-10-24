@@ -4,7 +4,7 @@ Checks per fold that event_start points at [EVT], that each client's first event
 [USR] count matches the client count, that events are time-ordered within a client and how much of the stream
 is [UNK]. Then prints the first client of fold 1 decoded and the share of stream tokens per key.
 
-Example: `uv run python -m eventgpt.data.check_tokens`
+Example: `uv run egpt check-tokens`
 """
 
 from __future__ import annotations

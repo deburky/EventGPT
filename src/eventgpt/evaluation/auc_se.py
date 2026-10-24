@@ -14,7 +14,7 @@ a much smaller SE than the two separate SEs suggest, because both models rank th
 Predictions are read from csv or parquet files with client_id, mon and one column per label, the preds.parquet
 that eventgpt.baselines.catboost and eventgpt.evaluation.profile_readout write, and joined on (client_id, mon).
 
-Example: `uv run python -m eventgpt.evaluation.auc_se data/baseline/preds.parquet data/runs/hier-alq-s42/probe-now-2k/preds_profile.parquet`
+Example: `uv run egpt auc-se data/baseline/preds.parquet data/runs/hier-alq-s42/probe-now-2k/preds_profile.parquet`
 """
 
 from __future__ import annotations

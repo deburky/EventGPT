@@ -9,7 +9,7 @@ own stream, so the readout needs no knowledge of what the attributes are.
 Rows, labels, weights and the history states are a probe run's own (its output directory); the token
 embeddings come from the same checkpoint.
 
-Example with R=data/runs/hier-alq-s42: `uv run python -m eventgpt.evaluation.profile_readout $R/hier-alq-s42.pt --probe-dir $R/probe-now-2k`
+Example with R=data/runs/hier-alq-s42: `uv run egpt profile-readout $R/hier-alq-s42.pt --probe-dir $R/probe-now-2k`
 """
 
 from __future__ import annotations

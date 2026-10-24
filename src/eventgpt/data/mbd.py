@@ -30,7 +30,7 @@ Per fold the build writes, under OUT/fold=<k>/:
 and OUT/pretrain/ holds train_tokens.npy and val_tokens.npy, the packed streams of every fold except the test
 fold, split by client hash, which is what train.py samples windows from.
 
-    uv run python -m eventgpt.data.mbd --test-fold 0
+    uv run egpt prepare --test-fold 0
 """
 
 from __future__ import annotations

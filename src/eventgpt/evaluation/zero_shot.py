@@ -12,7 +12,7 @@ positive for an event target plus a uniform sample, read from a probe run's outp
 scores and the probe's logistic head (refitted on its saved embeddings) are compared on the same rows. Each
 target's ROC-AUC uses its own positives and the uniform sample, which leaves it unbiased.
 
-Example with R=data/runs/hier-rope-s42: `uv run python -m eventgpt.evaluation.zero_shot $R/hier-rope-s42.pt --probe-dir $R/probe-now-2k`
+Example with R=data/runs/hier-rope-s42: `uv run egpt zero-shot $R/hier-rope-s42.pt --probe-dir $R/probe-now-2k`
 """
 
 from __future__ import annotations

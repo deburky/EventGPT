@@ -17,7 +17,7 @@ the last month, the last three months):
 Months are calendar months in Moscow time, which is what makes the windows exact: the cut is the first of a
 month, so "before the cut" is a whole number of months.
 
-Example: `uv run python -m eventgpt.baselines.catboost --max-clients 2000`
+Example: `uv run egpt catboost --max-clients 2000`
 """
 
 from __future__ import annotations

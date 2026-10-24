@@ -1,6 +1,6 @@
 """Next-token pretraining on packed client token streams. Runs on MPS when available, CUDA otherwise.
 
-Example: `uv run python -m eventgpt.training.train --run mbd-hier --arch eventgpt --rope --steps 20000`
+Example: `uv run egpt train --run mbd-hier --arch eventgpt --rope --steps 20000`
 """
 
 from __future__ import annotations

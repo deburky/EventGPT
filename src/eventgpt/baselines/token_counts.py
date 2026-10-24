@@ -12,7 +12,7 @@ The profile event (the client's first) stays in every window, as it does in Even
 history is cut to the most recent tokens exactly as the probe cuts it, so the table sees what EventGPT sees. Rows,
 labels, weights and the train/test split are a probe run's own, read from its output directory.
 
-Example: `uv run python -m eventgpt.baselines.token_counts --probe-dir data/runs/hier-rope-s42/probe-now-2k --window 2046`
+Example: `uv run egpt token-counts --probe-dir data/runs/hier-rope-s42/probe-now-2k --window 2046`
 """
 
 from __future__ import annotations
