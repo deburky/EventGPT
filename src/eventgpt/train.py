@@ -83,6 +83,7 @@ def build(a: argparse.Namespace, vocab: Vocab) -> tuple[Any, Any]:
             evt_id=vocab.id(EVT),
             rope=a.rope,
             n_experts=3 if a.moe else 1,  # kinds: other, trx, geo (EventGPT.set_vocab_tables)
+            profile_path=a.profile_path,
             qk_norm=a.qk_norm,
             aligned=a.aligned,
         )
@@ -122,6 +123,7 @@ def main() -> None:
     p.add_argument("--rope", action="store_true", help="eventgpt: time-aware rotary positions over events, none inside an event")
     p.add_argument("--moe", action="store_true", help="eventgpt: one feed-forward per event kind in the event encoder, hard-routed")
     p.add_argument("--qk-norm", action="store_true", help="RMSNorm on queries and keys inside each head")
+    p.add_argument("--profile-path", action="store_true", help="eventgpt: profile field embeddings added to every later event")
     p.add_argument(
         "--aligned", action="store_true", help="client-aligned windows with the gap from the client's first event (eventgpt.windows)"
     )

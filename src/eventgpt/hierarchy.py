@@ -33,6 +33,8 @@ class EventGPTConfig(GPTConfig):
     rope: bool = False  # no positions inside an event; time-aware rotary positions over events
     n_experts: int = 1  # feed-forward experts in the event encoder, hard-routed by event kind
     packed: bool = True  # token stages attend within packed per-event rows (linear in the window) rather than dense masks
+    profile_path: bool = False  # the profile event's field embeddings added to every later event of the client (needs packed)
+    profile_fields: int = 4  # field tokens of the profile event, after [EVT] name=profile dt=<b>
 
 
 def _same(a: torch.Tensor) -> torch.Tensor:
@@ -284,12 +286,23 @@ class EventGPT(nn.Module):
         self.dt_seconds: torch.Tensor
         self.register_buffer("kind_lut", torch.zeros(cfg.vocab_size, dtype=torch.long))
         self.register_buffer("dt_seconds", torch.zeros(cfg.vocab_size))
+        # static path: the profile event's field embeddings, projected and added to the client's later events;
+        # zero-initialised, so a model starts out as one without the path
+        self.profile_proj: nn.Linear | None = None
+        self.profile_name: torch.Tensor
+        if cfg.profile_path:
+            self.profile_proj = nn.Linear(cfg.profile_fields * d, d, bias=False)
+            self.register_buffer("profile_name", torch.tensor(-1))
         self.apply(self._init)
+        if self.profile_proj is not None:
+            nn.init.zeros_(self.profile_proj.weight)
 
     def set_vocab_tables(self, structured: dict[str, int]) -> None:
         """Fill kind_lut (name token -> expert) and dt_seconds (dt token -> bucket midpoint) from the vocabulary."""
         kinds = {"trx_": 1, "geo": 2}
         for tok, i in structured.items():
+            if tok == "name=profile" and self.cfg.profile_path:
+                self.profile_name.fill_(i)
             if tok.startswith("name="):
                 name = tok[5:]
                 self.kind_lut[i] = next((k for pre, k in kinds.items() if name.startswith(pre)), 0)
@@ -334,6 +347,8 @@ class EventGPT(nn.Module):
             tok = tok_mask
         # 2. history decoder: causal over events, masked to the same client, positions restart per client
         first_ev, ev_pos, hist_mask = self.layout(event, client, n_ev)
+        if self.profile_proj is not None and isinstance(tok, Packing):
+            ev = ev + self.static_path(idx, tok, first_ev)
         rope_pos = None
         if self.cfg.rope:
             h = ev
@@ -350,6 +365,25 @@ class EventGPT(nn.Module):
         occupied = torch.zeros(h.shape[:2], dtype=torch.bool, device=h.device).scatter_(1, event, True)
         h = h * occupied.unsqueeze(-1).to(h.dtype)
         return h, event, ev, pos_in_event, tok
+
+    def static_path(self, idx: torch.Tensor, pk: Packing, first_ev: torch.Tensor) -> torch.Tensor:
+        """(b, n_ev, d) projected profile field embeddings for every event from the client's profile event on.
+
+        A client's events are [USR] (event first_ev), its profile event (first_ev + 1) and the rest. The [USR]
+        event gets nothing: its state conditions the prediction of the profile event's own tokens.
+        """
+        assert self.profile_proj is not None
+        b, n_ev = first_ev.shape
+        k = self.cfg.profile_fields
+        if pk.width < 3 + k:
+            return torch.zeros(b, n_ev, self.cfg.d_model, device=idx.device, dtype=self.tok_emb.weight.dtype)
+        ids = pk.pack(idx).view(b, n_ev, pk.width)
+        is_profile = ids[:, :, 1] == self.profile_name
+        p_ev = self.profile_proj(self.tok_emb(ids[:, :, 3 : 3 + k]).flatten(-2)) * is_profile.unsqueeze(-1)
+        src = (first_ev + 1).clamp(max=n_ev - 1)
+        ar = torch.arange(n_ev, device=idx.device).unsqueeze(0)
+        after = (ar >= first_ev + 1).unsqueeze(-1)
+        return torch.gather(p_ev, 1, src.unsqueeze(-1).expand(-1, -1, p_ev.size(-1))) * after
 
     def history(self, idx: torch.Tensor, key_mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (history states per event (b, n_ev, d), event index per token, event vectors)."""
