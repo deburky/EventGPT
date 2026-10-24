@@ -57,26 +57,23 @@
 \begin{abstract}
 \noindent
 A model pretrained to predict a customer's next event can score questions about future events with no
-labels. We pretrain EventGPT, a causal transformer, by next-token prediction on the public Multimodal
-Banking Dataset (MBD-mini, 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings)
-and score five targets of the form ``the client makes a transaction of a given kind for the first time
-next month'' from its next-event distribution alone. On aligned windows these zero-shot scores reach ROC-AUC 0.78 to 0.91,
-against 0.84 to 0.94 for a logistic head fitted on labels, and exceed the head on two of the five
-targets. Trained on windows that open as the histories it embeds do, with the client's profile and the
-time since its first event, EventGPT reaches a mean ROC-AUC of 0.787 on MBD's four product targets as a
-frozen embedding, above a table of token counts over the same 2,048-token window (0.777), which needs no
-knowledge of the schema. Gradient boosting on 114 hand-built features of the full history reaches 0.816.
-Neither fine-tuning (0.788) nor a window four times longer raises the product targets, and a model six
-times larger raises them by 0.005. The gap lies in the client's static attributes and in the history before the window: read
-beside the embedding, the attributes' token embeddings and token counts over the full history bring it to
-0.810, within 0.006 of the hand-built features (95\% interval $-0.015$ to $+0.003$, one seed), and
-averaging its ranking with theirs reaches 0.830, 0.014 above them. On churn, once
-the month after the transaction data ends is removed from the labels, EventGPT reaches 0.935 against
-0.956 for the hand-built features. The embedding at
-a cut depends only on events before it, so it can be stored as a point-in-time feature. EventGPT pools
-each event into one vector and decodes the next event from the history state before it; trained on the
-same windows as a flat decoder of the same size, it is level with it as an embedding (0.774 against
-0.777), from one state where the flat decoder pools 256, and it trains 2.5 times faster.
+labels and give each customer an embedding that supervised tasks share. We pretrain EventGPT, a
+hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset
+(MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its
+next-event distribution alone it scores five targets of the form ``the client makes a transaction of a
+given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, against 0.84 to 0.93 for a logistic
+head fitted on labels, and exceeds the head on two. As a frozen embedding it reaches a mean ROC-AUC of
+0.787 on MBD's four product targets. That is above a schema-free table of token counts over the same
+2,048-token window (0.777) and below gradient boosting on 114 hand-built features (0.816). The gap lies in
+the client's static attributes and in the history before the window. Read beside the embedding, the token
+embeddings of the four profile fields and token counts over the full history bring it to 0.810, a paired
+difference of $-0.006$ (95\% interval $-0.015$ to $+0.003$, one seed). Averaging the ranks of this model
+and the hand-built one reaches 0.830, 0.014 above the hand-built model alone. Fine-tuning, a window four
+times longer and a model six times wider raise the product targets by at most 0.005. The embedding at a
+cut depends only on events before it, so it can be stored as a point-in-time feature. EventGPT pools each
+event into one vector and decodes the next event from the history state before it. Trained on the same
+windows as a flat decoder of the same size, it is level with it as an embedding (0.774 against 0.777) and
+trains 2.5 times faster.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -118,7 +115,7 @@ results can be reproduced.
 \paragraph{Contributions.}
 \begin{enumerate}
 \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next
-event, which scores five first-occurrence targets at ROC-AUC 0.78 to 0.91 with no labels and exceeds a
+event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a
 supervised head on two of them (Section~\ref{sec:zero-shot}).
 \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against a schema-free
 token-count table, which the embedding exceeds inside the same window, and against hand-built
