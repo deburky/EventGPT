@@ -32,7 +32,7 @@ import pandas as pd
 from catboost import CatBoostClassifier, Pool
 
 from eventgpt.mbd import N_FOLDS, OUT, RAW
-from eventgpt.probe import Fold, labels, load_rows, report, sample_train, score
+from eventgpt.probe import UNDEFINED, Fold, labels, load_rows, report, sample_train, score
 from eventgpt.vocab import Vocab
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -146,7 +146,9 @@ def main() -> None:
     res: dict[str, dict[str, float]] = {}
     for lab in labels():
         ytr, yte = train[lab].to_numpy(), test[lab].to_numpy()
-        if ytr[~is_stop].min() == ytr[~is_stop].max() or ytr[is_stop].min() == ytr[is_stop].max() or yte.min() == yte.max():
+        fit_rows, stop_rows = ~is_stop & (ytr != UNDEFINED), is_stop & (ytr != UNDEFINED)
+        defined = yte[yte != UNDEFINED]
+        if ytr[fit_rows].min() == ytr[fit_rows].max() or ytr[stop_rows].min() == ytr[stop_rows].max() or defined.min() == defined.max():
             res[lab] = score(yte, None)
             continue
         model = CatBoostClassifier(
@@ -159,8 +161,8 @@ def main() -> None:
             verbose=False,
             allow_writing_files=False,
         )
-        fit = Pool(xtr[~is_stop], ytr[~is_stop], cat_features=PROFILE, weight=w[~is_stop])
-        stop = Pool(xtr[is_stop], ytr[is_stop], cat_features=PROFILE, weight=w[is_stop])
+        fit = Pool(xtr[fit_rows], ytr[fit_rows], cat_features=PROFILE, weight=w[fit_rows])
+        stop = Pool(xtr[stop_rows], ytr[stop_rows], cat_features=PROFILE, weight=w[stop_rows])
         model.fit(fit, eval_set=stop, use_best_model=True)
         res[lab] = score(yte, model.predict_proba(Pool(xte, cat_features=PROFILE))[:, 1])
     a.out.mkdir(parents=True, exist_ok=True)

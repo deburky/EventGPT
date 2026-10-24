@@ -27,6 +27,7 @@ Example: `uv run python -m eventgpt.probe data/runs/smoke-l4/smoke-l4.pt --max-c
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import time
 from pathlib import Path
@@ -54,6 +55,7 @@ OFFICIAL = ["target_1", "target_2", "target_3", "target_4"]
 METRICS = ("roc_auc", "pr_auc")
 FIRST_KINDS = [(48, 31), (23, 49), (26, 28), (48, 10), (50, 19)]
 MSK_OFFSET = 3 * 3600
+UNDEFINED = -1  # a label the data cannot settle: churn in a month after the last event in the data
 
 
 # -------------------------------------------------------------------------------
@@ -119,6 +121,24 @@ def load_rows(fold: Fold, k: int, max_clients: int | None, seed: int) -> pd.Data
     return t
 
 
+@functools.cache
+def data_end() -> int:
+    """UTC epoch seconds of the last event in any fold."""
+    return max(int(np.load(OUT / f"fold={k}" / "event_time.npy", mmap_mode="r").max()) for k in range(N_FOLDS))
+
+
+def mark_undefined(t: pd.DataFrame) -> pd.DataFrame:
+    """Set churn to UNDEFINED for rows whose month starts after the last event in the data.
+
+    MBD-mini's transactions end on 31 December 2022, so every client looks churned in January 2023: 99% of
+    that month's rows would be positive, and a model that can tell the month of the cut, as the time since a
+    client's first event does, would score them without reading any behaviour. Applied to rows read back from
+    a probe run as well, so outputs written before the rule existed are scored the same way.
+    """
+    t.loc[t["cut"].to_numpy() > data_end(), "churn"] = UNDEFINED
+    return t
+
+
 def add_event_labels(t: pd.DataFrame, fold: Fold) -> None:
     """Event targets for each row, from the events between the cut and the end of the month."""
     first = {f"first_{x}_{y}": np.zeros(len(t), dtype=np.int64) for x, y in FIRST_KINDS}
@@ -135,6 +155,7 @@ def add_event_labels(t: pd.DataFrame, fold: Fold) -> None:
     for name, col in first.items():
         t[name] = col
     t["churn"] = churn
+    mark_undefined(t)
 
 
 def labels() -> list[str]:
@@ -307,7 +328,11 @@ def embed_rows(
 # Heads
 # -------------------------------------------------------------------------------
 def sample_train(rows: pd.DataFrame, n_neg: int, seed: int) -> pd.DataFrame:
-    """Every row positive for any label, plus a uniform sample of the rest, weighted back to its share."""
+    """Every row positive for any label, plus a uniform sample of the rest, weighted back to its share.
+
+    A row with an UNDEFINED label is kept whole too, at weight 1, which leaves the sample unbiased and draws
+    the same rows as before the label existed.
+    """
     pos = rows[labels()].to_numpy().any(axis=1)
     neg = rows.index[~pos]
     take = np.random.default_rng(seed).choice(neg, size=min(n_neg, len(neg)), replace=False)
@@ -321,10 +346,12 @@ def score(y: np.ndarray, p: np.ndarray | None) -> dict[str, float]:
 
     PR-AUC is reported beside ROC-AUC because positives are rare, from 0.05% to 0.7% of rows: ROC-AUC can be
     high while the top of the ranking is still mostly negatives. A random ranking's PR-AUC is the prevalence,
-    which report() prints alongside.
+    which report() prints alongside. Rows with an UNDEFINED label are left out.
     """
     if p is None:
         return {m: float("nan") for m in METRICS}
+    ok = y != UNDEFINED
+    y, p = y[ok], p[ok]
     return {"roc_auc": float(roc_auc_score(y, p)), "pr_auc": float(average_precision_score(y, p))}
 
 
@@ -339,8 +366,8 @@ def report(results: dict[str, dict[str, dict[str, float]]], test: pd.DataFrame, 
     """
     for col in results.values():
         col["official_mean"] = {m: float(np.nanmean([col[lab][m] for lab in OFFICIAL])) for m in METRICS}
-    prevalence = {lab: float(test[lab].mean()) for lab in labels()}
-    positives = {lab: int(test[lab].sum()) for lab in labels()}
+    prevalence = {lab: float(test.loc[test[lab] != UNDEFINED, lab].mean()) for lab in labels()}
+    positives = {lab: int((test[lab] == 1).sum()) for lab in labels()}
     out = {**meta, "metrics": results, "test_prevalence": prevalence, "test_positives": positives}
     (out_dir / "results.json").write_text(json.dumps(out, indent=1))
     for m in METRICS:
@@ -354,8 +381,14 @@ def report(results: dict[str, dict[str, dict[str, float]]], test: pd.DataFrame, 
 
 
 def fit_score(xtr: np.ndarray, ytr: np.ndarray, wtr: np.ndarray, xte: np.ndarray, yte: np.ndarray) -> dict[str, float]:
-    """ROC-AUC and PR-AUC on the test rows of a standardised logistic head; NaN when a split has one class."""
-    if ytr.min() == ytr.max() or yte.min() == yte.max():
+    """ROC-AUC and PR-AUC on the test rows of a standardised logistic head; NaN when a split has one class.
+
+    Rows with an UNDEFINED label are left out of the fit and the score.
+    """
+    ok = ytr != UNDEFINED
+    xtr, ytr, wtr = xtr[ok], ytr[ok], wtr[ok]
+    defined = yte[yte != UNDEFINED]
+    if ytr.min() == ytr.max() or defined.min() == defined.max():
         return score(yte, None)
     head = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
     head.fit(xtr, ytr, logisticregression__sample_weight=wtr)

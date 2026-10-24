@@ -28,7 +28,7 @@ import torch.nn.functional as F
 
 from eventgpt.flat import load_checkpoint
 from eventgpt.mbd import OUT
-from eventgpt.probe import OFFICIAL, Fold, history_tokens, labels, score
+from eventgpt.probe import OFFICIAL, UNDEFINED, Fold, history_tokens, labels, mark_undefined, score
 from eventgpt.train import device
 from eventgpt.vocab import Vocab
 
@@ -104,7 +104,11 @@ def predict(scorer: Scorer, hist: Histories, idx: np.ndarray, bsz: int, dev: tor
 
 def official_mean(y: np.ndarray, p: np.ndarray, labs: list[str]) -> float:
     """Mean ROC-AUC over the official targets that have both classes in y."""
-    aucs = [score(y[:, k], p[:, k])["roc_auc"] for k, lab in enumerate(labs) if lab in OFFICIAL and 0 < y[:, k].sum() < len(y)]
+    aucs = [
+        score(y[:, k], p[:, k])["roc_auc"]
+        for k, lab in enumerate(labs)
+        if lab in OFFICIAL and (y[:, k] == 1).any() and (y[:, k] == 0).any()
+    ]
     return float(np.mean(aucs))
 
 
@@ -134,8 +138,8 @@ def main() -> None:
     dev = device()
     vocab = Vocab.load(OUT / "vocab")
     block = int(json.loads((a.probe_dir / "results.json").read_text())["block"])
-    tr = pd.read_parquet(a.probe_dir / "train_rows.parquet")
-    te = pd.read_parquet(a.probe_dir / "test_rows.parquet")
+    tr = mark_undefined(pd.read_parquet(a.probe_dir / "train_rows.parquet"))
+    te = mark_undefined(pd.read_parquet(a.probe_dir / "test_rows.parquet"))
     if a.max_rows:
         tr = tr.sample(a.max_rows, random_state=a.seed).reset_index(drop=True)
         te = te.sample(a.max_rows, random_state=a.seed).reset_index(drop=True)
@@ -185,7 +189,9 @@ def main() -> None:
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=dev.type == "cuda"):
             logits = scorer(x, n)
         y, w = y_tr[idx].to(dev), w_tr[idx].to(dev)
-        loss = (F.binary_cross_entropy_with_logits(logits, y, reduction="none").mean(1) * w).sum() / w.sum()
+        known = (y != UNDEFINED).float()  # an UNDEFINED label gives no gradient
+        bce = F.binary_cross_entropy_with_logits(logits, y.clamp(min=0), reduction="none") * known
+        loss = (bce.sum(1) / known.sum(1).clamp(min=1) * w).sum() / w.sum()
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(scorer.parameters(), 1.0)
@@ -203,7 +209,9 @@ def main() -> None:
 
     scorer.load_state_dict(best[2])
     pr = predict(scorer, h_te, np.arange(len(te)), a.batch * 2, dev)
-    res = [(lab, *score(te[lab].to_numpy(), pr[:, k]).values()) for k, lab in enumerate(labs) if 0 < te[lab].sum() < len(te)]
+    res = [
+        (lab, *score(te[lab].to_numpy(), pr[:, k]).values()) for k, lab in enumerate(labs) if (te[lab] == 1).any() and (te[lab] == 0).any()
+    ]
     r = pd.DataFrame(res, columns=["label", "roc", "pr"]).set_index("label")
     print(f"best step {best[1]} (validation {best[0]:.4f})")
     print(r.round(4).to_string())

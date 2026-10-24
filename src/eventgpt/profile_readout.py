@@ -24,7 +24,7 @@ from sklearn.preprocessing import StandardScaler
 
 from eventgpt.flat import load_checkpoint
 from eventgpt.mbd import OUT
-from eventgpt.probe import OFFICIAL, Fold, labels, score
+from eventgpt.probe import OFFICIAL, UNDEFINED, Fold, labels, mark_undefined, score
 from eventgpt.vocab import Vocab
 
 FIELDS = 4  # tokens after [EVT] name=profile dt=<b>: s21 s22 s31 s32
@@ -55,8 +55,8 @@ def main() -> None:
 
     vocab = Vocab.load(OUT / "vocab")
     emb = load_checkpoint(str(a.ckpt)).tok_emb.weight.detach().numpy()
-    tr = pd.read_parquet(a.probe_dir / "train_rows.parquet")
-    te = pd.read_parquet(a.probe_dir / "test_rows.parquet")
+    tr = mark_undefined(pd.read_parquet(a.probe_dir / "train_rows.parquet"))
+    te = mark_undefined(pd.read_parquet(a.probe_dir / "test_rows.parquet"))
     z = np.load(a.probe_dir / "embeddings.npz")
     ptr = emb[profile_tokens(tr, vocab)].reshape(len(tr), -1)
     pte = emb[profile_tokens(te, vocab)].reshape(len(te), -1)
@@ -70,7 +70,8 @@ def main() -> None:
         sc = StandardScaler().fit(xtr)
         xtr, xte = sc.transform(xtr), sc.transform(xte)
         for lab in labels():
-            head = LogisticRegression(C=0.1, max_iter=3000).fit(xtr, tr[lab].to_numpy(), sample_weight=w)
+            ok = (tr[lab] != UNDEFINED).to_numpy()
+            head = LogisticRegression(C=0.1, max_iter=3000).fit(xtr[ok], tr[lab].to_numpy()[ok], sample_weight=w[ok])
             s = score(te[lab].to_numpy(), head.predict_proba(xte)[:, 1])
             res.append((name, lab, s["roc_auc"], s["pr_auc"]))
     r = pd.DataFrame(res, columns=["variant", "label", "roc", "pr"])

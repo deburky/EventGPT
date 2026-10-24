@@ -26,7 +26,7 @@ import pandas as pd
 from catboost import CatBoostClassifier, Pool
 
 from eventgpt.mbd import OUT
-from eventgpt.probe import Fold, labels, score
+from eventgpt.probe import UNDEFINED, Fold, labels, mark_undefined, score
 from eventgpt.vocab import SPECIALS, Vocab
 
 WINDOWS = {"all": np.inf, "d91": 91 * 86400, "d30": 30 * 86400}
@@ -87,8 +87,8 @@ def main() -> None:
 
     t0 = time.time()
     vocab = Vocab.load(OUT / "vocab")
-    tr = pd.read_parquet(a.probe_dir / "train_rows.parquet")
-    te = pd.read_parquet(a.probe_dir / "test_rows.parquet")
+    tr = mark_undefined(pd.read_parquet(a.probe_dir / "train_rows.parquet"))
+    te = mark_undefined(pd.read_parquet(a.probe_dir / "test_rows.parquet"))
     # count columns: the most frequent tokens of one training fold
     freq = np.bincount(np.asarray(Fold(int(tr["fold"].iloc[0]), vocab).tokens), minlength=vocab.size)
     freq[: len(SPECIALS)] = 0
@@ -109,7 +109,9 @@ def main() -> None:
     res = []
     for lab in labels():
         ytr, yte = tr[lab].to_numpy(), te[lab].to_numpy()
-        if ytr[~stop].min() == ytr[~stop].max() or ytr[stop].min() == ytr[stop].max() or yte.min() == yte.max():
+        fit_rows, stop_rows = ~stop & (ytr != UNDEFINED), stop & (ytr != UNDEFINED)
+        defined = yte[yte != UNDEFINED]
+        if ytr[fit_rows].min() == ytr[fit_rows].max() or ytr[stop_rows].min() == ytr[stop_rows].max() or defined.min() == defined.max():
             continue
         model = CatBoostClassifier(
             iterations=2000,
@@ -121,7 +123,8 @@ def main() -> None:
             verbose=False,
             allow_writing_files=False,
         )
-        model.fit(Pool(xtr[~stop], ytr[~stop], weight=w[~stop]), eval_set=Pool(xtr[stop], ytr[stop], weight=w[stop]), use_best_model=True)
+        fit, held = Pool(xtr[fit_rows], ytr[fit_rows], weight=w[fit_rows]), Pool(xtr[stop_rows], ytr[stop_rows], weight=w[stop_rows])
+        model.fit(fit, eval_set=held, use_best_model=True)
         s = score(yte, model.predict_proba(xte)[:, 1])
         res.append((lab, s["roc_auc"], s["pr_auc"]))
         print(f"{lab} {s['roc_auc']:.4f} {s['pr_auc']:.4f} ({time.time() - t0:.0f}s)", flush=True)

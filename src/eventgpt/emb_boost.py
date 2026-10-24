@@ -23,7 +23,7 @@ import pandas as pd
 from catboost import CatBoostClassifier, Pool
 
 from eventgpt.baseline import PROFILE, features
-from eventgpt.probe import labels, score
+from eventgpt.probe import UNDEFINED, labels, mark_undefined, score
 
 VARIANTS = ["emb", "emb_numeric", "agg_emb"]
 
@@ -52,8 +52,8 @@ def main() -> None:
     a = p.parse_args()
 
     t0 = time.time()
-    tr = pd.read_parquet(a.probe_dir / "train_rows.parquet")
-    te = pd.read_parquet(a.probe_dir / "test_rows.parquet")
+    tr = mark_undefined(pd.read_parquet(a.probe_dir / "train_rows.parquet"))
+    te = mark_undefined(pd.read_parquet(a.probe_dir / "test_rows.parquet"))
     z = np.load(a.probe_dir / "embeddings.npz")
     etr, ete = z[f"train_{a.readout}"], z[f"test_{a.readout}"]
     variants = a.variants.split(",")
@@ -81,8 +81,9 @@ def main() -> None:
                 verbose=False,
                 allow_writing_files=False,
             )
-            fit = Pool(xtr[~stop], ytr[~stop], cat_features=cat, embedding_features=embf or None, weight=w[~stop])
-            held = Pool(xtr[stop], ytr[stop], cat_features=cat, embedding_features=embf or None, weight=w[stop])
+            fit_rows, stop_rows = ~stop & (ytr != UNDEFINED), stop & (ytr != UNDEFINED)
+            fit = Pool(xtr[fit_rows], ytr[fit_rows], cat_features=cat, embedding_features=embf or None, weight=w[fit_rows])
+            held = Pool(xtr[stop_rows], ytr[stop_rows], cat_features=cat, embedding_features=embf or None, weight=w[stop_rows])
             model.fit(fit, eval_set=held, use_best_model=True)
             s = score(yte, model.predict_proba(Pool(xte, cat_features=cat, embedding_features=embf or None))[:, 1])
             res.append((v, lab, s["roc_auc"], s["pr_auc"]))
