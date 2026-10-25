@@ -281,7 +281,7 @@ def time_positions() -> None:
         g.items.append(f'<line x1="{xo}" y1="124" x2="{xo}" y2="132" stroke="{INK}" stroke-width="1.2"/>')
         g.text(xo, 147, str(k), size=10.5, fill=MUTED, anchor="middle")
     # time
-    g.text(20, 190, "Time positions in EventGPT", size=12.5, weight=600)
+    g.text(20, 190, "Temporal RoPE in EventGPT", size=12.5, weight=600)
     g.text(
         20,
         207,

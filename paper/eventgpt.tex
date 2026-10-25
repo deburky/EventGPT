@@ -22,7 +22,7 @@
 \titlespacing*{\subsubsection}{0pt}{0.9em}{0.4em}
 \usepackage{enumitem}
 
-% --- figures: drawn in Illustrator, sources in figures/src/*.ai, included as vector PDF ---
+% --- figures: drawn by figures/src/figures.py (SVG sources beside it), included as vector PDF ---
 \definecolor{capblue}{HTML}{2C6FB5}
 \definecolor{capred}{HTML}{C0392B}
 \definecolor{capgray}{HTML}{7F8C8D}
@@ -79,7 +79,7 @@ causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGM
 foundation model for banking event sequences, trained on a public benchmark, with code anyone can rerun. The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are released (Section~\ref{app:code}). \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a supervised head on two of them; the engineered features pass it only after 10,000 to more than 300,000 randomly labeled client-months, depending on the target (Section~\ref{sec:zero-shot}). \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against engineered features and
 a schema-free token-count table, with paired standard errors clustered by client. The embedding is below both tables and exceeds token counts only inside its own window. The gap lies in the static attributes and the history before the window; read beside the embedding, these leave differences of $-0.006$ and $-0.009$ from the engineered features on two seeds ($p = 0.16$ and 0.057) (Sections~\ref{sec:protocol}--\ref{sec:results}).
 \item \textbf{The embedding as a second ranker beside a feature table}: averaging its ranks with those of the engineered features adds 0.014 to their ROC-AUC on both seeds (intervals excluding zero, not tuned on the test fold), while as features inside the table it leaves their ROC-AUC unchanged or lower (Section~\ref{sec:gap}).
-\item \textbf{Profile features}: the profile fields' token embeddings appended to the hidden state, which add 0.013 to 0.019 rank-ordering points to the product targets at width 384 and bring \tok{target\_4} level with the engineered features.
+\item \textbf{Late fusion of profile fields}: the profile fields' token embeddings appended to the hidden state, which add 0.013 to 0.019 rank-ordering points to the product targets at width 384 and bring \tok{target\_4} level with the engineered features.
 Adding the attributes to every event during pretraining does not put them into the hidden state
 (Sections~\ref{sec:static} and~\ref{sec:gap}).
 \item \textbf{Aligned training windows} that open as the embedded histories do, with the time since the client's first event, which raise the product targets by 0.013 over windows drawn at random offsets (Section~\ref{sec:aligned}).
@@ -111,7 +111,9 @@ on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestr
 \paragraph{Industrial foundation models.} nuFormer pretrains a flat causal decoder on tokenized
 transactions and fuses the embedding with a tabular network at fine-tuning time \cite{nuformer}. PRAGMA reconstructs masked tokens with a profile-state encoder, a per-event encoder and a history encoder, and serves credit scoring, fraud and lifetime value from one backbone \cite{pragma}. TransactionGPT applies a three-dimensional transformer to payment-network transactions \cite{transactiongpt}. NVIDIA describes the same recipe, tokenizer to decoder to embedding to classifier, for card transactions \cite{nvidia}. A masked model of transactions with their text descriptions has been trained on data from thousands of North American institutions \cite{openbanking}. Their checkpoints are not publicly available.
 
-\paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a position \cite{rope}. The rotation does not require the position to be an integer, so EventGPT can feed elapsed time in its place.
+\paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a position \cite{rope}. The rotation does not require the position to be an integer, so EventGPT can feed elapsed time in its place. Qwen2.5-Omni uses rotary positions from time in the same way to align audio and video (TMRoPE) \cite{qwenomni}.
+
+\paragraph{Factorized attention.} TimeSformer divides the attention of a video transformer into attention within each frame and attention across frames \cite{timesformer}. EventGPT factorizes a customer's history the same way, with attention within each event and then across events.
 
 % -------------------------------------------------------------------------------
 \section{Model}\label{sec:model}
@@ -121,7 +123,7 @@ EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each e
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/hierarchy.pdf}
-\caption{The three stages of EventGPT on three MBD events. Token layers read each event on its own and mean-pool it into one vector; causal event layers with time positions model the event vectors; token layers decode the next event given the hidden state of the previous one. The event layers' states are the customer embedding; the token decoder trains them and gives the distribution of the next event.}
+\caption{The three stages of EventGPT on three MBD events. Token layers read each event on its own and mean-pool it into one vector; causal event layers with temporal RoPE model the event vectors; token layers decode the next event given the hidden state of the previous one. The event layers' states are the customer embedding; the token decoder trains them and gives the distribution of the next event.}
 \label{fig:arch}
 \end{figure}
 
@@ -136,9 +138,9 @@ EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each e
 
 An event is a short run of tokens that starts with \tok{[EVT]}, followed by its name, its time gap and its fields as \tok{key=value} tokens (Section~\ref{sec:data}). The fields of an event are a record, and reading \tok{amt\_bin} before \tok{sub} states the same fact as reading them in the other order. The event encoder is therefore bidirectional within an event, has no positions inside it, and cannot attend across an event boundary. Two layers produce token states that are mean-pooled into one vector per event.
 
-\subsection{History decoder and time positions}\label{sec:time}
+\subsection{History decoder and temporal RoPE}\label{sec:time}
 
-Six causal layers run over each client's event vectors. Event $i$ therefore sees its history as the vectors of events $1, \dots, i-1$, one per event, instead of their tokens. Positions come from elapsed time. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
+Six causal layers run over each client's event vectors. Event $i$ therefore sees its history as the vectors of events $1, \dots, i-1$, one per event, instead of their tokens. Positions come from elapsed time, a temporal RoPE in the sense of the TMRoPE of Qwen2.5-Omni \cite{qwenomni}. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
 \begin{equation}\label{eq:pos}
 p_i = 64 \ln\!\left(1 + \frac{\Delta t_i}{60}\right).
 \end{equation}
@@ -147,8 +149,8 @@ Rotary attention depends on the difference between two positions, and here that 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/time_positions.pdf}
-\caption{Ordinal positions against time positions, Eq.~(\ref{eq:pos}). With ordinal positions every
-event is one step from the next; with time positions the distance between two events is set by the
+\caption{Ordinal positions against temporal RoPE, Eq.~(\ref{eq:pos}). With ordinal positions every
+event is one step from the next; with temporal RoPE the distance between two events is set by the
 ratio of their elapsed times.}
 \label{fig:time}
 \end{figure}
@@ -164,7 +166,7 @@ Each token of event $i$ receives its embedding, a learned position within the ev
 \label{fig:decoder}
 \end{figure}
 
-\subsection{Packed attention within events}\label{sec:packed}
+\subsection{Block attention within events}\label{sec:packed}
 
 Neither the event encoder nor the token decoder attends across an event boundary, but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the packed and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Packing makes windows of 8,192 tokens affordable (Section~\ref{sec:context}).
 
@@ -176,13 +178,13 @@ The embedding of a client at an as-of date is read from the history decoder's hi
 
 The profile event reaches the hidden state at an as-of date only through the mean pooling of its tokens and the causal layers above it. Predicting the next event gives the model little reason to carry the four attributes forward to the last hidden state.
 
-Profile features and a profile path give them a direct path. \emph{Profile features} are the input embeddings of the profile event's four field tokens, one learned vector per category, appended to the hidden state so that a classification head reads the attributes beside it. They need no retraining. The \emph{profile path} adds the attributes during pretraining instead: the four embeddings are concatenated, projected to the model width by a linear layer initialized at zero, and added to the vector of every event of the client from the profile event on, before the history decoder. The \tok{[USR]} event gets no profile vector, because its hidden state predicts the profile event's own tokens. Both read the tokens from the client's own stream and need no knowledge of what the attributes mean.
+Fusing the attributes with the events, late or early, gives them a direct path. \emph{Late fusion} appends the input embeddings of the profile event's four field tokens, one learned vector per category, to the hidden state, so that a classification head reads the attributes beside it. It needs no retraining. \emph{Early fusion} adds the attributes during pretraining instead: the four embeddings are concatenated, projected to the model width by a linear layer initialized at zero, and added to the vector of every event of the client from the profile event on, before the history decoder. The \tok{[USR]} event gets no profile vector, because its hidden state predicts the profile event's own tokens. Both read the tokens from the client's own stream and need no knowledge of what the attributes mean.
 
 \subsection{Training windows and tenure}\label{sec:windows}
 
 Windows drawn at random offsets of the packed stream usually start partway through a client's history and so lack \tok{[USR]} and the profile event, while every history embedded for evaluation opens with both. An \emph{aligned} window removes this mismatch.
 
-When it starts partway through a client's history, \tok{[USR]} and the profile event are put back at its start, as evaluation does when it truncates a long history. The first event after them then follows the profile event, which is stamped at the client's first event, so its \tok{dt} token holds the gap from that first event instead of the gap from the event that was cut away. Every \tok{dt} thus measures the gap to the previous event the model sees, and the time positions of Eq.~(\ref{eq:pos}) count from the client's first event, which tells the model how long the client has been with the bank. Apart from the profile event and this one \tok{dt}, an aligned window holds the same tokens as a random one. Evaluation and zero-shot scoring build histories by the same rule for models trained this way.
+When it starts partway through a client's history, \tok{[USR]} and the profile event are put back at its start, as evaluation does when it truncates a long history. The first event after them then follows the profile event, which is stamped at the client's first event, so its \tok{dt} token holds the gap from that first event instead of the gap from the event that was cut away. Every \tok{dt} thus measures the gap to the previous event the model sees, and the temporal RoPE positions of Eq.~(\ref{eq:pos}) count from the client's first event, which tells the model how long the client has been with the bank. Apart from the profile event and this one \tok{dt}, an aligned window holds the same tokens as a random one. Evaluation and zero-shot scoring build histories by the same rule for models trained this way.
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
@@ -213,11 +215,11 @@ MBD is a public dataset of bank clients for research on event sequences \cite{mb
 
 \begin{table}[htbp]
 \centering
-\caption{MBD-mini sources. Events per client are the 50th, 90th and 99th percentiles.}
+\caption{MBD-mini modalities. Events per client are the 50th, 90th and 99th percentiles.}
 \label{tab:mbd}
 \begin{tabular}{lrrlr}
 \toprule
-source & events & clients & span & per client (p50 / p90 / p99) \\
+modality & events & clients & span & per client (p50 / p90 / p99) \\
 \midrule
 transactions & 38.8M & 98,721 & Jan 2021 -- Dec 2022 & 170 / 1,007 / 2,243 \\
 geolocation pings & 66.3M & 72,573 & Dec 2021 -- Dec 2022 & 507 / 2,293 / 5,580 \\
@@ -301,7 +303,7 @@ Refitted without one group of features at a time, the official mean falls by 0.0
 
 \begin{table}[htbp]
 \centering
-\caption{Mean ROC-AUC over the four product targets on full MBD, as reported by \cite{mbd} (late fusion for the two-source column).}
+\caption{Mean ROC-AUC over the four product targets on full MBD, as reported by \cite{mbd} (late fusion for the two-modality column).}
 \label{tab:published}
 \begin{tabular}{lcc}
 \toprule
@@ -322,7 +324,7 @@ EventGPT has width 384, 12 heads of width 32, two event-encoder layers, six hist
 
 On one NVIDIA L4 in bfloat16 a run of 655 million tokens takes 1.5 hours (about 118,000 tokens per second), against 3.9 hours (about 47,000) for the flat decoder. Every model is trained with two seeds, 42 and 43, and model results are the mean of the two unless stated otherwise.
 
-The final configuration, labeled \emph{aligned} in the tables, trains on aligned windows (Section~\ref{sec:windows}) and normalizes queries and keys in every attention head by their root mean square (query-key normalization) \cite{qknorm}. Without the normalization, the seed-43 run on aligned windows diverged at step 4,400, at the peak learning rate: its validation loss rose from 1.16 to 1.5 and did not recover. With it, both seeds train smoothly to a validation loss of 1.020 and 1.019, at about 90,000 tokens per second. The comparisons with the flat decoder use windows at random offsets for both models. The run with the profile path (Section~\ref{sec:static}) adds the path to this configuration, at a cost of 0.6 million parameters.
+The final configuration, labeled \emph{aligned} in the tables, trains on aligned windows (Section~\ref{sec:windows}) and normalizes queries and keys in every attention head by their root mean square (query-key normalization) \cite{qknorm}. Without the normalization, the seed-43 run on aligned windows diverged at step 4,400, at the peak learning rate: its validation loss rose from 1.16 to 1.5 and did not recover. With it, both seeds train smoothly to a validation loss of 1.020 and 1.019, at about 90,000 tokens per second. The comparisons with the flat decoder use windows at random offsets for both models. The run with early fusion (Section~\ref{sec:static}) adds it to this configuration, at a cost of 0.6 million parameters.
 
 % -------------------------------------------------------------------------------
 \section{Results}\label{sec:results}
@@ -495,11 +497,11 @@ CatBoost, engineered features and embedding feature & 0.808 \\
 
 \subsection{Where the gap to engineered features comes from}\label{sec:gap}
 
-Most of the gap to the engineered features lies in the static attributes and in the history before the window. Read beside the hidden state, the profile features close more than half of it, and token counts over the full history close part of the rest, which leaves differences of $-0.006$ ($p = 0.16$) and $-0.009$ ($p = 0.057$) on the two seeds (Table~\ref{tab:gap}). The table pairs every model with the engineered features on the same test rows (Section~\ref{sec:metrics}); both seeds read the same training rows.
+Most of the gap to the engineered features lies in the static attributes and in the history before the window. Read beside the hidden state, late fusion of the profile fields closes more than half of it, and token counts over the full history close part of the rest, which leaves differences of $-0.006$ ($p = 0.16$) and $-0.009$ ($p = 0.057$) on the two seeds (Table~\ref{tab:gap}). The table pairs every model with the engineered features on the same test rows (Section~\ref{sec:metrics}); both seeds read the same training rows.
 
 \begin{table}[htbp]
 \centering
-\caption{The gap to the engineered features, aligned windows with query-key normalization, two pretraining seeds. Official mean ROC-AUC with its difference from the engineered features (0.816), a 95\% interval and $p$ from the paired standard error, clustered by client. The last two rows average, with equal weights, the ranks given by the embedding with profile features and token counts and by CatBoost on token counts over the full history or on the engineered features. The timing and token-count rows each add their features to the hidden state and profile features, not to the row above. Fitted on these training rows, the token counts reach 0.783 against 0.803 in Table~\ref{tab:main}, most of it on \tok{target\_2} (0.780 against 0.849).}
+\caption{The gap to the engineered features, aligned windows with query-key normalization, two pretraining seeds. Official mean ROC-AUC with its difference from the engineered features (0.816), a 95\% interval and $p$ from the paired standard error, clustered by client. The last two rows are rank-averaged ensembles: they average, with equal weights, the ranks given by the embedding with late-fused profile fields and token counts and by CatBoost on token counts over the full history or on the engineered features. The timing and token-count rows each add their features to the hidden state and the late-fused profile fields, not to the row above. Fitted on these training rows, the token counts reach 0.783 against 0.803 in Table~\ref{tab:main}, most of it on \tok{target\_2} (0.780 against 0.849).}
 \label{tab:gap}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -512,36 +514,36 @@ model & mean & difference [95\% int.] & $p$ & mean & difference [95\% int.] & $p
 \midrule
 \multicolumn{7}{l}{\emph{EventGPT}} \\
 hidden state & 0.786 & $-0.030$ [$-0.038$, $-0.022$] & $<0.001$ & 0.788 & $-0.028$ [$-0.037$, $-0.020$] & $<0.001$ \\
-\quad + profile features & 0.800 & $-0.016$ [$-0.025$, $-0.007$] & $<0.001$ & 0.801 & $-0.015$ [$-0.026$, $-0.005$] & 0.004 \\
-\multicolumn{7}{l}{\emph{EventGPT with the profile path}} \\
+\quad + profile fields, late fusion & 0.800 & $-0.016$ [$-0.025$, $-0.007$] & $<0.001$ & 0.801 & $-0.015$ [$-0.026$, $-0.005$] & 0.004 \\
+\multicolumn{7}{l}{\emph{EventGPT with early fusion of the profile fields}} \\
 hidden state & 0.784 & $-0.032$ [$-0.041$, $-0.022$] & $<0.001$ & 0.793 & $-0.023$ [$-0.032$, $-0.015$] & $<0.001$ \\
-\quad + profile features & 0.803 & $-0.013$ [$-0.023$, $-0.004$] & 0.007 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
-\quad + profile features + timing & 0.804 & $-0.012$ [$-0.022$, $-0.003$] & 0.009 & 0.810 & $-0.006$ [$-0.014$, $+0.003$] & 0.19 \\
-\quad + profile features + token counts & 0.810 & $-0.006$ [$-0.015$, $+0.003$] & 0.16 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
+\quad + profile fields, late fusion & 0.803 & $-0.013$ [$-0.023$, $-0.004$] & 0.007 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
+\quad + profile fields + timing & 0.804 & $-0.012$ [$-0.022$, $-0.003$] & 0.009 & 0.810 & $-0.006$ [$-0.014$, $+0.003$] & 0.19 \\
+\quad + profile fields + token counts & 0.810 & $-0.006$ [$-0.015$, $+0.003$] & 0.16 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
 \midrule
-rank average with token counts & 0.816 & $+0.000$ [$-0.006$, $+0.007$] & 0.90 & 0.816 & $+0.001$ [$-0.006$, $+0.007$] & 0.87 \\
-rank average with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.001$ & 0.830 & $+0.014$ [$+0.009$, $+0.019$] & $<0.001$ \\
+ensemble with token counts & 0.816 & $+0.000$ [$-0.006$, $+0.007$] & 0.90 & 0.816 & $+0.001$ [$-0.006$, $+0.007$] & 0.87 \\
+ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.001$ & 0.830 & $+0.014$ [$+0.009$, $+0.019$] & $<0.001$ \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-\paragraph{Static attributes.} The profile fields matter most for \tok{target\_4}: removing them costs the engineered features more there than removing any other feature group. Read beside the hidden state (Section~\ref{sec:static}), the field embeddings raise \tok{target\_4} from 0.754 to 0.821 (seed 42), and with the profile path in pretraining as well it reaches the engineered features on both seeds. The path on its own does not reach the classification head: the hidden state of the model trained with it scores no higher than without it. The model does use the path: its projection grows from zero to a norm of 15.6 during pretraining. It uses it to predict next tokens, and next-token prediction does not put the attributes into the last hidden state in a form a linear head can read. The profile features lower \tok{target\_1} slightly, the one official target that loses.
+\paragraph{Static attributes.} The profile fields matter most for \tok{target\_4}: removing them costs the engineered features more there than removing any other feature group. Read beside the hidden state (Section~\ref{sec:static}), the field embeddings raise \tok{target\_4} from 0.754 to 0.821 (seed 42), and with early fusion in pretraining as well it reaches the engineered features on both seeds. Early fusion on its own does not reach the classification head: the hidden state of the model trained with it scores no higher than without it. The model does use the fused attributes, since their projection grows from zero to a norm of 15.6 during pretraining. It uses them to predict next tokens, and next-token prediction does not put the attributes into the last hidden state in a form a linear head can read. Late fusion lowers \tok{target\_1} slightly, the one official target that loses.
 
-\paragraph{Timing.} We also add five numbers read off the event timestamps: the days since the last and since the first event, and the number of events in the last 30 days, the last 90 days and in all, each as $\log(1 + x)$. They barely change the official mean and leave churn unchanged. The engineered features lose 0.009 without their timing features, so the hidden state, with the now event and time positions from the client's first event, appears to hold this information already.
+\paragraph{Timing.} We also add five numbers read off the event timestamps: the days since the last and since the first event, and the number of events in the last 30 days, the last 90 days and in all, each as $\log(1 + x)$. They barely change the official mean and leave churn unchanged. The engineered features lose 0.009 without their timing features, so the hidden state, with the now event and temporal RoPE positions from the client's first event, appears to hold this information already.
 
-\paragraph{History before the window.} The token-count table over the full history (Section~\ref{sec:protocol}), as $\log(1 + x)$ beside the hidden state and the profile features, raises the official mean on seed 42 only, because \tok{target\_2}, the target with the fewest positives, moves in opposite directions on the two seeds. Its other gains repeat on both seeds: churn, first 50/19 (from about 0.84 to 0.92) and first 48/10 (from about 0.80 to 0.83). Token counts restricted to EventGPT's window lose 0.026 against the full history, so the counts carry information from before the window that the hidden state lacks, and a longer window did not recover it for EventGPT (Section~\ref{sec:context}).
+\paragraph{History before the window.} The token-count table over the full history (Section~\ref{sec:protocol}), as $\log(1 + x)$ beside the hidden state and the late-fused profile fields, raises the official mean on seed 42 only, because \tok{target\_2}, the target with the fewest positives, moves in opposite directions on the two seeds. Its other gains repeat on both seeds: churn, first 50/19 (from about 0.84 to 0.92) and first 48/10 (from about 0.80 to 0.83). Token counts restricted to EventGPT's window lose 0.026 against the full history, so the counts carry information from before the window that the hidden state lacks, and a longer window did not recover it for EventGPT (Section~\ref{sec:context}).
 
 \paragraph{Schema knowledge.} Engineered features add 0.013 over full-history token counts. This is the part that needs knowledge of the schema.
 
 \paragraph{Amount resolution.} EventGPT sees amounts as one of 21 quantile bins. Replacing each amount in the engineered-feature table by the mean of its bin lowers the official mean by 0.005 with 21 bins and leaves it unchanged with 256 bins. Most of that loss is on \tok{target\_2}, the noisiest target, so coarse amounts cost the product targets little.
 
-\paragraph{Combining the two.} The embedding adds to the engineered features only as a separate model. As features inside the engineered-feature table, either as 32 principal components or as a CatBoost embedding feature, it leaves the mean unchanged or lower (Section~\ref{sec:finetune}). Averaging the ranks given by the embedding with profile features and token counts with those of the engineered features reaches 0.830 on both seeds, 0.014 above the engineered features alone, with intervals that exclude zero (Table~\ref{tab:gap}). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets; churn does not change. Averaged instead with the token-count table, which needs no schema either, the embedding with profile features reaches the level of the engineered features (0.816).
+\paragraph{Combining the two.} The embedding adds to the engineered features only as a separate model. As features inside the engineered-feature table, either as 32 principal components or as a CatBoost embedding feature, it leaves the mean unchanged or lower (Section~\ref{sec:finetune}). A rank-averaged ensemble of the embedding with late-fused profile fields and token counts and the engineered features reaches 0.830 on both seeds, 0.014 above the engineered features alone, with intervals that exclude zero (Table~\ref{tab:gap}). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets; churn does not change. In an ensemble with the token-count table instead, which needs no schema either, the embedding reaches the level of the engineered features (0.816).
 
-The weights of the average are equal and fixed in advance. The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A different draw of the training rows of the embedding's own classification head was not tried.
+The ensemble's weights are equal and fixed in advance, and it costs one prediction from each model. The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A different draw of the training rows of the embedding's own classification head was not tried.
 
-\subsection{Design experiments}\label{sec:ablations}
+\subsection{Ablations}\label{sec:ablations}
 
-Each experiment changes one element of the model or its data (Table~\ref{tab:ablations}), measured with two seeds except where
+Each ablation changes one element of the model or its data (Table~\ref{tab:ablations}), measured with two seeds except where
 marked.
 
 \begin{table}[htbp]
@@ -556,7 +558,7 @@ element & variant & mean ROC-AUC \\
 architecture & hierarchy (EventGPT), last state & 0.774 \\
  & flat decoder, last token & 0.714 \\
  & flat decoder, recency over tokens & 0.777 \\
-sources & transactions + geolocation & 0.774 \\
+modalities & transactions + geolocation & 0.774 \\
  & transactions only & 0.793 \\
 pretraining period$^\ddagger$ & full / before Feb.~2022 & 0.793 / 0.789 \\
 training loss & all tokens & 0.774 \\
@@ -585,9 +587,9 @@ Query-key normalization and one feed-forward network per event kind in the event
 
 Longer windows do not raise the official targets for EventGPT or the flat decoder (Table~\ref{tab:window}). MBD histories are long (the 90th percentile client has about 1,000 transactions and 300 days of geolocation), while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to 8,192 tokens, while EventGPT stays level on random windows and loses slightly on aligned ones. Churn does not change with the window for any model. The token-count table reads the same longer windows and gains from them, so the extra history carries information for these targets. EventGPT does not pass it to its embedding, which suggests that the hidden state limits the embedding on long histories at this size. A compressed summary of the history before the window, read as a prefix, is the change we would test next.
 
-A wider model raises the official mean by 0.005, as much as query-key normalization (Table~\ref{tab:ablations}). On aligned windows with query-key normalization (seed 42), width 512 (16 heads of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) lower the validation loss, from 1.020 to 0.997 at width 1024, and raise the official mean from 0.786 to 0.791 at both widths. With profile features the gain disappears, and at width 1024 they lose where they gained at the smaller widths, possibly because the four field embeddings add 4,096 columns to a head regularized as at width 384.
+A wider model raises the official mean by 0.005, as much as query-key normalization (Table~\ref{tab:ablations}). On aligned windows with query-key normalization (seed 42), width 512 (16 heads of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) lower the validation loss, from 1.020 to 0.997 at width 1024, and raise the official mean from 0.786 to 0.791 at both widths. With late fusion of the profile fields the gain disappears, and at width 1024 it loses where it gained at the smaller widths, possibly because the four field embeddings add 4,096 columns to a head regularized as at width 384.
 
-The cost of a longer window differs between the two models. The history decoder of EventGPT attends over events, and with packed attention its token stages grow linearly with the window: it trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. The flat decoder falls from 47,000 at 2,048 tokens to about 30,000 at 4,096.
+The cost of a longer window differs between the two models. The history decoder of EventGPT attends over events, and with block attention its token stages grow linearly with the window: it trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. The flat decoder falls from 47,000 at 2,048 tokens to about 30,000 at 4,096.
 
 \begin{table}[htbp]
 \centering
@@ -616,7 +618,7 @@ Serving such a model starts with pretraining on the institution's own history, a
 
 \section{Discussion}\label{sec:discussion}
 
-On MBD, a model pretrained only to predict the next event replaces the feature table for one kind of question and not yet for the other. For questions about events, such as whether a customer will make a transaction of a given kind for the first time, the next-event distribution gives a score with no labels that gradient boosting needs tens of thousands of labeled rows or more to match. A new question about events can be scored before any labels exist. For external labels such as product purchases, the embedding needs a classification head and stays below the engineered features. The gap lies in the static attributes, which profile features largely recover, and in history older than the window, which the hidden state does not carry and a longer window did not bring back. Neither a lower token loss nor a wider model closed it.
+On MBD, a model pretrained only to predict the next event replaces the feature table for one kind of question and not yet for the other. For questions about events, such as whether a customer will make a transaction of a given kind for the first time, the next-event distribution gives a score with no labels that gradient boosting needs tens of thousands of labeled rows or more to match. A new question about events can be scored before any labels exist. For external labels such as product purchases, the embedding needs a classification head and stays below the engineered features. The gap lies in the static attributes, which late fusion of the profile fields largely recovers, and in history older than the window, which the hidden state does not carry and a longer window did not bring back. Neither a lower token loss nor a wider model closed it.
 
 The embedding is already useful beside the feature table, since averaging the two rankings beats either one. The open question is whether the model can carry history beyond its window. A compressed summary of the earlier history, read as a prefix before the window, is the change we would test next. The other test is a lender's mixed applications, repayments and account events, where a feature table is hardest to build.
 
@@ -668,9 +670,13 @@ Goncharov, A., Beloborodov, D., Mullin, V., Enzmann, R.~Y., Kolovos, G., Renders
 \bibitem{lifestream} pytorch-lifestream. A library for self-supervised learning on event sequences.
 \url{https://github.com/dllllb/pytorch-lifestream}.
 
+\bibitem{qwenomni} Xu, J., Guo, Z., He, J., Hu, H., et al. (2025). Qwen2.5-Omni technical report. arXiv:2503.20215.
+
 \bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced transformer with rotary position embedding. arXiv:2104.09864.
 
 \bibitem{tabbert} Padhi, I., Schiff, Y., Melnyk, I., Rigotti, M., Mroueh, Y., Dognin, P., Ross, J., Nair, R., and Altman, E. (2021). Tabular transformers for modeling multivariate time series. In \emph{ICASSP 2021}. arXiv:2011.01843.
+
+\bibitem{timesformer} Bertasius, G., Wang, H., and Torresani, L. (2021). Is space-time attention all you need for video understanding? In \emph{Proceedings of the 38th International Conference on Machine Learning (ICML)}. arXiv:2102.05095.
 
 \bibitem{transactiongpt} Dou, Y., Jiang, Z., Zhang, T., Hu, M., Xu, Z., Jain, S., Saini, U.~S., et al. (2025). TransactionGPT. arXiv:2511.08939.
 

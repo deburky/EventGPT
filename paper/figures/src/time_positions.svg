@@ -18,7 +18,7 @@
 <text x="680" y="106" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₄</text>
 <line x1="680" y1="124" x2="680" y2="132" stroke="#1B2A3A" stroke-width="1.2"/>
 <text x="680" y="147" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">3</text>
-<text x="20" y="190" font-family="'Inter 18pt'" font-size="12.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Time positions in EventGPT</text>
+<text x="20" y="190" font-family="'Inter 18pt'" font-size="12.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Temporal RoPE in EventGPT</text>
 <text x="20" y="207" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="start">position = 64 · ln(1 + minutes since the first event): a minute to an hour is as far as a day to a month</text>
 <line x1="40" y1="292" x2="720" y2="292" stroke="#1B2A3A" stroke-width="1.2"/>
 <line x1="60.0" y1="288" x2="60.0" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
