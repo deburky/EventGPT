@@ -73,12 +73,21 @@ def _con() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     con.execute(f"create view trx as select * from read_parquet('{RAW}/detail/trx/*/*.parquet', hive_partitioning=true)")
     con.execute(f"create view geo_raw as select * from read_parquet('{RAW}/detail/geo/*/*.parquet', hive_partitioning=true)")
-    # one geo event per client per Moscow day: the most visited geohash_5, at the day's last ping; materialised
-    # once, since every fold reads it
+    thin_geo(con)
+    return con
+
+
+def thin_geo(con: duckdb.DuckDBPyConnection, fold_col: str = "fold") -> None:
+    """Create table geo from view geo_raw: one event per client per Moscow day.
+
+    The event is the day's most visited geohash_5, stamped at the day's last ping; the table is materialized
+    once, since every fold reads it. `fold_col` is the column carried through as the fold, or a constant
+    expression for pings that come without one.
+    """
     con.execute(f"""
         create temp table geo as
         with c as (
-            select client_id, fold, date_trunc('day', event_time + {MSK}) d, geohash_4, geohash_5, count(*) n
+            select client_id, {fold_col} fold, date_trunc('day', event_time + {MSK}) d, geohash_4, geohash_5, count(*) n
             from geo_raw group by all
         ),
         last_ping as (
@@ -90,7 +99,6 @@ def _con() -> duckdb.DuckDBPyConnection:
         select top.client_id, top.fold, last_ping.t event_time, top.geohash_4, top.geohash_5
         from top join last_ping using (client_id, d) where rk = 1
     """)
-    return con
 
 
 def fit_vocab(con: duckdb.DuckDBPyConnection, folds: list[int]) -> Vocab:
@@ -115,8 +123,12 @@ def fit_vocab(con: duckdb.DuckDBPyConnection, folds: list[int]) -> Vocab:
     return Vocab.fit(cat, np.asarray(amounts, dtype=np.float64))
 
 
-def load_fold(con: duckdb.DuckDBPyConnection, fold: int) -> pd.DataFrame:
-    """Every event of one fold in one frame, sorted by client then time, each client's profile event first."""
+def load_fold(con: duckdb.DuckDBPyConnection, fold: int | None) -> pd.DataFrame:
+    """Every event of one fold in one frame, sorted by client then time, each client's profile event first.
+
+    With fold None, every event in the trx and geo tables, which then need no fold column.
+    """
+    where = "true" if fold is None else f"fold = {fold}"
     trx_cols = ", ".join(f"coalesce({c}, -1) {c}" for c in TRX_KEYS)
     null_trx = ", ".join(f"null {c}" for c in TRX_KEYS)
     prof_cols = ", ".join(f"coalesce(max({c}), -1) {c}" for c in PROFILE_KEYS)
@@ -125,13 +137,13 @@ def load_fold(con: duckdb.DuckDBPyConnection, fold: int) -> pd.DataFrame:
         with e as (
             select client_id, epoch(event_time)::double t, {TRX} kind, coalesce(event_type, -1) event_type, amount,
                    coalesce(currency, -1) currency, {trx_cols}, {null_prof}, null::integer geohash_4, null::integer geohash_5
-            from trx where fold = {fold}
+            from trx where {where}
             union all
             select client_id, epoch(event_time)::double t, {GEO} kind, null, null, null, {null_trx}, {null_prof}, geohash_4, geohash_5
-            from geo where fold = {fold}
+            from geo where {where}
         ),
         prof as (
-            select client_id, {prof_cols} from trx where fold = {fold} group by client_id
+            select client_id, {prof_cols} from trx where {where} group by client_id
         ),
         p as (
             select e.client_id, min(e.t) t from e group by e.client_id
@@ -199,8 +211,8 @@ def tokenize(df: pd.DataFrame, vocab: Vocab) -> tuple[np.ndarray, np.ndarray]:
     return flat, starts
 
 
-def write_fold(df: pd.DataFrame, vocab: Vocab, out: Path) -> dict[str, int]:
-    """Tokenize one fold, insert [USR] at each client boundary and write the stream with its indexes."""
+def build_stream(df: pd.DataFrame, vocab: Vocab) -> dict[str, np.ndarray]:
+    """Tokenize the events of load_fold and insert [USR] at each client boundary: the arrays write_fold saves."""
     flat, starts = tokenize(df, vocab)
     client = df["client_id"].to_numpy()
     change = np.ones(len(df), dtype=bool)
@@ -209,13 +221,22 @@ def write_fold(df: pd.DataFrame, vocab: Vocab, out: Path) -> dict[str, int]:
     stream = np.insert(flat, starts[first_event], np.int16(vocab.id(USR)))
     # each event's [EVT] moves right by the number of [USR] tokens inserted at or before its client
     shift = np.cumsum(change)
+    return {
+        "tokens": stream,
+        "client_ids": client[first_event].astype(str),
+        "client_events": np.append(first_event, len(df)).astype(np.int64),
+        "event_start": (starts + shift).astype(np.int64),
+        "event_time": df["t"].to_numpy().astype(np.int64),
+    }
+
+
+def write_fold(df: pd.DataFrame, vocab: Vocab, out: Path) -> dict[str, int]:
+    """Tokenize one fold and write the stream with its indexes."""
+    arrays = build_stream(df, vocab)
     out.mkdir(parents=True, exist_ok=True)
-    np.save(out / "tokens.npy", stream)
-    np.save(out / "client_ids.npy", client[first_event].astype(str))
-    np.save(out / "client_events.npy", np.append(first_event, len(df)).astype(np.int64))
-    np.save(out / "event_start.npy", (starts + shift).astype(np.int64))
-    np.save(out / "event_time.npy", df["t"].to_numpy().astype(np.int64))
-    return {"events": len(df), "clients": len(first_event), "tokens": len(stream)}
+    for name, arr in arrays.items():
+        np.save(out / f"{name}.npy", arr)
+    return {"events": len(df), "clients": len(arrays["client_ids"]), "tokens": len(arrays["tokens"])}
 
 
 # -------------------------------------------------------------------------------

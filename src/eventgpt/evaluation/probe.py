@@ -48,6 +48,7 @@ from eventgpt.models.flat import load_checkpoint
 from eventgpt.training.train import device
 
 READOUTS = ("last", "mean", "recency")
+STREAM_ARRAYS = ("tokens", "client_ids", "client_events", "event_start", "event_time")
 RECENCY_EVENTS = 32.0  # e-folding length of the recency-weighted pool, in events
 TOKENS_PER_EVENT = 8  # mean on MBD, for the flat decoder's token-level recency pool
 CACHE_CHUNK = 40_000  # histories per cached chunk of embeddings, about five minutes on an L4
@@ -64,13 +65,16 @@ UNDEFINED = -1  # a label the data cannot settle: churn in a month after the las
 class Fold:
     """The arrays mbd.py wrote for one fold, plus each event's transaction kind read back off the stream."""
 
-    def __init__(self, k: int, vocab: Vocab) -> None:
-        d = OUT / f"fold={k}"
-        self.tokens = np.load(d / "tokens.npy", mmap_mode="r")
-        self.ids = np.load(d / "client_ids.npy")
-        self.client_events = np.load(d / "client_events.npy")
-        self.event_start = np.load(d / "event_start.npy")
-        self.event_time = np.load(d / "event_time.npy")
+    def __init__(self, k: int, vocab: Vocab, arrays: dict[str, np.ndarray] | None = None) -> None:
+        """Fold k as mbd.py wrote it, or the arrays of eventgpt.data.mbd.build_stream when given (k is then unused)."""
+        if arrays is None:
+            d = OUT / f"fold={k}"
+            arrays = {n: np.load(d / f"{n}.npy", mmap_mode="r" if n == "tokens" else None) for n in STREAM_ARRAYS}
+        self.tokens = arrays["tokens"]
+        self.ids = arrays["client_ids"]
+        self.client_events = arrays["client_events"]
+        self.event_start = arrays["event_start"]
+        self.event_time = arrays["event_time"]
         self.vocab = vocab
         self.index = {c: i for i, c in enumerate(self.ids)}
         names = {i: t for t, i in vocab.structured.items()}

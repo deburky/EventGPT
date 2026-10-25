@@ -43,12 +43,14 @@ FIRST = [f"first_{x}_{y}" for x, y in FIRST_KINDS]
 # Scoring
 # -------------------------------------------------------------------------------
 @torch.no_grad()
-def next_event_scores(model: Any, seqs: list[np.ndarray], vocab: Vocab, dev: torch.device) -> np.ndarray:
-    """(len(seqs), len(FIRST_KINDS)) probabilities that the next event is each kind, for one padded batch.
+def next_event_scores(
+    model: Any, seqs: list[np.ndarray], vocab: Vocab, dev: torch.device, kinds: list[tuple[int, int]] = FIRST_KINDS
+) -> np.ndarray:
+    """(len(seqs), len(kinds)) probabilities that the next event is each (type, subtype) kind, for one padded batch.
 
     Every sequence ends in `[EVT] name=<placeholder> dt=<g>`; the placeholder is swapped for each type in turn.
     """
-    types = sorted({x for x, _ in FIRST_KINDS})
+    types = sorted({x for x, _ in kinds})
     name_id = {x: vocab.id(f"name=trx_{x}") for x in types}
     lengths = np.array([len(s) for s in seqs])
     x = np.zeros((len(seqs), lengths.max()), dtype=np.int64)
@@ -61,26 +63,26 @@ def next_event_scores(model: Any, seqs: list[np.ndarray], vocab: Vocab, dev: tor
         h, event, _, pos_in_event, tok = model.stages(xt, real)
     rows = torch.arange(len(seqs), device=dev)
     at_evt, at_dt = torch.from_numpy(lengths - 3).to(dev), torch.from_numpy(lengths - 1).to(dev)
-    out = np.zeros((len(seqs), len(FIRST_KINDS)))
+    out = np.zeros((len(seqs), len(kinds)))
     for t in types:
         xt[rows, at_evt + 1] = name_id[t]
         # EventGPT reruns only its token decoder; a flat decoder has no history states to reuse and runs whole
         y = model.decode_tokens(xt, h, event, pos_in_event, tok) if hier else model.hidden(xt, doc_mask=True, key_mask=real)
         logp_name = torch.log_softmax(model.head(y[rows, at_evt]).float(), -1)
         logp_sub = torch.log_softmax(model.head(y[rows, at_dt]).float(), -1)
-        for k, (xk, yk) in enumerate(FIRST_KINDS):
+        for k, (xk, yk) in enumerate(kinds):
             if xk == t:
                 out[:, k] = (logp_name[:, name_id[xk]] + logp_sub[:, vocab.id(f"sub={yk}")]).exp().cpu().numpy()
     return out
 
 
-def seen_before(fold: Fold, ci: np.ndarray, n_hist: np.ndarray) -> np.ndarray:
-    """(rows, len(FIRST_KINDS)) True where the client had the kind before the cut."""
+def seen_before(fold: Fold, ci: np.ndarray, n_hist: np.ndarray, kinds: list[tuple[int, int]] = FIRST_KINDS) -> np.ndarray:
+    """(rows, len(kinds)) True where the client had the kind before the cut."""
     a = fold.client_events[ci]
-    seen = np.zeros((len(ci), len(FIRST_KINDS)), dtype=bool)
+    seen = np.zeros((len(ci), len(kinds)), dtype=bool)
     for r in range(len(ci)):
         s, e = a[r], a[r] + n_hist[r]
-        for k, (x, y) in enumerate(FIRST_KINDS):
+        for k, (x, y) in enumerate(kinds):
             seen[r, k] = ((fold.etype[s:e] == x) & (fold.esub[s:e] == y)).any()
     return seen
 
