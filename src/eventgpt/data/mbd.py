@@ -46,8 +46,8 @@ import pandas as pd
 
 from eventgpt.data.vocab import EVT, USR, Vocab
 
-RAW = Path(os.environ.get("MBD_ROOT", "/Volumes/WD_BLACK/datasets/MBD-mini/extracted"))
-OUT = Path(os.environ.get("MBD_OUT", "/Volumes/WD_BLACK/datasets/MBD-mini/tokens"))
+RAW = Path(os.environ.get("MBD_ROOT", "data/MBD-mini/extracted"))  # the unpacked MBD-mini tables, relative to the working directory
+OUT = Path(os.environ.get("MBD_OUT", "data/MBD-mini/tokens"))  # vocabulary and token streams
 
 N_FOLDS = 5
 MSK = "interval 3 hour"  # timestamps are UTC and the bank's day starts at 21:00 UTC

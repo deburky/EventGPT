@@ -16,13 +16,14 @@ from typing import Any
 import numpy as np
 import torch
 
+from eventgpt.data.mbd import OUT
 from eventgpt.data.vocab import EVT, USR, Vocab
 from eventgpt.data.windows import AlignedStream, PackedStream
 from eventgpt.models.flat import GPT, GPTConfig
 from eventgpt.models.hierarchy import EventGPT, EventGPTConfig
 
 ROOT = Path(__file__).resolve().parents[3]
-DATA = Path(os.environ.get("MBD_OUT", "/Volumes/WD_BLACK/datasets/MBD-mini/tokens"))
+DATA = OUT
 CKPT = Path(os.environ.get("EGPT_CKPT", ROOT / "data" / "ckpt"))
 
 

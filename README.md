@@ -39,8 +39,8 @@ or, for development, clone the repository and run `uv sync`.
 Download MBD-mini and unpack its event tables:
 
 ```bash
-hf download ai-lab/MBD-mini --repo-type dataset --local-dir MBD-mini/raw
-mkdir -p MBD-mini/extracted && tar -xzf MBD-mini/raw/detail.tar.gz -C MBD-mini/extracted
+hf download ai-lab/MBD-mini --repo-type dataset --local-dir data/MBD-mini/raw
+mkdir -p data/MBD-mini/extracted && tar -xzf data/MBD-mini/raw/detail.tar.gz -C data/MBD-mini/extracted
 ```
 
 Embed three clients at the start of October 2022 and score the five first-kind targets:
@@ -52,7 +52,7 @@ import pandas as pd
 from eventgpt import api
 from eventgpt.hub import from_pretrained
 
-root = "MBD-mini/extracted/detail"
+root = "data/MBD-mini/extracted/detail"
 clients = duckdb.sql(f"select distinct client_id from read_parquet('{root}/trx/fold=0/*.parquet') limit 3").df()["client_id"].tolist()
 ids = ", ".join(f"'{c}'" for c in clients)
 query = "select * exclude (fold) from read_parquet('{}/{}/*/*.parquet', hive_partitioning=true) where client_id in ({})"
@@ -89,9 +89,10 @@ client-months of the test fold, with histories of up to 2,048 tokens, in about 2
 
 ## Reproducing the paper
 
-The `egpt` command runs each step; `egpt <command> --help` shows its flags. `MBD_ROOT` points to the
-unpacked MBD-mini tables (also unpack `targets.tar.gz` and `client_split.tar.gz`) and `MBD_OUT` to where
-the token streams go.
+The `egpt` command runs each step; `egpt <command> --help` shows its flags. Run it from the repository
+root: it reads the unpacked MBD-mini tables from `data/MBD-mini/extracted` (unpack `targets.tar.gz` and
+`client_split.tar.gz` there too) and writes the token streams to `data/MBD-mini/tokens`. The environment
+variables `MBD_ROOT` and `MBD_OUT` move them.
 
 ```bash
 egpt prepare --test-fold 0                                  # vocabulary and token streams
