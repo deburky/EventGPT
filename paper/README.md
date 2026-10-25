@@ -10,8 +10,8 @@ The paper evaluates its zero-shot scores and frozen embeddings on the public Mul
 
 | File | What it is |
 |------|------------|
-| `eventgpt.tex` | LaTeX source (XeLaTeX) |
-| `figures/*.pdf` | Figures, drawn in Illustrator; editable sources in `figures/src/*.ai` |
+| `eventgpt.tex` | LaTeX source (XeLaTeX; choose the xelatex processor on arXiv) |
+| `figures/*.pdf` | Figures, drawn by `figures/src/figures.py` (`uv run python paper/figures/src/figures.py` from the repository root); the SVG sources beside it open in Illustrator or Figma |
 | `Makefile` | `make` builds `eventgpt.pdf`, `make zip` stages the arXiv upload in `tarball/` |
 
 The code that produces the results (tokenization, model, training, probe, baseline) is in `../src/eventgpt`.

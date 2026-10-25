@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="344" viewBox="0 0 760 344"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<rect x="20.0" y="8" width="12" height="12" rx="3" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="38.0" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Attends within an event</text>
+<rect x="200.29999999999998" y="8" width="12" height="12" rx="3" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="218.29999999999998" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Attends across events</text>
+<rect x="368.4" y="8" width="12" height="12" rx="3" fill="#FFFFFF" stroke="none" stroke-width="1.2"/>
+<text x="386.4" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Masked</text>
+<rect x="368.4" y="8" width="12" height="12" rx="3" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<rect x="20" y="36" width="350" height="250" rx="12" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<text x="36" y="60" font-family="'Inter 18pt'" font-size="12.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Within an event</text>
+<text x="36" y="77" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="start">Bidirectional, no positions</text>
+<text x="286" y="96" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">keys →</text>
+<text x="140" y="96" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">queries ↓</text>
+<text x="167.0" y="111" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">[EVT]</text>
+<text x="140" y="139.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">[EVT]</text>
+<rect x="151.5" y="119.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="185.5" y="119.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="219.5" y="119.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="253.5" y="119.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="201.0" y="111" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name</text>
+<text x="140" y="173.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">name</text>
+<rect x="151.5" y="153.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="185.5" y="153.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="219.5" y="153.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="253.5" y="153.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="235.0" y="111" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">dt</text>
+<text x="140" y="207.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">dt</text>
+<rect x="151.5" y="187.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="185.5" y="187.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="219.5" y="187.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="253.5" y="187.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="269.0" y="111" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">amt</text>
+<text x="140" y="241.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">amt</text>
+<rect x="151.5" y="221.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="185.5" y="221.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="219.5" y="221.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<rect x="253.5" y="221.5" width="31" height="31" rx="5" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="195" y="272" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Tokens of e₃ also read the hidden state after e₂</text>
+<rect x="390" y="36" width="350" height="250" rx="12" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<text x="406" y="60" font-family="'Inter 18pt'" font-size="12.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Across events</text>
+<text x="406" y="77" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="start">Causal, within one customer</text>
+<text x="656" y="96" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">keys →</text>
+<text x="510" y="96" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">queries ↓</text>
+<text x="537.0" y="111" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="middle">e₁</text>
+<text x="510" y="139.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="end">e₁</text>
+<rect x="521.5" y="119.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="555.5" y="119.5" width="31" height="31" rx="5" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<rect x="589.5" y="119.5" width="31" height="31" rx="5" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<rect x="623.5" y="119.5" width="31" height="31" rx="5" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<text x="571.0" y="111" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="middle">e₂</text>
+<text x="510" y="173.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="end">e₂</text>
+<rect x="521.5" y="153.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="555.5" y="153.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="589.5" y="153.5" width="31" height="31" rx="5" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<rect x="623.5" y="153.5" width="31" height="31" rx="5" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<text x="605.0" y="111" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="middle">e₃</text>
+<text x="510" y="207.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="end">e₃</text>
+<rect x="521.5" y="187.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="555.5" y="187.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="589.5" y="187.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="623.5" y="187.5" width="31" height="31" rx="5" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<text x="639.0" y="111" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="middle">e₄</text>
+<text x="510" y="241.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="400" fill="#1B2A3A" text-anchor="end">e₄</text>
+<rect x="521.5" y="221.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="555.5" y="221.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="589.5" y="221.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<rect x="623.5" y="221.5" width="31" height="31" rx="5" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="565" y="272" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Each event sees itself and the events before it</text>
+<rect x="150" y="302" width="460" height="30" rx="15" fill="#F3F5F8" stroke="none" stroke-width="1.2"/>
+<text x="380" y="321" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#1B2A3A" text-anchor="middle">An event is read in both directions only once it is complete and in the past</text>
+</svg>

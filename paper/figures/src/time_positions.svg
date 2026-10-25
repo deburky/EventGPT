@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="330" viewBox="0 0 760 330"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<text x="20" y="52" font-family="'Inter 18pt'" font-size="12.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Ordinal positions</text>
+<text x="20" y="69" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="start">Standard rotary embeddings: every event is one step from the next, whether a minute or a year passed</text>
+<line x1="40" y1="128" x2="720" y2="128" stroke="#1B2A3A" stroke-width="1.2"/>
+<rect x="58" y="88" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="80" y="106" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₁</text>
+<line x1="80" y1="124" x2="80" y2="132" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="80" y="147" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">0</text>
+<rect x="258" y="88" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="280" y="106" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₂</text>
+<line x1="280" y1="124" x2="280" y2="132" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="280" y="147" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">1</text>
+<rect x="458" y="88" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="480" y="106" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₃</text>
+<line x1="480" y1="124" x2="480" y2="132" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="480" y="147" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">2</text>
+<rect x="658" y="88" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="680" y="106" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₄</text>
+<line x1="680" y1="124" x2="680" y2="132" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="680" y="147" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">3</text>
+<text x="20" y="190" font-family="'Inter 18pt'" font-size="12.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Time positions in EventGPT</text>
+<text x="20" y="207" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="start">position = 64 · ln(1 + minutes since the first event): a minute to an hour is as far as a day to a month</text>
+<line x1="40" y1="292" x2="720" y2="292" stroke="#1B2A3A" stroke-width="1.2"/>
+<line x1="60.0" y1="288" x2="60.0" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="60.0" y="311" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">0</text>
+<line x1="94.7" y1="288" x2="94.7" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="94.73024610959843" y="311" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">1 min</text>
+<line x1="266.0" y1="288" x2="266.0" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="265.9759673449435" y="311" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">1 hour</text>
+<line x1="424.4" y1="288" x2="424.4" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="424.4194233509058" y="311" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">1 day</text>
+<line x1="594.8" y1="288" x2="594.8" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="594.8033180277396" y="311" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">1 month</text>
+<line x1="720.0" y1="288" x2="720.0" y2="296" stroke="#1B2A3A" stroke-width="1.2"/>
+<text x="720.0" y="311" font-family="'Inter 18pt'" font-size="10.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">1 year</text>
+<text x="60.0" y="238" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">t = 0</text>
+<rect x="38.0" y="246" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="60.0" y="264" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₁</text>
+<text x="149.77638383412875" y="238" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">+5 min</text>
+<rect x="127.77638383412875" y="246" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="149.77638383412875" y="264" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₂</text>
+<text x="265.9759673449435" y="238" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">+1 hour</text>
+<rect x="243.9759673449435" y="246" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="265.9759673449435" y="264" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₃</text>
+<text x="720.0" y="238" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">+1 year</text>
+<rect x="698.0" y="246" width="44" height="26" rx="7" fill="#C7ECE8" stroke="none" stroke-width="1.2"/>
+<text x="720.0" y="264" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">e₄</text>
+</svg>

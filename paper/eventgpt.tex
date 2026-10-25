@@ -145,7 +145,14 @@ ratio of their elapsed times.}
 \subsection{Token decoder and the training signal}
 
 Each token of event $i$ receives its embedding, a learned position within the event and the history
-decoder's hidden state $h_{i-1}$ after the previous event; the first event in a window receives zero. Two causal layers within the event then predict the next token through an output layer tied to the input embedding. Because the token decoder sees $h_{i-1}$ and never the pooled vector of event $i$ itself, the bidirectional read of an event happens only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient path runs from the pooled vector, through the hidden state, to the tokens of the next event, so it keeps the fields of an event that help predict what follows.
+decoder's hidden state $h_{i-1}$ after the previous event; the first event in a window receives zero. Two causal layers within the event then predict the next token through an output layer tied to the input embedding (Figure~\ref{fig:decoder}). Because the token decoder sees $h_{i-1}$ and never the pooled vector of event $i$ itself, the bidirectional read of an event happens only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient path runs from the pooled vector, through the hidden state, to the tokens of the next event, so it keeps the fields of an event that help predict what follows.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/decoder.pdf}
+\caption{What the token decoder reads. Each token of event 3 attends to the earlier tokens of its own event and to $h_2$, the history decoder's hidden state after event 2. It has no path to the tokens inside earlier events, which reach it only through the event vectors and $h_2$.}
+\label{fig:decoder}
+\end{figure}
 
 \subsection{Packed attention within events}\label{sec:packed}
 
@@ -450,7 +457,7 @@ In a t-SNE map of the embeddings of 12,000 test clients at the as-of date of 1 D
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.6\textwidth]{figures/embeddings.pdf}
+\includegraphics[width=0.5\textwidth]{figures/embeddings.pdf}
 \caption{t-SNE of the EventGPT embedding (aligned windows, seed 42, last state) for 12,000 test clients at the as-of date of 1 December 2022, after a projection to 50 principal components. Blue marks the clients with no transaction in the following month.}
 \label{fig:tsne}
 \end{figure}
