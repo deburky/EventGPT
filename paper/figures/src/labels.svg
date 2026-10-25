@@ -1,174 +1,174 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="280" viewBox="0 0 760 280"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
-<rect x="20.0" y="8" width="12" height="12" rx="3" fill="#14283C" stroke="none" stroke-width="1.2"/>
-<text x="38.0" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Product targets</text>
-<rect x="151.5" y="8" width="12" height="12" rx="3" fill="#13827A" stroke="none" stroke-width="1.2"/>
-<text x="169.5" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Event targets</text>
-<rect x="270.8" y="8" width="12" height="12" rx="3" fill="#3B7DDD" stroke="none" stroke-width="1.2"/>
-<text x="288.8" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Churn</text>
-<rect x="20" y="34" width="240" height="236" rx="12" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
-<text x="34" y="56" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="start">Product targets</text>
-<text x="34" y="72" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">share of rows, log scale</text>
-<line x1="66" y1="180.6" x2="198" y2="180.6" stroke="#EDF0F3" stroke-width="1"/>
-<text x="60" y="184.10914496950633" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">0.1%</text>
-<line x1="66" y1="98.5" x2="198" y2="98.5" stroke="#EDF0F3" stroke-width="1"/>
-<text x="60" y="102.00139402959059" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">1%</text>
-<text x="66.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Feb ’22</text>
-<text x="138.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Aug ’22</text>
-<text x="198.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Jan ’23</text>
-<polyline points="66.0,119.5 78.0,111.1 90.0,114.5 102.0,127.0 114.0,114.8 126.0,125.9 138.0,125.7 150.0,136.7 162.0,135.7 174.0,141.3 186.0,142.7 198.0,164.1" fill="none" stroke="#14283C" stroke-width="1.6" stroke-linejoin="round"/>
-<circle cx="66.0" cy="119.5" r="1.9" fill="#14283C"/>
-<circle cx="78.0" cy="111.1" r="1.9" fill="#14283C"/>
-<circle cx="90.0" cy="114.5" r="1.9" fill="#14283C"/>
-<circle cx="102.0" cy="127.0" r="1.9" fill="#14283C"/>
-<circle cx="114.0" cy="114.8" r="1.9" fill="#14283C"/>
-<circle cx="126.0" cy="125.9" r="1.9" fill="#14283C"/>
-<circle cx="138.0" cy="125.7" r="1.9" fill="#14283C"/>
-<circle cx="150.0" cy="136.7" r="1.9" fill="#14283C"/>
-<circle cx="162.0" cy="135.7" r="1.9" fill="#14283C"/>
-<circle cx="174.0" cy="141.3" r="1.9" fill="#14283C"/>
-<circle cx="186.0" cy="142.7" r="1.9" fill="#14283C"/>
-<circle cx="198.0" cy="164.1" r="1.9" fill="#14283C"/>
-<polyline points="66.0,220.2 78.0,216.8 90.0,190.3 102.0,215.2 114.0,207.3 126.0,201.4 138.0,207.3 150.0,203.8 162.0,203.9 174.0,198.8 186.0,201.5 198.0,229.9" fill="none" stroke="#3E5A78" stroke-width="1.6" stroke-linejoin="round"/>
-<circle cx="66.0" cy="220.2" r="1.9" fill="#3E5A78"/>
-<circle cx="78.0" cy="216.8" r="1.9" fill="#3E5A78"/>
-<circle cx="90.0" cy="190.3" r="1.9" fill="#3E5A78"/>
-<circle cx="102.0" cy="215.2" r="1.9" fill="#3E5A78"/>
-<circle cx="114.0" cy="207.3" r="1.9" fill="#3E5A78"/>
-<circle cx="126.0" cy="201.4" r="1.9" fill="#3E5A78"/>
-<circle cx="138.0" cy="207.3" r="1.9" fill="#3E5A78"/>
-<circle cx="150.0" cy="203.8" r="1.9" fill="#3E5A78"/>
-<circle cx="162.0" cy="203.9" r="1.9" fill="#3E5A78"/>
-<circle cx="174.0" cy="198.8" r="1.9" fill="#3E5A78"/>
-<circle cx="186.0" cy="201.5" r="1.9" fill="#3E5A78"/>
-<circle cx="198.0" cy="229.9" r="1.9" fill="#3E5A78"/>
-<polyline points="66.0,144.5 78.0,115.9 90.0,110.1 102.0,128.6 114.0,136.6 126.0,142.8 138.0,131.3 150.0,129.1 162.0,141.9 174.0,142.5 186.0,148.9 198.0,153.3" fill="none" stroke="#7189A3" stroke-width="1.6" stroke-linejoin="round"/>
-<circle cx="66.0" cy="144.5" r="1.9" fill="#7189A3"/>
-<circle cx="78.0" cy="115.9" r="1.9" fill="#7189A3"/>
-<circle cx="90.0" cy="110.1" r="1.9" fill="#7189A3"/>
-<circle cx="102.0" cy="128.6" r="1.9" fill="#7189A3"/>
-<circle cx="114.0" cy="136.6" r="1.9" fill="#7189A3"/>
-<circle cx="126.0" cy="142.8" r="1.9" fill="#7189A3"/>
-<circle cx="138.0" cy="131.3" r="1.9" fill="#7189A3"/>
-<circle cx="150.0" cy="129.1" r="1.9" fill="#7189A3"/>
-<circle cx="162.0" cy="141.9" r="1.9" fill="#7189A3"/>
-<circle cx="174.0" cy="142.5" r="1.9" fill="#7189A3"/>
-<circle cx="186.0" cy="148.9" r="1.9" fill="#7189A3"/>
-<circle cx="198.0" cy="153.3" r="1.9" fill="#7189A3"/>
-<polyline points="66.0,149.9 78.0,139.1 90.0,136.1 102.0,152.4 114.0,149.9 126.0,155.7 138.0,143.3 150.0,148.7 162.0,152.4 174.0,146.4 186.0,156.3 198.0,142.1" fill="none" stroke="#A3B4C6" stroke-width="1.6" stroke-linejoin="round"/>
-<circle cx="66.0" cy="149.9" r="1.9" fill="#A3B4C6"/>
-<circle cx="78.0" cy="139.1" r="1.9" fill="#A3B4C6"/>
-<circle cx="90.0" cy="136.1" r="1.9" fill="#A3B4C6"/>
-<circle cx="102.0" cy="152.4" r="1.9" fill="#A3B4C6"/>
-<circle cx="114.0" cy="149.9" r="1.9" fill="#A3B4C6"/>
-<circle cx="126.0" cy="155.7" r="1.9" fill="#A3B4C6"/>
-<circle cx="138.0" cy="143.3" r="1.9" fill="#A3B4C6"/>
-<circle cx="150.0" cy="148.7" r="1.9" fill="#A3B4C6"/>
-<circle cx="162.0" cy="152.4" r="1.9" fill="#A3B4C6"/>
-<circle cx="174.0" cy="146.4" r="1.9" fill="#A3B4C6"/>
-<circle cx="186.0" cy="156.3" r="1.9" fill="#A3B4C6"/>
-<circle cx="198.0" cy="142.1" r="1.9" fill="#A3B4C6"/>
-<text x="205.0" y="168.58707363293058" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#14283C" text-anchor="start">1</text>
-<text x="205.0" y="233.35431574572115" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#3E5A78" text-anchor="start">2</text>
-<text x="205.0" y="157.08707363293058" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#7189A3" text-anchor="start">3</text>
-<text x="205.0" y="145.58707363293058" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#A3B4C6" text-anchor="start">4</text>
-<rect x="270" y="34" width="250" height="236" rx="12" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
-<text x="284" y="56" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="start">Event targets</text>
-<text x="284" y="72" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">first transaction of a kind, log scale</text>
-<line x1="316" y1="216.9" x2="458" y2="216.9" stroke="#EDF0F3" stroke-width="1"/>
-<text x="310" y="220.3616892103621" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">0.01%</text>
-<line x1="316" y1="146.6" x2="458" y2="146.6" stroke="#EDF0F3" stroke-width="1"/>
-<text x="310" y="150.14174071980335" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">0.1%</text>
-<text x="316.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Feb ’22</text>
-<text x="393.45454545454544" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Aug ’22</text>
-<text x="458.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Jan ’23</text>
-<polyline points="316.0,232.5 328.9,211.1 341.8,191.8 354.7,191.5 367.6,191.3 380.5,186.7 393.5,195.5 406.4,179.4 419.3,174.7 432.2,195.2 445.1,183.6" fill="none" stroke="#0B5F58" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
-<circle cx="316.0" cy="232.5" r="1.9" fill="#0B5F58"/>
-<circle cx="328.9" cy="211.1" r="1.9" fill="#0B5F58"/>
-<circle cx="341.8" cy="191.8" r="1.9" fill="#0B5F58"/>
-<circle cx="354.7" cy="191.5" r="1.9" fill="#0B5F58"/>
-<circle cx="367.6" cy="191.3" r="1.9" fill="#0B5F58"/>
-<circle cx="380.5" cy="186.7" r="1.9" fill="#0B5F58"/>
-<circle cx="393.5" cy="195.5" r="1.9" fill="#0B5F58"/>
-<circle cx="406.4" cy="179.4" r="1.9" fill="#0B5F58"/>
-<circle cx="419.3" cy="174.7" r="1.9" fill="#0B5F58"/>
-<circle cx="432.2" cy="195.2" r="1.9" fill="#0B5F58"/>
-<circle cx="445.1" cy="183.6" r="1.9" fill="#0B5F58"/>
-<polyline points="316.0,158.5 328.9,156.9 341.8,148.2 354.7,164.4 367.6,150.4 380.5,150.0 393.5,145.5 406.4,143.3 419.3,145.7 432.2,142.1 445.1,161.4" fill="none" stroke="#13827A" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
-<circle cx="316.0" cy="158.5" r="1.9" fill="#13827A"/>
-<circle cx="328.9" cy="156.9" r="1.9" fill="#13827A"/>
-<circle cx="341.8" cy="148.2" r="1.9" fill="#13827A"/>
-<circle cx="354.7" cy="164.4" r="1.9" fill="#13827A"/>
-<circle cx="367.6" cy="150.4" r="1.9" fill="#13827A"/>
-<circle cx="380.5" cy="150.0" r="1.9" fill="#13827A"/>
-<circle cx="393.5" cy="145.5" r="1.9" fill="#13827A"/>
-<circle cx="406.4" cy="143.3" r="1.9" fill="#13827A"/>
-<circle cx="419.3" cy="145.7" r="1.9" fill="#13827A"/>
-<circle cx="432.2" cy="142.1" r="1.9" fill="#13827A"/>
-<circle cx="445.1" cy="161.4" r="1.9" fill="#13827A"/>
-<polyline points="316.0,153.9 328.9,156.0 341.8,147.6 354.7,140.4 367.6,132.3 380.5,137.4 393.5,136.0 406.4,143.3 419.3,134.3 432.2,131.4 445.1,137.5" fill="none" stroke="#2FA597" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
-<circle cx="316.0" cy="153.9" r="1.9" fill="#2FA597"/>
-<circle cx="328.9" cy="156.0" r="1.9" fill="#2FA597"/>
-<circle cx="341.8" cy="147.6" r="1.9" fill="#2FA597"/>
-<circle cx="354.7" cy="140.4" r="1.9" fill="#2FA597"/>
-<circle cx="367.6" cy="132.3" r="1.9" fill="#2FA597"/>
-<circle cx="380.5" cy="137.4" r="1.9" fill="#2FA597"/>
-<circle cx="393.5" cy="136.0" r="1.9" fill="#2FA597"/>
-<circle cx="406.4" cy="143.3" r="1.9" fill="#2FA597"/>
-<circle cx="419.3" cy="134.3" r="1.9" fill="#2FA597"/>
-<circle cx="432.2" cy="131.4" r="1.9" fill="#2FA597"/>
-<circle cx="445.1" cy="137.5" r="1.9" fill="#2FA597"/>
-<polyline points="316.0,157.6 328.9,149.6 341.8,144.0 354.7,139.4 367.6,130.8 380.5,139.2 393.5,133.1 406.4,138.8 419.3,133.2 432.2,120.3 445.1,131.4" fill="none" stroke="#5DBDB0" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
-<circle cx="316.0" cy="157.6" r="1.9" fill="#5DBDB0"/>
-<circle cx="328.9" cy="149.6" r="1.9" fill="#5DBDB0"/>
-<circle cx="341.8" cy="144.0" r="1.9" fill="#5DBDB0"/>
-<circle cx="354.7" cy="139.4" r="1.9" fill="#5DBDB0"/>
-<circle cx="367.6" cy="130.8" r="1.9" fill="#5DBDB0"/>
-<circle cx="380.5" cy="139.2" r="1.9" fill="#5DBDB0"/>
-<circle cx="393.5" cy="133.1" r="1.9" fill="#5DBDB0"/>
-<circle cx="406.4" cy="138.8" r="1.9" fill="#5DBDB0"/>
-<circle cx="419.3" cy="133.2" r="1.9" fill="#5DBDB0"/>
-<circle cx="432.2" cy="120.3" r="1.9" fill="#5DBDB0"/>
-<circle cx="445.1" cy="131.4" r="1.9" fill="#5DBDB0"/>
-<polyline points="316.0,106.2 328.9,106.4 341.8,107.7 354.7,106.9 367.6,109.4 380.5,107.1 393.5,107.6 406.4,110.8 419.3,109.1 432.2,107.1 445.1,108.8" fill="none" stroke="#8ACFC5" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
-<circle cx="316.0" cy="106.2" r="1.9" fill="#8ACFC5"/>
-<circle cx="328.9" cy="106.4" r="1.9" fill="#8ACFC5"/>
-<circle cx="341.8" cy="107.7" r="1.9" fill="#8ACFC5"/>
-<circle cx="354.7" cy="106.9" r="1.9" fill="#8ACFC5"/>
-<circle cx="367.6" cy="109.4" r="1.9" fill="#8ACFC5"/>
-<circle cx="380.5" cy="107.1" r="1.9" fill="#8ACFC5"/>
-<circle cx="393.5" cy="107.6" r="1.9" fill="#8ACFC5"/>
-<circle cx="406.4" cy="110.8" r="1.9" fill="#8ACFC5"/>
-<circle cx="419.3" cy="109.1" r="1.9" fill="#8ACFC5"/>
-<circle cx="432.2" cy="107.1" r="1.9" fill="#8ACFC5"/>
-<circle cx="445.1" cy="108.8" r="1.9" fill="#8ACFC5"/>
-<text x="452.0909090909091" y="187.05318618580668" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#0B5F58" text-anchor="start">48/31</text>
-<text x="452.0909090909091" y="164.91491249505793" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#13827A" text-anchor="start">23/49</text>
-<text x="452.0909090909091" y="146.3806890208853" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#2FA597" text-anchor="start">26/28</text>
-<text x="452.0909090909091" y="134.8806890208853" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#5DBDB0" text-anchor="start">48/10</text>
-<text x="452.0909090909091" y="112.30700101192872" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#8ACFC5" text-anchor="start">50/19</text>
-<rect x="530" y="34" width="210" height="236" rx="12" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
-<text x="544" y="56" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="start">Churn</text>
-<text x="544" y="72" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">share of rows</text>
-<line x1="576" y1="238.0" x2="678" y2="238.0" stroke="#EDF0F3" stroke-width="1"/>
-<text x="570" y="241.5" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">10%</text>
-<line x1="576" y1="177.2" x2="678" y2="177.2" stroke="#EDF0F3" stroke-width="1"/>
-<text x="570" y="180.66666666666666" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">15%</text>
-<line x1="576" y1="116.3" x2="678" y2="116.3" stroke="#EDF0F3" stroke-width="1"/>
-<text x="570" y="119.83333333333333" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">20%</text>
-<text x="576.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Feb ’22</text>
-<text x="631.6363636363636" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Aug ’22</text>
-<text x="678.0" y="254" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">Jan ’23</text>
-<polyline points="576.0,205.5 585.3,206.9 594.5,198.0 603.8,183.7 613.1,176.0 622.4,171.5 631.6,147.0 640.9,141.8 650.2,133.9 659.5,118.5 668.7,115.2" fill="none" stroke="#3B7DDD" stroke-width="1.6" stroke-linejoin="round"/>
-<circle cx="576.0" cy="205.5" r="1.9" fill="#3B7DDD"/>
-<circle cx="585.3" cy="206.9" r="1.9" fill="#3B7DDD"/>
-<circle cx="594.5" cy="198.0" r="1.9" fill="#3B7DDD"/>
-<circle cx="603.8" cy="183.7" r="1.9" fill="#3B7DDD"/>
-<circle cx="613.1" cy="176.0" r="1.9" fill="#3B7DDD"/>
-<circle cx="622.4" cy="171.5" r="1.9" fill="#3B7DDD"/>
-<circle cx="631.6" cy="147.0" r="1.9" fill="#3B7DDD"/>
-<circle cx="640.9" cy="141.8" r="1.9" fill="#3B7DDD"/>
-<circle cx="650.2" cy="133.9" r="1.9" fill="#3B7DDD"/>
-<circle cx="659.5" cy="118.5" r="1.9" fill="#3B7DDD"/>
-<circle cx="668.7" cy="115.2" r="1.9" fill="#3B7DDD"/>
-<text x="675.7272727272727" y="118.69993404501388" font-family="'Inter 18pt'" font-size="9.5" font-weight="600" fill="#3B7DDD" text-anchor="start"></text>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<line x1="70" y1="237.5" x2="500" y2="237.5" stroke="#E9EDF1" stroke-width="1"/>
+<text x="62" y="241.0266894666697" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">0.01%</text>
+<line x1="70" y1="176.0" x2="500" y2="176.0" stroke="#E9EDF1" stroke-width="1"/>
+<text x="62" y="179.5266894666697" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">0.1%</text>
+<line x1="70" y1="114.5" x2="500" y2="114.5" stroke="#E9EDF1" stroke-width="1"/>
+<text x="62" y="118.0266894666697" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">1%</text>
+<line x1="70" y1="53.0" x2="500" y2="53.0" stroke="#E9EDF1" stroke-width="1"/>
+<text x="62" y="56.526689466669694" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="end">10%</text>
+<line x1="70" y1="262" x2="500" y2="262" stroke="#5B6B7C" stroke-width="1"/>
+<line x1="78.0" y1="262" x2="78.0" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text x="78.0" y="280" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Feb 2022</text>
+<line x1="115.6" y1="262" x2="115.6" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<line x1="153.3" y1="262" x2="153.3" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text x="153.27272727272725" y="280" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Apr 2022</text>
+<line x1="190.9" y1="262" x2="190.9" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<line x1="228.5" y1="262" x2="228.5" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text x="228.54545454545453" y="280" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Jun 2022</text>
+<line x1="266.2" y1="262" x2="266.2" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<line x1="303.8" y1="262" x2="303.8" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text x="303.8181818181818" y="280" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Aug 2022</text>
+<line x1="341.5" y1="262" x2="341.5" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<line x1="379.1" y1="262" x2="379.1" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text x="379.09090909090907" y="280" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Oct 2022</text>
+<line x1="416.7" y1="262" x2="416.7" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<line x1="454.4" y1="262" x2="454.4" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text x="454.3636363636364" y="280" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Dec 2022</text>
+<line x1="492.0" y1="262" x2="492.0" y2="266" stroke="#5B6B7C" stroke-width="1"/>
+<text transform="translate(18,139.0) rotate(-90)" font-family="'Inter 18pt'" font-size="10.5" fill="#1B2A3A" text-anchor="middle">share of rows positive (log scale)</text>
+<polyline points="78.0,130.3 115.6,124.0 153.3,126.5 190.9,135.9 228.5,126.7 266.2,135.0 303.8,134.9 341.5,143.2 379.1,142.4 416.7,146.6 454.4,147.7 492.0,163.7" fill="none" stroke="#14283C" stroke-width="1.5" stroke-linejoin="round"/>
+<circle cx="78.0" cy="130.3" r="1.8" fill="#14283C"/>
+<circle cx="115.6" cy="124.0" r="1.8" fill="#14283C"/>
+<circle cx="153.3" cy="126.5" r="1.8" fill="#14283C"/>
+<circle cx="190.9" cy="135.9" r="1.8" fill="#14283C"/>
+<circle cx="228.5" cy="126.7" r="1.8" fill="#14283C"/>
+<circle cx="266.2" cy="135.0" r="1.8" fill="#14283C"/>
+<circle cx="303.8" cy="134.9" r="1.8" fill="#14283C"/>
+<circle cx="341.5" cy="143.2" r="1.8" fill="#14283C"/>
+<circle cx="379.1" cy="142.4" r="1.8" fill="#14283C"/>
+<circle cx="416.7" cy="146.6" r="1.8" fill="#14283C"/>
+<circle cx="454.4" cy="147.7" r="1.8" fill="#14283C"/>
+<circle cx="492.0" cy="163.7" r="1.8" fill="#14283C"/>
+<polyline points="78.0,205.7 115.6,203.1 153.3,183.3 190.9,201.9 228.5,196.0 266.2,191.6 303.8,196.0 341.5,193.4 379.1,193.5 416.7,189.7 454.4,191.7 492.0,212.9" fill="none" stroke="#3E5A78" stroke-width="1.5" stroke-linejoin="round"/>
+<circle cx="78.0" cy="205.7" r="1.8" fill="#3E5A78"/>
+<circle cx="115.6" cy="203.1" r="1.8" fill="#3E5A78"/>
+<circle cx="153.3" cy="183.3" r="1.8" fill="#3E5A78"/>
+<circle cx="190.9" cy="201.9" r="1.8" fill="#3E5A78"/>
+<circle cx="228.5" cy="196.0" r="1.8" fill="#3E5A78"/>
+<circle cx="266.2" cy="191.6" r="1.8" fill="#3E5A78"/>
+<circle cx="303.8" cy="196.0" r="1.8" fill="#3E5A78"/>
+<circle cx="341.5" cy="193.4" r="1.8" fill="#3E5A78"/>
+<circle cx="379.1" cy="193.5" r="1.8" fill="#3E5A78"/>
+<circle cx="416.7" cy="189.7" r="1.8" fill="#3E5A78"/>
+<circle cx="454.4" cy="191.7" r="1.8" fill="#3E5A78"/>
+<circle cx="492.0" cy="212.9" r="1.8" fill="#3E5A78"/>
+<polyline points="78.0,149.0 115.6,127.6 153.3,123.2 190.9,137.0 228.5,143.1 266.2,147.7 303.8,139.1 341.5,137.5 379.1,147.0 416.7,147.5 454.4,152.3 492.0,155.6" fill="none" stroke="#7189A3" stroke-width="1.5" stroke-linejoin="round"/>
+<circle cx="78.0" cy="149.0" r="1.8" fill="#7189A3"/>
+<circle cx="115.6" cy="127.6" r="1.8" fill="#7189A3"/>
+<circle cx="153.3" cy="123.2" r="1.8" fill="#7189A3"/>
+<circle cx="190.9" cy="137.0" r="1.8" fill="#7189A3"/>
+<circle cx="228.5" cy="143.1" r="1.8" fill="#7189A3"/>
+<circle cx="266.2" cy="147.7" r="1.8" fill="#7189A3"/>
+<circle cx="303.8" cy="139.1" r="1.8" fill="#7189A3"/>
+<circle cx="341.5" cy="137.5" r="1.8" fill="#7189A3"/>
+<circle cx="379.1" cy="147.0" r="1.8" fill="#7189A3"/>
+<circle cx="416.7" cy="147.5" r="1.8" fill="#7189A3"/>
+<circle cx="454.4" cy="152.3" r="1.8" fill="#7189A3"/>
+<circle cx="492.0" cy="155.6" r="1.8" fill="#7189A3"/>
+<polyline points="78.0,153.0 115.6,144.9 153.3,142.7 190.9,154.9 228.5,153.0 266.2,157.3 303.8,148.1 341.5,152.1 379.1,154.9 416.7,150.4 454.4,157.8 492.0,147.2" fill="none" stroke="#A3B4C6" stroke-width="1.5" stroke-linejoin="round"/>
+<circle cx="78.0" cy="153.0" r="1.8" fill="#A3B4C6"/>
+<circle cx="115.6" cy="144.9" r="1.8" fill="#A3B4C6"/>
+<circle cx="153.3" cy="142.7" r="1.8" fill="#A3B4C6"/>
+<circle cx="190.9" cy="154.9" r="1.8" fill="#A3B4C6"/>
+<circle cx="228.5" cy="153.0" r="1.8" fill="#A3B4C6"/>
+<circle cx="266.2" cy="157.3" r="1.8" fill="#A3B4C6"/>
+<circle cx="303.8" cy="148.1" r="1.8" fill="#A3B4C6"/>
+<circle cx="341.5" cy="152.1" r="1.8" fill="#A3B4C6"/>
+<circle cx="379.1" cy="154.9" r="1.8" fill="#A3B4C6"/>
+<circle cx="416.7" cy="150.4" r="1.8" fill="#A3B4C6"/>
+<circle cx="454.4" cy="157.8" r="1.8" fill="#A3B4C6"/>
+<circle cx="492.0" cy="147.2" r="1.8" fill="#A3B4C6"/>
+<polyline points="78.0,251.2 115.6,232.5 153.3,215.5 190.9,215.3 228.5,215.1 266.2,211.1 303.8,218.8 341.5,204.7 379.1,200.6 416.7,218.6 454.4,208.4" fill="none" stroke="#0B5F58" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
+<circle cx="78.0" cy="251.2" r="1.8" fill="#0B5F58"/>
+<circle cx="115.6" cy="232.5" r="1.8" fill="#0B5F58"/>
+<circle cx="153.3" cy="215.5" r="1.8" fill="#0B5F58"/>
+<circle cx="190.9" cy="215.3" r="1.8" fill="#0B5F58"/>
+<circle cx="228.5" cy="215.1" r="1.8" fill="#0B5F58"/>
+<circle cx="266.2" cy="211.1" r="1.8" fill="#0B5F58"/>
+<circle cx="303.8" cy="218.8" r="1.8" fill="#0B5F58"/>
+<circle cx="341.5" cy="204.7" r="1.8" fill="#0B5F58"/>
+<circle cx="379.1" cy="200.6" r="1.8" fill="#0B5F58"/>
+<circle cx="416.7" cy="218.6" r="1.8" fill="#0B5F58"/>
+<circle cx="454.4" cy="208.4" r="1.8" fill="#0B5F58"/>
+<polyline points="78.0,186.4 115.6,185.0 153.3,177.4 190.9,191.5 228.5,179.3 266.2,178.9 303.8,175.1 341.5,173.1 379.1,175.2 416.7,172.1 454.4,189.0" fill="none" stroke="#13827A" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
+<circle cx="78.0" cy="186.4" r="1.8" fill="#13827A"/>
+<circle cx="115.6" cy="185.0" r="1.8" fill="#13827A"/>
+<circle cx="153.3" cy="177.4" r="1.8" fill="#13827A"/>
+<circle cx="190.9" cy="191.5" r="1.8" fill="#13827A"/>
+<circle cx="228.5" cy="179.3" r="1.8" fill="#13827A"/>
+<circle cx="266.2" cy="178.9" r="1.8" fill="#13827A"/>
+<circle cx="303.8" cy="175.1" r="1.8" fill="#13827A"/>
+<circle cx="341.5" cy="173.1" r="1.8" fill="#13827A"/>
+<circle cx="379.1" cy="175.2" r="1.8" fill="#13827A"/>
+<circle cx="416.7" cy="172.1" r="1.8" fill="#13827A"/>
+<circle cx="454.4" cy="189.0" r="1.8" fill="#13827A"/>
+<polyline points="78.0,182.4 115.6,184.2 153.3,176.8 190.9,170.5 228.5,163.5 266.2,167.9 303.8,166.7 341.5,173.1 379.1,165.2 416.7,162.7 454.4,168.0" fill="none" stroke="#2FA597" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
+<circle cx="78.0" cy="182.4" r="1.8" fill="#2FA597"/>
+<circle cx="115.6" cy="184.2" r="1.8" fill="#2FA597"/>
+<circle cx="153.3" cy="176.8" r="1.8" fill="#2FA597"/>
+<circle cx="190.9" cy="170.5" r="1.8" fill="#2FA597"/>
+<circle cx="228.5" cy="163.5" r="1.8" fill="#2FA597"/>
+<circle cx="266.2" cy="167.9" r="1.8" fill="#2FA597"/>
+<circle cx="303.8" cy="166.7" r="1.8" fill="#2FA597"/>
+<circle cx="341.5" cy="173.1" r="1.8" fill="#2FA597"/>
+<circle cx="379.1" cy="165.2" r="1.8" fill="#2FA597"/>
+<circle cx="416.7" cy="162.7" r="1.8" fill="#2FA597"/>
+<circle cx="454.4" cy="168.0" r="1.8" fill="#2FA597"/>
+<polyline points="78.0,185.6 115.6,178.7 153.3,173.7 190.9,169.7 228.5,162.2 266.2,169.5 303.8,164.2 341.5,169.1 379.1,164.3 416.7,153.0 454.4,162.7" fill="none" stroke="#5DBDB0" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
+<circle cx="78.0" cy="185.6" r="1.8" fill="#5DBDB0"/>
+<circle cx="115.6" cy="178.7" r="1.8" fill="#5DBDB0"/>
+<circle cx="153.3" cy="173.7" r="1.8" fill="#5DBDB0"/>
+<circle cx="190.9" cy="169.7" r="1.8" fill="#5DBDB0"/>
+<circle cx="228.5" cy="162.2" r="1.8" fill="#5DBDB0"/>
+<circle cx="266.2" cy="169.5" r="1.8" fill="#5DBDB0"/>
+<circle cx="303.8" cy="164.2" r="1.8" fill="#5DBDB0"/>
+<circle cx="341.5" cy="169.1" r="1.8" fill="#5DBDB0"/>
+<circle cx="379.1" cy="164.3" r="1.8" fill="#5DBDB0"/>
+<circle cx="416.7" cy="153.0" r="1.8" fill="#5DBDB0"/>
+<circle cx="454.4" cy="162.7" r="1.8" fill="#5DBDB0"/>
+<polyline points="78.0,140.6 115.6,140.8 153.3,141.9 190.9,141.3 228.5,143.4 266.2,141.4 303.8,141.8 341.5,144.6 379.1,143.2 416.7,141.4 454.4,142.9" fill="none" stroke="#8ACFC5" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 2.5"/>
+<circle cx="78.0" cy="140.6" r="1.8" fill="#8ACFC5"/>
+<circle cx="115.6" cy="140.8" r="1.8" fill="#8ACFC5"/>
+<circle cx="153.3" cy="141.9" r="1.8" fill="#8ACFC5"/>
+<circle cx="190.9" cy="141.3" r="1.8" fill="#8ACFC5"/>
+<circle cx="228.5" cy="143.4" r="1.8" fill="#8ACFC5"/>
+<circle cx="266.2" cy="141.4" r="1.8" fill="#8ACFC5"/>
+<circle cx="303.8" cy="141.8" r="1.8" fill="#8ACFC5"/>
+<circle cx="341.5" cy="144.6" r="1.8" fill="#8ACFC5"/>
+<circle cx="379.1" cy="143.2" r="1.8" fill="#8ACFC5"/>
+<circle cx="416.7" cy="141.4" r="1.8" fill="#8ACFC5"/>
+<circle cx="454.4" cy="142.9" r="1.8" fill="#8ACFC5"/>
+<polyline points="78.0,46.7 115.6,46.9 153.3,45.4 190.9,43.2 228.5,42.0 266.2,41.4 303.8,38.1 341.5,37.5 379.1,36.5 416.7,34.8 454.4,34.4" fill="none" stroke="#3B7DDD" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="78.0" cy="46.7" r="1.8" fill="#3B7DDD"/>
+<circle cx="115.6" cy="46.9" r="1.8" fill="#3B7DDD"/>
+<circle cx="153.3" cy="45.4" r="1.8" fill="#3B7DDD"/>
+<circle cx="190.9" cy="43.2" r="1.8" fill="#3B7DDD"/>
+<circle cx="228.5" cy="42.0" r="1.8" fill="#3B7DDD"/>
+<circle cx="266.2" cy="41.4" r="1.8" fill="#3B7DDD"/>
+<circle cx="303.8" cy="38.1" r="1.8" fill="#3B7DDD"/>
+<circle cx="341.5" cy="37.5" r="1.8" fill="#3B7DDD"/>
+<circle cx="379.1" cy="36.5" r="1.8" fill="#3B7DDD"/>
+<circle cx="416.7" cy="34.8" r="1.8" fill="#3B7DDD"/>
+<circle cx="454.4" cy="34.4" r="1.8" fill="#3B7DDD"/>
+<line x1="528" y1="58.5" x2="556" y2="58.5" stroke="#14283C" stroke-width="1.8"/>
+<text x="564" y="62.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">product 1 (target_1)</text>
+<line x1="528" y1="75.5" x2="556" y2="75.5" stroke="#3E5A78" stroke-width="1.8"/>
+<text x="564" y="79.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">product 2 (target_2)</text>
+<line x1="528" y1="92.5" x2="556" y2="92.5" stroke="#7189A3" stroke-width="1.8"/>
+<text x="564" y="96.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">product 3 (target_3)</text>
+<line x1="528" y1="109.5" x2="556" y2="109.5" stroke="#A3B4C6" stroke-width="1.8"/>
+<text x="564" y="113.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">product 4 (target_4)</text>
+<line x1="528" y1="126.5" x2="556" y2="126.5" stroke="#0B5F58" stroke-width="1.8" stroke-dasharray="4 2.5"/>
+<text x="564" y="130.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">first transaction 48/31</text>
+<line x1="528" y1="143.5" x2="556" y2="143.5" stroke="#13827A" stroke-width="1.8" stroke-dasharray="4 2.5"/>
+<text x="564" y="147.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">first transaction 23/49</text>
+<line x1="528" y1="160.5" x2="556" y2="160.5" stroke="#2FA597" stroke-width="1.8" stroke-dasharray="4 2.5"/>
+<text x="564" y="164.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">first transaction 26/28</text>
+<line x1="528" y1="177.5" x2="556" y2="177.5" stroke="#5DBDB0" stroke-width="1.8" stroke-dasharray="4 2.5"/>
+<text x="564" y="181.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">first transaction 48/10</text>
+<line x1="528" y1="194.5" x2="556" y2="194.5" stroke="#8ACFC5" stroke-width="1.8" stroke-dasharray="4 2.5"/>
+<text x="564" y="198.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">first transaction 50/19</text>
+<line x1="528" y1="211.5" x2="556" y2="211.5" stroke="#3B7DDD" stroke-width="1.8"/>
+<text x="564" y="215.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="start">churn: no transaction in the month</text>
 </svg>

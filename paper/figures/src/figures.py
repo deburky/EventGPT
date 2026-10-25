@@ -312,99 +312,67 @@ def time_positions() -> None:
 NAVY = ["#14283C", "#3E5A78", "#7189A3", "#A3B4C6"]
 TEAL = ["#0B5F58", "#13827A", "#2FA597", "#5DBDB0", "#8ACFC5"]
 BLUE = "#3B7DDD"
+LIME = "#B4D22B"  # the token lime, saturated so points read on white
 QUIET = "#C9D2DC"
 
 
-def spread(ys: list[float], gap: float) -> list[float]:
-    """Label positions near ys, at least `gap` apart, in the original order."""
-    order = sorted(range(len(ys)), key=lambda k: ys[k])
-    out = [0.0] * len(ys)
-    last = -1e9
-    for k in order:
-        out[k] = max(ys[k], last + gap)
-        last = out[k]
-    return out
-
-
-def card_plot(
-    g: Svg,
-    x0: float,
-    w: float,
-    title: str,
-    subtitle: str,
-    series: list[tuple[str, str, np.ndarray]],
-    months: pd.DatetimeIndex,
-    ylim: tuple[float, float],
-    ticks: list[tuple[float, str]],
-    log: bool,
-    dashed: bool = False,
-) -> None:
-    """One small panel: a card with a title, light gridlines, lines labeled at their ends."""
-    y0, h = 34, 236
-    g.rect(x0, y0, w, h, "white", LINE, r=12)
-    g.text(x0 + 14, y0 + 22, title, size=12, weight=600)
-    g.text(x0 + 14, y0 + 38, subtitle, size=10, fill=MUTED)
-    px0, px1, py0, py1 = x0 + 46, x0 + w - 62, y0 + h - 32, y0 + 58
-    f = (lambda v: math.log10(v)) if log else (lambda v: v)
-    lo, hi = f(ylim[0]), f(ylim[1])
-
-    def ty(v: float) -> float:
-        return py0 - (f(v) - lo) / (hi - lo) * (py0 - py1)
-
-    n = len(months)
-
-    def tx(k: int) -> float:
-        return px0 + k * (px1 - px0) / (n - 1)
-
-    for v, lab in ticks:
-        if not ylim[0] <= v <= ylim[1]:
-            continue
-        y = ty(v)
-        g.items.append(f'<line x1="{px0}" y1="{y:.1f}" x2="{px1}" y2="{y:.1f}" stroke="#EDF0F3" stroke-width="1"/>')
-        g.text(px0 - 6, y + 3.5, lab, size=9.5, fill=MUTED, anchor="end")
-    for k, m in enumerate(months):
-        if k in (0, n // 2, n - 1):
-            g.text(tx(k), py0 + 16, m.strftime("%b %y").replace(" ", " ’"), size=9.5, fill=MUTED, anchor="middle")
-    ends = []
-    for color, label, ys in series:
-        pts = [(tx(k), ty(float(v))) for k, v in enumerate(ys) if not np.isnan(v)]
-        d = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
-        dash = ' stroke-dasharray="4 2.5"' if dashed else ""
-        g.items.append(f'<polyline points="{d}" fill="none" stroke="{color}" stroke-width="1.6" stroke-linejoin="round"{dash}/>')
-        for a, b in pts:
-            g.items.append(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="1.9" fill="{color}"/>')
-        ends.append((pts[-1], color, label))
-    ly = spread([b for (_, b), _, _ in ends], 11.5)
-    for ((a, _), color, label), yl in zip(ends, ly, strict=True):
-        g.text(a + 7, yl + 3.5, label, size=9.5, weight=600, fill=color)
-
-
 def labels() -> None:
-    """Share of rows positive for each label by month, as three cards."""
+    """Share of rows positive for each label by month: one log-scale plot, a legend beside it."""
     tr, te = pd.read_parquet(RUN / "train_rows.parquet"), pd.read_parquet(RUN / "test_rows.parquet")
     rows = pd.concat([tr, te.assign(weight=1.0)], ignore_index=True)
     rows["month"] = pd.to_datetime(rows["mon"]).dt.to_period("M").dt.to_timestamp()
 
-    def rate(lab: str) -> pd.Series:
+    def rate(lab: str) -> np.ndarray:
         g = rows.assign(v=rows[lab] * rows["weight"]).groupby("month")
-        return 100 * g["v"].sum() / g["weight"].sum()
+        return (100 * g["v"].sum() / g["weight"].sum()).to_numpy()
 
-    months = pd.DatetimeIndex(rate("churn").index)
-    g = Svg(760, 280)
-    g.legend([(NAVY[0], "Product targets"), (TEAL[1], "Event targets"), (BLUE, "Churn")])
-    pct = [(0.01, "0.01%"), (0.1, "0.1%"), (1, "1%")]
-    prod = [(NAVY[k], str(k + 1), rate(f"target_{k + 1}").to_numpy()) for k in range(4)]
-    card_plot(g, 20, 240, "Product targets", "share of rows, log scale", prod, months, (0.02, 1.2), pct, log=True)
-    kinds = [(48, 31), (23, 49), (26, 28), (48, 10), (50, 19)]
-    ev = []
-    for k, (t, s_) in enumerate(kinds):
-        y = rate(f"first_{t}_{s_}").to_numpy().copy()
+    months = pd.DatetimeIndex(sorted(rows["month"].unique()))
+    series: list[tuple[str, str, np.ndarray, bool]] = []
+    for k in range(4):
+        series.append((NAVY[k], f"product {k + 1} (target_{k + 1})", rate(f"target_{k + 1}"), False))
+    for k, (t, s_) in enumerate([(48, 31), (23, 49), (26, 28), (48, 10), (50, 19)]):
+        y = rate(f"first_{t}_{s_}")
         y[-1] = np.nan  # no transactions after the last month
-        ev.append((TEAL[k], f"{t}/{s_}", y))
-    card_plot(g, 270, 250, "Event targets", "first transaction of a kind, log scale", ev, months, (0.005, 0.6), pct, log=True, dashed=True)
-    ch = rate("churn").to_numpy().copy()
+        series.append((TEAL[k], f"first transaction {t}/{s_}", y, True))
+    ch = rate("churn")
     ch[-1] = np.nan
-    card_plot(g, 530, 210, "Churn", "share of rows", [(BLUE, "", ch)], months, (10, 22), [(10, "10%"), (15, "15%"), (20, "20%")], log=False)
+    series.append((BLUE, "churn: no transaction in the month", ch, False))
+
+    g = Svg(760, 300)
+    px0, px1, py0, py1 = 70, 500, 262, 16
+    lo, hi = math.log10(0.004), math.log10(40)
+
+    def ty(v: float) -> float:
+        return py0 - (math.log10(v) - lo) / (hi - lo) * (py0 - py1)
+
+    def tx(k: int) -> float:
+        return px0 + 8 + k * (px1 - px0 - 16) / (len(months) - 1)
+
+    for v, lab in [(0.01, "0.01%"), (0.1, "0.1%"), (1, "1%"), (10, "10%")]:
+        g.items.append(f'<line x1="{px0}" y1="{ty(v):.1f}" x2="{px1}" y2="{ty(v):.1f}" stroke="#E9EDF1" stroke-width="1"/>')
+        g.text(px0 - 8, ty(v) + 3.5, lab, size=10, fill=MUTED, anchor="end")
+    g.items.append(f'<line x1="{px0}" y1="{py0}" x2="{px1}" y2="{py0}" stroke="{MUTED}" stroke-width="1"/>')
+    for k, m in enumerate(months):
+        g.items.append(f'<line x1="{tx(k):.1f}" y1="{py0}" x2="{tx(k):.1f}" y2="{py0 + 4}" stroke="{MUTED}" stroke-width="1"/>')
+        if m.month % 2 == 0:
+            g.text(tx(k), py0 + 18, m.strftime("%b %Y"), size=10, fill=MUTED, anchor="middle")
+    g.items.append(
+        f'<text transform="translate(18,{(py0 + py1) / 2}) rotate(-90)" font-family="{SANS}" font-size="10.5" '
+        f'fill="{INK}" text-anchor="middle">share of rows positive (log scale)</text>'
+    )
+    for color, _, ys, dashed in series:
+        pts = [(tx(k), ty(float(v))) for k, v in enumerate(ys) if not np.isnan(v)]
+        d = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
+        dash = ' stroke-dasharray="4 2.5"' if dashed else ""
+        width = 2.0 if color == BLUE else 1.5
+        g.items.append(f'<polyline points="{d}" fill="none" stroke="{color}" stroke-width="{width}" stroke-linejoin="round"{dash}/>')
+        g.items.extend(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="1.8" fill="{color}"/>' for a, b in pts)
+    ly = 62.0
+    for color, label, _, dashed in series:
+        dash = ' stroke-dasharray="4 2.5"' if dashed else ""
+        g.items.append(f'<line x1="528" y1="{ly - 3.5}" x2="556" y2="{ly - 3.5}" stroke="{color}" stroke-width="1.8"{dash}/>')
+        g.text(564, ly, label.replace("_", "_"), size=10, fill=INK)
+        ly += 17
     g.save("labels")
 
 
@@ -426,12 +394,12 @@ def embeddings() -> None:
         churn = te["churn"].to_numpy()[pick] == 1
         np.savez(cache, xy=xy, churn=churn)
     g = Svg(380, 360)
-    g.legend([(QUIET, "Active next month"), (BLUE, "No transaction next month")])
+    g.legend([(QUIET, "Active next month"), (LIME, "No transaction next month")])
     lo, hi = xy.min(0), xy.max(0)
     sx = 340 / (hi - lo).max()
     off = np.array([20 + (340 - (hi - lo)[0] * sx) / 2, 36 + (316 - (hi - lo)[1] * sx) / 2])
     p = (xy - lo) * sx + off
-    for mask, color in ((~churn, QUIET), (churn, BLUE)):
+    for mask, color in ((~churn, QUIET), (churn, LIME)):
         g.items.extend(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="1.05" fill="{color}"/>' for a, b in p[mask])
     g.save("embeddings")
 
