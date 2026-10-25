@@ -98,6 +98,7 @@ def main() -> None:
     p.add_argument("--batch", type=int, default=16)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=Path, default=None, help="csv path; default <ckpt dir>/zero_shot.csv")
+    p.add_argument("--save-scores", action="store_true", help="also write each row's scores to zero_shot_scores.parquet")
     a = p.parse_args()
 
     t0 = time.time()
@@ -146,6 +147,11 @@ def main() -> None:
     r = pd.DataFrame(res, columns=["label", *cols]).set_index("label")
     print(r.round(4).to_string())
     out = a.out or a.ckpt.parent / "zero_shot.csv"
+    if a.save_scores:
+        saved = rows[["client_id", "mon", "cut", "n_hist", *FIRST]].assign(in_rand=in_rand)
+        for k, lab in enumerate(FIRST):
+            saved[f"zs_{lab}"], saved[f"unseen_{lab}"] = zs[:, k], unseen[:, k]
+        saved.to_parquet(out.with_name("zero_shot_scores.parquet"))
     r.to_csv(out)
     print(f"written to {out} ({time.time() - t0:.0f}s)")
 

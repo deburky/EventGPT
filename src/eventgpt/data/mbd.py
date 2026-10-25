@@ -232,18 +232,31 @@ def client_slices(fold_dir: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return ids, begin, end
 
 
-def write_pretrain(folds: list[int]) -> dict[str, int]:
-    """Concatenate the pretraining folds into train and val streams, split by a stable hash of the client id."""
+def write_pretrain(folds: list[int], before: float | None = None, out: Path | None = None) -> dict[str, int]:
+    """Concatenate the pretraining folds into train and val streams, split by a stable hash of the client id.
+
+    With before (UTC epoch seconds) each client's stream ends at its last event before that time, and a client
+    with no event before it besides the profile event is left out; the folds themselves stay whole.
+    """
     parts: dict[str, list[np.ndarray]] = {"train": [], "val": []}
     for k in folds:
         d = OUT / f"fold={k}"
         stream = np.load(d / "tokens.npy")
         ids, begin, end = client_slices(d)
+        if before is not None:
+            ev, est, t = np.load(d / "client_events.npy"), np.load(d / "event_start.npy"), np.load(d / "event_time.npy")
+            n_keep = np.array([np.searchsorted(t[ev[c] : ev[c + 1]], before, side="left") for c in range(len(ids))])
+            stop = np.where(ev[:-1] + n_keep < ev[1:], est[np.minimum(ev[:-1] + n_keep, len(est) - 1)], end)
+            keep = n_keep >= 2  # the profile event and at least one real event
+            ids, begin, end = ids[keep], begin[keep], stop[keep]
+            stream = np.concatenate([stream[b:e] for b, e in zip(begin, end, strict=True)])
+            end = np.cumsum(end - begin)
+            begin = np.r_[0, end[:-1]]
         is_val = pd.util.hash_array(ids.astype(object)) % 10_000 < VAL_SHARE * 10_000
         token_is_val = np.repeat(is_val, end - begin)  # clients tile the stream, so this is one flag per token
         parts["train"].append(stream[~token_is_val])
         parts["val"].append(stream[token_is_val])
-    out = OUT / "pretrain"
+    out = out or OUT / "pretrain"
     out.mkdir(parents=True, exist_ok=True)
     sizes = {}
     for split, chunks in parts.items():
@@ -258,8 +271,15 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--test-fold", type=int, default=0, help="fold held out of pretraining and vocabulary fitting")
     p.add_argument("--no-geo", action="store_true", help="leave geolocation events out of every stream; the vocabulary keeps geo tokens")
+    p.add_argument("--pretrain-before", default="", help="end the pretraining streams before this date, Moscow time (YYYY-MM-DD)")
+    p.add_argument("--pretrain-only", action="store_true", help="only repack the pretraining streams from folds already written")
+    p.add_argument("--pretrain-out", type=Path, default=None, help="directory of the pretraining streams; default <MBD_OUT>/pretrain")
     a = p.parse_args()
     pre = [k for k in range(N_FOLDS) if k != a.test_fold]
+    before = pd.Timestamp(a.pretrain_before, tz="Europe/Moscow").timestamp() if a.pretrain_before else None
+    if a.pretrain_only:
+        print(f"pretrain folds {pre}: {write_pretrain(pre, before, a.pretrain_out)}", flush=True)
+        return
     con = _con()
     t0 = time.time()
     vocab = fit_vocab(con, pre)
@@ -273,7 +293,7 @@ def main() -> None:
         print(f"fold {k}: {stats} ({time.time() - t0:.0f}s)", flush=True)
         del df
     (OUT / "test_fold.txt").write_text(f"{a.test_fold}\n")
-    print(f"pretrain folds {pre}: {write_pretrain(pre)} ({time.time() - t0:.0f}s)", flush=True)
+    print(f"pretrain folds {pre}: {write_pretrain(pre, before, a.pretrain_out)} ({time.time() - t0:.0f}s)", flush=True)
 
 
 if __name__ == "__main__":
