@@ -356,61 +356,6 @@ def windows() -> None:
     g.save("windows")
 
 
-def ensemble() -> None:
-    """Official mean ROC-AUC of the rank-averaged ensemble against its weight on EventGPT, both seeds."""
-    curve = Path("data/runs/ensemble_weight_curve.csv")
-    if not curve.exists():
-        from sklearn.metrics import roc_auc_score
-
-        labs = ["target_1", "target_2", "target_3", "target_4"]
-        eng = pd.read_parquet("data/baseline/preds.parquet")[["client_id", "mon", *labs]]
-        ws = np.round(np.arange(0, 1.0001, 0.05), 2)
-        cols = {"w": ws}
-        for seed in (42, 43):
-            run = Path(f"data/runs/hier-alqp-s{seed}/probe-now-2k")
-            te = pd.read_parquet(run / "test_rows.parquet")[["client_id", "mon", *labs]]
-            emb = pd.read_parquet(run / "preds_profile_counts.parquet")[["client_id", "mon", *labs]]
-            m = te.merge(emb, on=["client_id", "mon"], suffixes=("", "_e")).merge(
-                eng.rename(columns={lab: f"{lab}_c" for lab in labs}), on=["client_id", "mon"]
-            )
-            ranks = {lab: (m[f"{lab}_e"].rank(pct=True), m[f"{lab}_c"].rank(pct=True)) for lab in labs}
-            cols[f"s{seed}"] = [np.mean([roc_auc_score(m[lab], w * ranks[lab][0] + (1 - w) * ranks[lab][1]) for lab in labs]) for w in ws]
-        pd.DataFrame(cols).to_csv(curve, index=False)
-    d = pd.read_csv(curve)
-    g = Svg(400, 290)
-    g.legend([(TEAL[1], "seed 42"), (VIOLET, "seed 43")])
-    px0, px1, py0, py1 = 66, 380, 226, 44
-    lo, hi = 0.805, 0.835
-
-    def tx(w: float) -> float:
-        return px0 + w * (px1 - px0)
-
-    def ty(v: float) -> float:
-        return py0 - (v - lo) / (hi - lo) * (py0 - py1)
-
-    for v in (0.81, 0.82, 0.83):
-        g.items.append(f'<line x1="{px0}" y1="{ty(v):.1f}" x2="{px1}" y2="{ty(v):.1f}" stroke="#E9EDF1" stroke-width="1"/>')
-        g.text(px0 - 8, ty(v) + 3.5, f"{v:.2f}", size=10, fill=MUTED, anchor="end")
-    g.items.append(f'<line x1="{px0}" y1="{py0}" x2="{px1}" y2="{py0}" stroke="{MUTED}" stroke-width="1"/>')
-    for w in (0, 0.25, 0.5, 0.75, 1):
-        g.text(tx(w), py0 + 16, f"{w:g}", size=10, fill=MUTED, anchor="middle")
-    g.text(px0, py0 + 34, "engineered features only", size=10, fill=MUTED)
-    g.text(px1, py0 + 34, "EventGPT only", size=10, fill=MUTED, anchor="end")
-    xm = tx(0.5)
-    g.items.append(f'<line x1="{xm:.1f}" y1="{py1}" x2="{xm:.1f}" y2="{py0}" stroke="{MUTED}" stroke-width="1" stroke-dasharray="3 3"/>')
-    g.text(tx(0.5) + 6, py1 + 10, "weight used", size=10, fill=MUTED)
-    g.items.append(
-        f'<text transform="translate(16,{(py0 + py1) / 2}) rotate(-90)" font-family="{SANS}" font-size="10.5" '
-        f'fill="{INK}" text-anchor="middle">official mean ROC-AUC</text>'
-    )
-    for col, color in (("s42", TEAL[1]), ("s43", VIOLET)):
-        pts = [(tx(w), ty(v)) for w, v in zip(d["w"], d[col], strict=True)]
-        d_pts = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
-        g.items.append(f'<polyline points="{d_pts}" fill="none" stroke="{color}" stroke-width="1.6"/>')
-        g.items.extend(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="2" fill="{color}"/>' for a, b in pts)
-    g.save("ensemble")
-
-
 def time_positions() -> None:
     """Ordinal positions against positions from elapsed time, Eq. (1)."""
     g = Svg(760, 330)
@@ -461,9 +406,6 @@ def time_positions() -> None:
 NAVY = ["#14283C", "#3E5A78", "#7189A3", "#A3B4C6"]
 TEAL = ["#0B5F58", "#13827A", "#2FA597", "#5DBDB0", "#8ACFC5"]
 BLUE = "#3B7DDD"
-VIOLET = "#6D5BD0"
-LIME = "#B4D22B"  # the token lime, saturated so points read on white
-QUIET = "#C9D2DC"
 
 
 def labels() -> None:
@@ -526,37 +468,9 @@ def labels() -> None:
     g.save("labels")
 
 
-def embeddings() -> None:
-    """t-SNE of the embeddings of 12,000 test clients at the as-of date of 1 December 2022."""
-    cache = RUN / "tsne_2022-12.npz"
-    te = pd.read_parquet(RUN / "test_rows.parquet")
-    if cache.exists():
-        got = np.load(cache)
-        xy, churn = got["xy"], got["churn"]
-    else:
-        from sklearn.decomposition import PCA
-        from sklearn.manifold import TSNE
-
-        z = np.load(RUN / "embeddings.npz")["test_last"]
-        dec = np.flatnonzero(te["mon"].astype(str).str[:7].to_numpy() == "2022-12")
-        pick = np.random.default_rng(0).choice(dec, 12000, replace=False)
-        xy = TSNE(2, init="pca", perplexity=40, random_state=0).fit_transform(PCA(50, random_state=0).fit_transform(z[pick]))
-        churn = te["churn"].to_numpy()[pick] == 1
-        np.savez(cache, xy=xy, churn=churn)
-    g = Svg(380, 360)
-    g.legend([(QUIET, "Active next month"), (LIME, "No transaction next month")])
-    lo, hi = xy.min(0), xy.max(0)
-    sx = 340 / (hi - lo).max()
-    off = np.array([20 + (340 - (hi - lo)[0] * sx) / 2, 36 + (316 - (hi - lo)[1] * sx) / 2])
-    p = (xy - lo) * sx + off
-    for mask, color in ((~churn, QUIET), (churn, LIME)):
-        g.items.extend(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="1.05" fill="{color}"/>' for a, b in p[mask])
-    g.save("embeddings")
-
-
 if __name__ == "__main__":
     import sys
 
-    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "time_positions", "labels", "embeddings"]
+    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "windows", "time_positions", "labels"]
     for name in names:
         globals()[name]()

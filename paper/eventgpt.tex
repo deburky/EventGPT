@@ -459,14 +459,6 @@ official mean ROC-AUC & 0.774 & 0.775 & 0.786 & 0.768 \\
 
 \paragraph{Against feature tables.} Within the same 2,048-token window, EventGPT matches the token-count table on random windows and exceeds it on aligned windows (0.787 against 0.777). Over the full history both tables are ahead: token counts reach 0.803 and the engineered features 0.816. The token-count table is also ahead on churn, within the window and over the full history. On transactions alone, EventGPT is level with token counts over the full transaction history (Section~\ref{sec:ablations}).
 
-In a t-SNE map of the embeddings of 12,000 test clients at the as-of date of 1 December 2022, the last with a month of transactions after it, clients with no transaction in the following month gather in regions of the map (Figure~\ref{fig:tsne}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.5\textwidth]{figures/embeddings.pdf}
-\caption{t-SNE of the EventGPT embedding (aligned windows, seed 42, last state) for 12,000 test clients at the as-of date of 1 December 2022, after a projection to 50 principal components. Lime marks the clients with no transaction in the following month.}
-\label{fig:tsne}
-\end{figure}
 
 \subsection{Aligned training windows}\label{sec:aligned}
 
@@ -530,7 +522,7 @@ ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.
 \end{tabular}}
 \end{table}
 
-\paragraph{Static attributes.} The profile fields matter most for \tok{target\_4}: removing them costs the engineered features more there than removing any other feature group. Read beside the hidden state (Section~\ref{sec:static}), the field embeddings raise \tok{target\_4} from 0.754 to 0.821 (seed 42), and with early fusion in pretraining as well it reaches the engineered features on both seeds. Early fusion on its own does not reach the classification head: the hidden state of the model trained with it scores no higher than without it. During pretraining the projection of the fused attributes grows from zero to a norm of 15.6, so the model uses the attributes to predict next tokens. Next-token prediction does not put them into the last hidden state in a form a linear head can read. Late fusion lowers \tok{target\_1} slightly, the one official target that loses.
+\paragraph{Static attributes.} The profile fields matter most for \tok{target\_4}: removing them costs the engineered features more there than removing any other feature group. Read beside the hidden state (Section~\ref{sec:static}), the field embeddings raise \tok{target\_4} from 0.754 to 0.821 (seed 42), and with early fusion in pretraining as well it reaches the engineered features on both seeds. Early fusion on its own does not reach the classification head: the hidden state of the model trained with it scores no higher than without it. During pretraining the projection of the fused attributes grows from zero to a norm of 15.6, so the model uses the attributes to predict next tokens. Next-token prediction does not put them into the last hidden state in a form a linear head can read. Late fusion lowers \tok{target\_1} slightly, the one official target that loses. The last hidden state carries time far better than the attributes: a linear model reads the client's log tenure from it with $R^2 = 0.89$, but \tok{src\_type32} only at a balanced accuracy of 0.37 over its five most common values and the rest, against 0.17 by chance (aligned windows, seed 42, 12,000 test clients at the as-of date of 1 December 2022).
 
 \paragraph{Timing.} We also add five numbers read off the event timestamps: the days since the last and since the first event, and the number of events in the last 30 days, the last 90 days and in all, each as $\log(1 + x)$. They barely change the official mean and leave churn unchanged. The engineered features lose 0.009 without their timing features, so the hidden state, with the now event and temporal RoPE positions from the client's first event, appears to hold this information already.
 
@@ -542,14 +534,8 @@ ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.
 
 \paragraph{Combining the two.} The embedding adds to the engineered features only as a separate model. As features inside the engineered-feature table, either as 32 principal components or as a CatBoost embedding feature, it leaves the mean unchanged or lower (Section~\ref{sec:finetune}). A rank-averaged ensemble of the embedding with late-fused profile fields and token counts and the engineered features reaches 0.830 on both seeds, 0.014 above the engineered features alone, with intervals that exclude zero (Table~\ref{tab:gap}). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets; churn does not change. In an ensemble with the token-count table instead, which needs no schema either, the embedding reaches the level of the engineered features (0.816).
 
-The ensemble's weights are equal and fixed in advance, and it costs one prediction from each model. The fixed weight lies on the flat top of the curve: with any weight on EventGPT from 0.3 to 0.6 the official mean stays within 0.002 of its peak on both seeds (Figure~\ref{fig:ensemble}). The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A second draw of the training rows of the embedding's own classification head (seed 42) gives 0.808 for the embedding against 0.810 and the same ensemble score, 0.830.
+The ensemble's weights are equal and fixed in advance, and it costs one prediction from each model. The fixed weight lies on the flat top of the curve: with any weight on EventGPT from 0.3 to 0.6 the official mean stays within 0.002 of its peak on both seeds. The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A second draw of the training rows of the embedding's own classification head (seed 42) gives 0.808 for the embedding against 0.810 and the same ensemble score, 0.830.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.55\textwidth]{figures/ensemble.pdf}
-\caption{Official mean ROC-AUC of the rank-averaged ensemble against its weight on EventGPT, from the engineered features alone (0) to EventGPT with late-fused profile fields and token counts alone (1), for both pretraining seeds. The dashed line marks the weight used, fixed in advance.}
-\label{fig:ensemble}
-\end{figure}
 
 \subsection{Ablations}\label{sec:ablations}
 
