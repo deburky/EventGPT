@@ -1,12 +1,10 @@
-# EventGPT: A Hierarchical Foundation Model for Customer Event Histories
+# EventGPT: Next-Event Pretraining on Banking Customer Histories
 
 Working draft by Denis Burakov. EventGPT is a causal transformer pretrained by next-token prediction on
 customer event histories: an event encoder pools each event into a vector, a history decoder models the
-event vectors with rotary positions set by log elapsed time, and a token decoder predicts the next event.
-The paper evaluates its frozen embeddings on the product-propensity task of the public Multimodal
-Banking Dataset (MBD-mini).
-
-Numbers marked **TBD** in the PDF are pending runs; every other number is measured.
+event vectors with rotary positions set by elapsed time, and a token decoder predicts the next event.
+The paper evaluates its zero-shot scores and frozen embeddings on the public Multimodal Banking Dataset
+(MBD-mini).
 
 ## Contents
 
