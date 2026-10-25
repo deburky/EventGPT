@@ -294,6 +294,123 @@ def timeline() -> None:
     g.save("timeline")
 
 
+def windows() -> None:
+    """A random training window against an aligned one, on a real client's events (fold 1), shortened to 110 tokens."""
+    g = Svg(760, 236)
+    g.legend([(EMB, "[USR]"), (DEC, "Profile event"), (TOK, "Transaction"), (ENC, "Geolocation")])
+    px, x0, bh = 3.2, 150, 22
+    kinds = ["trx"] * 13 + ["geo", "trx"] + ["geo"] * 12 + ["trx"] + ["geo"] * 11
+    client = [("usr", 1), ("profile", 7)] + [(k, 9 if k == "trx" else 5) for k in kinds]
+    prev = [("trx", 9), ("geo", 5), ("geo", 5), ("trx", 9)]
+    fill = {"usr": EMB, "profile": DEC, "trx": TOK, "geo": ENC}
+    stream = prev + client
+    starts = np.cumsum([0] + [n for _, n in stream])
+    w0 = int(starts[len(prev) + 2 + 3]) + 4  # four tokens into the fourth event after the profile
+    w1 = w0 + 110
+    n_show = 180
+
+    def strip(y: float, blocks: list[tuple[str, int, str]], label: str, start: float = x0) -> None:
+        g.text(20, y + 15, label, size=11, weight=600)
+        x = float(start)
+        for kind, n, mark in blocks:
+            w = n * px
+            dash = "3 2" if mark == "cut" else ""
+            stroke = BLUE if mark == "gap" else (MUTED if mark == "cut" else "none")
+            g.rect(x, y, max(w - 1.2, 1), bh, fill[kind] if mark != "cut" else "white", stroke, r=3, dash=dash)
+            x += w
+
+    # packed stream with the random window marked
+    blocks, t = [], 0
+    for kind, n in stream:
+        if t >= n_show:
+            break
+        blocks.append((kind, min(n, n_show - t), ""))
+        t += n
+    strip(44, blocks, "Packed stream")
+    bx0, bx1 = x0 + w0 * px, x0 + w1 * px
+    g.items.append(f'<path d="M{bx0:.1f},72 L{bx0:.1f},78 L{bx1:.1f},78 L{bx1:.1f},72" fill="none" stroke="{INK}" stroke-width="1.2"/>')
+    g.text((bx0 + bx1) / 2, 92, "a window drawn at a random offset", size=10, fill=MUTED, anchor="middle")
+    # random window: starts mid-event, no [USR] or profile
+    blocks = []
+    for (kind, n), a in zip(stream, starts[:-1], strict=True):
+        lo, hi = max(a, w0), min(a + n, w1)
+        if hi > lo:
+            blocks.append((kind, int(hi - lo), "cut" if (a < w0 or a + n > w1) else ""))
+    strip(112, blocks, "Random window", bx0)
+    # aligned window: [USR] and the profile event first, then the most recent whole events
+    budget = 110 - 8
+    kept: list[tuple[str, int, str]] = []
+    for (kind, n), a in reversed(list(zip(stream, starts[:-1], strict=True))):
+        if a + n > w1 or kind in ("usr", "profile") or a < starts[len(prev)]:
+            continue
+        if n > budget:
+            break
+        kept.insert(0, (kind, n, ""))
+        budget -= n
+    kept[0] = (kept[0][0], kept[0][1], "gap")
+    a0 = bx1 - (8 + sum(n for _, n, _ in kept)) * px
+    strip(160, [("usr", 1, ""), ("profile", 7, ""), *kept], "Aligned window", a0)
+    gx = a0 + 8 * px + kept[0][1] * px / 2
+    g.items.append(f'<line x1="{gx:.1f}" y1="184" x2="{gx:.1f}" y2="200" stroke="{BLUE}" stroke-width="1.2"/>')
+    g.text(gx - 6, 214, "its gap token counts from the client's first event", size=10, fill=MUTED)
+    g.save("windows")
+
+
+def ensemble() -> None:
+    """Official mean ROC-AUC of the rank-averaged ensemble against its weight on EventGPT, both seeds."""
+    curve = Path("data/runs/ensemble_weight_curve.csv")
+    if not curve.exists():
+        from sklearn.metrics import roc_auc_score
+
+        labs = ["target_1", "target_2", "target_3", "target_4"]
+        eng = pd.read_parquet("data/baseline/preds.parquet")[["client_id", "mon", *labs]]
+        ws = np.round(np.arange(0, 1.0001, 0.05), 2)
+        cols = {"w": ws}
+        for seed in (42, 43):
+            run = Path(f"data/runs/hier-alqp-s{seed}/probe-now-2k")
+            te = pd.read_parquet(run / "test_rows.parquet")[["client_id", "mon", *labs]]
+            emb = pd.read_parquet(run / "preds_profile_counts.parquet")[["client_id", "mon", *labs]]
+            m = te.merge(emb, on=["client_id", "mon"], suffixes=("", "_e")).merge(
+                eng.rename(columns={lab: f"{lab}_c" for lab in labs}), on=["client_id", "mon"]
+            )
+            ranks = {lab: (m[f"{lab}_e"].rank(pct=True), m[f"{lab}_c"].rank(pct=True)) for lab in labs}
+            cols[f"s{seed}"] = [np.mean([roc_auc_score(m[lab], w * ranks[lab][0] + (1 - w) * ranks[lab][1]) for lab in labs]) for w in ws]
+        pd.DataFrame(cols).to_csv(curve, index=False)
+    d = pd.read_csv(curve)
+    g = Svg(400, 290)
+    g.legend([(TEAL[1], "seed 42"), (VIOLET, "seed 43")])
+    px0, px1, py0, py1 = 66, 380, 226, 44
+    lo, hi = 0.805, 0.835
+
+    def tx(w: float) -> float:
+        return px0 + w * (px1 - px0)
+
+    def ty(v: float) -> float:
+        return py0 - (v - lo) / (hi - lo) * (py0 - py1)
+
+    for v in (0.81, 0.82, 0.83):
+        g.items.append(f'<line x1="{px0}" y1="{ty(v):.1f}" x2="{px1}" y2="{ty(v):.1f}" stroke="#E9EDF1" stroke-width="1"/>')
+        g.text(px0 - 8, ty(v) + 3.5, f"{v:.2f}", size=10, fill=MUTED, anchor="end")
+    g.items.append(f'<line x1="{px0}" y1="{py0}" x2="{px1}" y2="{py0}" stroke="{MUTED}" stroke-width="1"/>')
+    for w in (0, 0.25, 0.5, 0.75, 1):
+        g.text(tx(w), py0 + 16, f"{w:g}", size=10, fill=MUTED, anchor="middle")
+    g.text(px0, py0 + 34, "engineered features only", size=10, fill=MUTED)
+    g.text(px1, py0 + 34, "EventGPT only", size=10, fill=MUTED, anchor="end")
+    xm = tx(0.5)
+    g.items.append(f'<line x1="{xm:.1f}" y1="{py1}" x2="{xm:.1f}" y2="{py0}" stroke="{MUTED}" stroke-width="1" stroke-dasharray="3 3"/>')
+    g.text(tx(0.5) + 6, py1 + 10, "weight used", size=10, fill=MUTED)
+    g.items.append(
+        f'<text transform="translate(16,{(py0 + py1) / 2}) rotate(-90)" font-family="{SANS}" font-size="10.5" '
+        f'fill="{INK}" text-anchor="middle">official mean ROC-AUC</text>'
+    )
+    for col, color in (("s42", TEAL[1]), ("s43", VIOLET)):
+        pts = [(tx(w), ty(v)) for w, v in zip(d["w"], d[col], strict=True)]
+        d_pts = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
+        g.items.append(f'<polyline points="{d_pts}" fill="none" stroke="{color}" stroke-width="1.6"/>')
+        g.items.extend(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="2" fill="{color}"/>' for a, b in pts)
+    g.save("ensemble")
+
+
 def time_positions() -> None:
     """Ordinal positions against positions from elapsed time, Eq. (1)."""
     g = Svg(760, 330)
@@ -344,6 +461,7 @@ def time_positions() -> None:
 NAVY = ["#14283C", "#3E5A78", "#7189A3", "#A3B4C6"]
 TEAL = ["#0B5F58", "#13827A", "#2FA597", "#5DBDB0", "#8ACFC5"]
 BLUE = "#3B7DDD"
+VIOLET = "#6D5BD0"
 LIME = "#B4D22B"  # the token lime, saturated so points read on white
 QUIET = "#C9D2DC"
 

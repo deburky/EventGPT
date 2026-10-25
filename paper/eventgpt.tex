@@ -56,7 +56,7 @@
 
 \begin{abstract}
 \noindent
-A model pretrained to predict a customer's next event can score questions about future events without labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, above a logistic head fitted on labels on two of them. Gradient boosting on 114 engineered features needs 10,000 to more than 300,000 randomly labeled client-months to attain these scores, depending on prevalence. As a frozen embedding, EventGPT is below both feature tables on MBD's four product targets: 0.787 against 0.803 for token counts over the full history and 0.816 for the engineered features. It exceeds token counts over its own 2,048-token window (0.777), and the gap lies in the client's static attributes and the history before the window. Reading the profile fields and full-history token counts beside the embedding brings it to 0.810 and 0.807 on two pretraining seeds, still below the engineered features ($p = 0.16$ and 0.057). Averaging its ranks with those of the engineered-feature model gives 0.830 on both seeds, 0.014 above that model alone (95\% interval $+0.009$ to $+0.019$), while the embedding added as features inside the table does not raise it. A window four times longer raises token counts by 0.024 and EventGPT not at all, which suggests that the hidden state limits what the embedding carries from long histories; fine-tuning and a model with six times the parameters add at most 0.005. The code and the pretrained checkpoints are released.
+A model pretrained to predict a customer's next event can score questions about future events without labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, above a logistic head fitted on labels on two of them. Gradient boosting on 114 engineered features needs 10,000 to more than 300,000 randomly labeled client-months to attain these scores, depending on prevalence. As a frozen embedding read by a classification head, EventGPT stays below gradient boosting on engineered features for MBD's four product targets (ROC-AUC 0.787 against 0.816). The gap lies in the clients' static attributes and in history older than the model's window: fusing the profile fields and adding token counts over the full history close most of it, and a longer window helps a token-count table but not EventGPT. The embedding is most useful beside the feature table, where a rank-averaged ensemble of the two reaches 0.830 on both pretraining seeds. Pretraining only on events before the label period changes these results little. The code and the pretrained weights are released.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -189,9 +189,16 @@ Fusing the attributes with the events, late or early, gives them a direct path. 
 
 \subsection{Training windows and tenure}\label{sec:windows}
 
-Windows drawn at random offsets of the packed stream usually start partway through a client's history and so lack \tok{[USR]} and the profile event, while every history embedded for evaluation opens with both. An \emph{aligned} window removes this mismatch.
+Windows drawn at random offsets of the packed stream usually start partway through a client's history and so lack \tok{[USR]} and the profile event, while every history embedded for evaluation opens with both. An \emph{aligned} window removes this mismatch (Figure~\ref{fig:windows}).
 
 When it starts partway through a client's history, \tok{[USR]} and the profile event are put back at its start, as evaluation does when it truncates a long history. The first event after them then follows the profile event, which is stamped at the client's first event, so its \tok{dt} token holds the gap from that first event instead of the gap from the event that was cut away. Every \tok{dt} thus measures the gap to the previous event the model sees, and the temporal RoPE positions of Eq.~(\ref{eq:pos}) count from the client's first event, which tells the model how long the client has been with the bank. Apart from the profile event and this one \tok{dt}, an aligned window holds the same tokens as a random one. Evaluation and zero-shot scoring build histories by the same rule for models trained this way.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/windows.pdf}
+\caption{A training window drawn at a random offset and the aligned window over the same events, on a client from fold 1, shortened to 110 tokens. The random window starts inside an event and holds no \tok{[USR]} or profile event; the aligned window puts both back in front, and the gap token of its first event counts from the client's first event.}
+\label{fig:windows}
+\end{figure}
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
@@ -546,7 +553,14 @@ ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.
 
 \paragraph{Combining the two.} The embedding adds to the engineered features only as a separate model. As features inside the engineered-feature table, either as 32 principal components or as a CatBoost embedding feature, it leaves the mean unchanged or lower (Section~\ref{sec:finetune}). A rank-averaged ensemble of the embedding with late-fused profile fields and token counts and the engineered features reaches 0.830 on both seeds, 0.014 above the engineered features alone, with intervals that exclude zero (Table~\ref{tab:gap}). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets; churn does not change. In an ensemble with the token-count table instead, which needs no schema either, the embedding reaches the level of the engineered features (0.816).
 
-The ensemble's weights are equal and fixed in advance, and it costs one prediction from each model. The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A different draw of the training rows of the embedding's own classification head was not tried.
+The ensemble's weights are equal and fixed in advance, and it costs one prediction from each model. The fixed weight lies on the flat top of the curve: with any weight on EventGPT from 0.3 to 0.6 the official mean stays within 0.002 of its peak on both seeds (Figure~\ref{fig:ensemble}). The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A different draw of the training rows of the embedding's own classification head was not tried.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.55\textwidth]{figures/ensemble.pdf}
+\caption{Official mean ROC-AUC of the rank-averaged ensemble against its weight on EventGPT, from the engineered features alone (0) to EventGPT with late-fused profile fields and token counts alone (1), for both pretraining seeds. The dashed line marks the weight used, fixed in advance.}
+\label{fig:ensemble}
+\end{figure}
 
 \subsection{Ablations}\label{sec:ablations}
 
