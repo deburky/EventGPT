@@ -22,6 +22,7 @@ COMMANDS = {
     "token-counts": ("eventgpt.baselines.token_counts", "CatBoost on token counts over time windows"),
     "emb-boost": ("eventgpt.baselines.emb_boost", "CatBoost on a frozen embedding"),
     "label-curve": ("eventgpt.baselines.label_curve", "CatBoost on n labeled rows beside the zero-shot score"),
+    "export": ("eventgpt.hub", "write a checkpoint as safetensors, config and vocabulary for the Hugging Face Hub"),
 }
 
 
