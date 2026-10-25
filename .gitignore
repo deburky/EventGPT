@@ -5,3 +5,5 @@ __pycache__/
 .DS_Store
 .mypy_cache/
 .ruff_cache/
+/paper/figures/src/*.svg
+/paper/figures/src/*.ai
