@@ -72,7 +72,7 @@ embedding brings it to 0.810 and 0.807 on two pretraining seeds, still below the
 0.014 above that model alone (95\% interval $+0.009$ to $+0.019$), while the embedding added as features
 inside the table adds nothing. A window four times longer raises token counts by 0.024 and EventGPT not
 at all, which suggests that the history state limits what the embedding carries from long histories;
-fine-tuning and a model six times wider add at most 0.005.
+fine-tuning and a model with six times the parameters add at most 0.005.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -699,7 +699,9 @@ depends on the history as a whole, they are level (0.574 and 0.58). Next-token l
 (0.774) and the token-count table (0.777) are level on the official targets, and EventGPT on aligned
 windows exceeds the table by 0.010 (0.787). Over the full history, token counts reach 0.803 and the
 hand-built aggregates 0.816. On churn the token-count table reaches 0.955 within the window and over the
-full history alike, against 0.935 for EventGPT.
+full history alike, against 0.935 for EventGPT. On transactions alone (seed 42,
+Section~\ref{sec:ablations}) EventGPT reaches 0.795, 0.010 above token counts in its window and level
+with them over the full transaction history (0.793).
 
 Figure~\ref{fig:tsne} shows the embeddings of 12,000 test clients at the December 2022 cut, the last
 with a month of transactions after it. Clients with no transaction in the following month gather in
@@ -729,7 +731,7 @@ cost the product targets about 0.01.
 \subsection{Fine-tuning and gradient boosting on the embedding}\label{sec:finetune}
 
 Fine-tuning the whole model does not raise the official targets (Table~\ref{tab:boost}). Starting from
-the aligned checkpoint of seed 42 (frozen 0.788), we train it end to end with one logistic output per
+the aligned checkpoint of seed 42 trained without QK-norm (frozen 0.788), we train it end to end with one logistic output per
 label on the probe's training rows: the head alone for the first 2,000 steps, then every weight, at a
 peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head, for one
 pass. The step is chosen by the official mean on a tenth of the training clients. The test mean stays at
@@ -747,7 +749,7 @@ Added as an embedding feature to the hand-built table, it lowers the mean by 0.0
 
 \begin{table}[htbp]
 \centering
-\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42. ROC-AUC on the test fold;
+\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42, trained without QK-norm. ROC-AUC on the test fold;
 the CatBoost rows use the same labels and early stopping as the aggregates, on the probe's training rows,
 drawn before January 2023 left the churn label, so the aggregates are 0.815 here against 0.816 in
 Table~\ref{tab:main}.}
@@ -768,9 +770,10 @@ CatBoost, aggregates and embedding feature & 0.808 \\
 
 \subsection{Where the gap to aggregates comes from}\label{sec:gap}
 
-Read beside EventGPT's history state, the profile fields add 0.019 and 0.014 to the official mean on the
-two pretraining seeds. Token counts over the full history add another 0.007 on seed 42 and nothing on
-seed 43, which leaves differences of $-0.006$ (95\% interval $-0.015$ to $+0.003$, $p = 0.16$) and
+Read beside the history state of the model pretrained with the profile path, the profile fields add
+0.019 and 0.014 to the official mean on the two pretraining seeds (0.014 and 0.013 for the model without
+the path). Token counts over the full history, read beside the state and the fields, add another 0.007 on
+seed 42 and nothing on seed 43, which leaves differences of $-0.006$ (95\% interval $-0.015$ to $+0.003$, $p = 0.16$) and
 $-0.009$ ($-0.018$ to $+0.000$, $p = 0.057$) (Table~\ref{tab:gap}). The table pairs every model with the
 aggregates on the same test rows (Section~\ref{sec:metrics}); both seeds read the same training rows.
 
@@ -780,7 +783,8 @@ aggregates on the same test rows (Section~\ref{sec:metrics}); both seeds read th
 mean ROC-AUC with its difference from the aggregates (0.816), a 95\% interval and $p$ from the paired
 standard error, clustered by client. The last two rows average, with equal weights, the ranks given by the
 readout with profile fields and token counts and by CatBoost on token counts over the full history or on
-the aggregates. Fitted on these training rows, the token counts reach 0.783 against 0.803 in
+the aggregates. The timing and token-count rows each add their features to the profile readout, not to the
+row above. Fitted on these training rows, the token counts reach 0.783 against 0.803 in
 Table~\ref{tab:main}, most of it on \tok{target\_2} (0.780 against 0.849).}
 \label{tab:gap}
 \footnotesize
@@ -798,8 +802,8 @@ history state & 0.786 & $-0.030$ [$-0.038$, $-0.022$] & $<0.001$ & 0.788 & $-0.0
 \multicolumn{7}{l}{\emph{EventGPT with the profile path}} \\
 history state & 0.784 & $-0.032$ [$-0.041$, $-0.022$] & $<0.001$ & 0.793 & $-0.023$ [$-0.032$, $-0.015$] & $<0.001$ \\
 \quad + profile readout & 0.803 & $-0.013$ [$-0.023$, $-0.004$] & 0.007 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
-\quad + timing & 0.804 & $-0.012$ [$-0.022$, $-0.003$] & 0.009 & 0.810 & $-0.006$ [$-0.014$, $+0.003$] & 0.19 \\
-\quad + token counts & 0.810 & $-0.006$ [$-0.015$, $+0.003$] & 0.16 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
+\quad + profile readout + timing & 0.804 & $-0.012$ [$-0.022$, $-0.003$] & 0.009 & 0.810 & $-0.006$ [$-0.014$, $+0.003$] & 0.19 \\
+\quad + profile readout + token counts & 0.810 & $-0.006$ [$-0.015$, $+0.003$] & 0.16 & 0.807 & $-0.009$ [$-0.018$, $+0.000$] & 0.057 \\
 \midrule
 rank average with token counts & 0.816 & $+0.000$ [$-0.006$, $+0.007$] & 0.90 & 0.816 & $+0.001$ [$-0.006$, $+0.007$] & 0.87 \\
 rank average with aggregates & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.001$ & 0.830 & $+0.014$ [$+0.009$, $+0.019$] & $<0.001$ \\
@@ -849,7 +853,11 @@ separate model it does add. The average of the ranks given by the readout with p
 counts and by the aggregates reaches 0.830 on both seeds, 0.014 above the aggregates alone (intervals
 $+0.010$ to $+0.019$ and $+0.009$ to $+0.019$), with gains of 0.032 and 0.033 on \tok{target\_2}, 0.023
 and 0.021 on \tok{target\_4} and 0.016 to 0.021 on four of the five event targets; churn falls by 0.001.
-The weights are equal and nothing is tuned on the test fold. Averaged instead with the token-count table,
+The weights are equal and nothing is tuned on the test fold. The 0.014 is paired: the average and the
+aggregates are scored on the same test rows, and the aggregates are the same fit in both, so the
+variation between fits of the aggregates, which moves the token-count table from 0.803 to 0.783 between
+draws of training rows, does not enter it. A different draw of the readout's own training rows was not
+tried. Averaged instead with the token-count table,
 which needs no schema either, the readout reaches 0.816 on both seeds, level with the aggregates.
 
 \subsection{Ablations}\label{sec:ablations}
@@ -883,7 +891,11 @@ event encoder & one feed-forward per event kind$^\dagger$ & 0.779 \\
 \end{table}
 
 Pretraining and probing on transactions alone raises the official mean from 0.774 to 0.795 and churn
-from 0.934 to 0.950 (seed 42), and the supervised head improves on all five event targets. Without daily
+from 0.934 to 0.950 (seed 42), and the supervised head improves on all five event targets. Geolocation
+is part of MBD and of every other result here, so this row answers a different question, what the model
+gives on the transaction stream alone, and it rests on one seed. The hand-built aggregates lose 0.001
+without their geolocation features (Section~\ref{sec:protocol}), so the input that costs EventGPT 0.021 is
+one the feature table barely uses. Without daily
 geolocation events the 2,048-token window holds more transactions, and token counts show the same
 effect: on transactions alone they lose 0.008 to the window (0.793 against 0.785), against 0.026 with
 geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.010 and is level with
@@ -941,7 +953,8 @@ events, and with packed attention its token stages grow linearly with the window
 \begin{table}[htbp]
 \centering
 \caption{Mean ROC-AUC over the official targets (churn without January 2023 in parentheses) against the
-window, seed 42 for the models. Token counts at full history reach 0.803.}
+window, seed 42 for the models. The aligned column is trained without QK-norm (0.786 with it at 2,048
+tokens). Token counts at full history reach 0.803.}
 \label{tab:window}
 \begin{tabular}{lcccc}
 \toprule
