@@ -5,7 +5,7 @@ and the vocabulary it was trained on (vocab.json, token ids and amount-bin edges
 the model: a history must be tokenized with the same table before the model can read it.
 
 Example: `uv run egpt export data/runs/hier-alqp-s42/hier-alqp-s42.pt --vocab /path/to/tokens/vocab --out hub/aligned-profile-s42`,
-then `from eventgpt.hub import from_pretrained; model, vocab = from_pretrained("deburky/eventgpt", "aligned-profile-s42")`.
+then `from eventgpt.hub import from_pretrained; model, vocab = from_pretrained("deburky/EventGPT", "aligned-profile-s42")`.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from eventgpt.data.vocab import Vocab
 from eventgpt.models.flat import GPT, GPTConfig
 from eventgpt.models.hierarchy import EventGPT, EventGPTConfig
 
-REPO = "deburky/eventgpt"
+REPO = "deburky/EventGPT"
 
 
 def build(meta: dict) -> nn.Module:

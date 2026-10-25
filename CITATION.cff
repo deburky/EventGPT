@@ -5,8 +5,8 @@ authors:
   - family-names: Burakov
     given-names: Denis
 license: Apache-2.0
-repository-code: "https://github.com/deburky/event-gpt"
-url: "https://huggingface.co/deburky/eventgpt"
+repository-code: "https://github.com/deburky/EventGPT"
+url: "https://huggingface.co/deburky/EventGPT"
 date-released: 2026-10-25
 keywords:
   - event sequences

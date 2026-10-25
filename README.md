@@ -7,7 +7,7 @@ no labels at all.
 
 The model is pretrained on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million
 transactions, 66.3 million geolocation pings). The weights are on the Hugging Face Hub as
-[`deburky/eventgpt`](https://huggingface.co/deburky/eventgpt), and every number in the paper can be rerun
+[`deburky/EventGPT`](https://huggingface.co/deburky/EventGPT), and every number in the paper can be rerun
 from this repository.
 
 Paper: *EventGPT: Next-Event Pretraining on Banking Customer Histories* (Burakov, 2026), in [`paper/`](paper/).
@@ -29,7 +29,7 @@ history. The paper has the comparisons, standard errors and ablations.
 ## Install
 
 ```bash
-pip install git+https://github.com/deburky/event-gpt
+pip install git+https://github.com/deburky/EventGPT
 ```
 
 or, for development, clone the repository and run `uv sync`.
@@ -59,7 +59,7 @@ query = "select * exclude (fold) from read_parquet('{}/{}/*/*.parquet', hive_par
 trx = duckdb.sql(query.format(root, "trx", ids)).df()
 geo = duckdb.sql(query.format(root, "geo", ids)).df()
 
-model, vocab = from_pretrained("deburky/eventgpt", "aligned-s42")
+model, vocab = from_pretrained("deburky/EventGPT", "aligned-s42")
 cuts = pd.DataFrame({"client_id": clients, "cut": pd.Timestamp("2022-10-01")})
 emb = api.embed(model, vocab, cuts, trx, geo)          # (3, 384): the history state at each cut
 p = api.next_event_probs(model, vocab, cuts, trx, geo) # (3, 5): P(next event is each kind), zero for clients who had it
@@ -135,6 +135,6 @@ were trained.
   title  = {EventGPT: Next-Event Pretraining on Banking Customer Histories},
   author = {Burakov, Denis},
   year   = {2026},
-  url    = {https://github.com/deburky/event-gpt}
+  url    = {https://github.com/deburky/EventGPT}
 }
 ```

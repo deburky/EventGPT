@@ -10,7 +10,7 @@ Example:
     from eventgpt import api
     from eventgpt.hub import from_pretrained
 
-    model, vocab = from_pretrained("deburky/eventgpt", "aligned-s42")
+    model, vocab = from_pretrained("deburky/EventGPT", "aligned-s42")
     cuts = pd.DataFrame({"client_id": ["c1", "c2"], "cut": pd.to_datetime(["2022-10-01", "2022-10-01"])})
     emb = api.embed(model, vocab, cuts, trx, geo)               # (2, 384)
     p = api.next_event_probs(model, vocab, cuts, trx, geo)      # (2, 5): the paper's five first-kind targets
