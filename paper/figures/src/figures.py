@@ -170,7 +170,7 @@ def hierarchy() -> None:
 
 def attention() -> None:
     """Attention within an event and across events."""
-    g = Svg(760, 344)
+    g = Svg(760, 290)
     g.legend([(ENC, "Attends within an event"), (HID, "Attends across events"), ("#FFFFFF", "Masked")])
     g.items.append(
         f'<rect x="{20 + 18 + 23 * 6.1 + 22 + 18 + 21 * 6.1 + 22}" y="8" width="12" height="12" rx="3" '
@@ -181,7 +181,6 @@ def attention() -> None:
         (390, "Across events", "Causal, within one customer", ["e1", "e2", "e3", "e4"], False),
     ]
     for x0, title, subtitle, labs, mono in panels:
-        g.rect(x0, 36, 350, 250, "white", LINE, r=12)
         g.text(x0 + 16, 60, title, size=12.5, weight=600)
         g.text(x0 + 16, 77, subtitle, size=10.5, fill=MUTED)
         gx, gy, cell = x0 + 130, 118, 34
@@ -201,8 +200,6 @@ def attention() -> None:
             else "Each event sees itself and the events before it"
         )
         g.text(x0 + 175, 272, note, size=10.5, fill=MUTED, anchor="middle")
-    g.rect(150, 302, 460, 30, "#F3F5F8", r=15)
-    g.text(380, 321, "An event is read in both directions only once it is complete and in the past", size=10.5, fill=INK, anchor="middle")
     g.save("attention")
 
 
