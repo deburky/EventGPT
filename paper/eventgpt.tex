@@ -62,7 +62,7 @@ A model pretrained to predict a customer's next event can score questions about 
 % -------------------------------------------------------------------------------
 \section{Introduction}\label{sec:intro}
 
-A model pretrained to predict a customer's next event can be useful in two ways. It can answer questions about future events directly, from its own predictions and without labels, and it can give one representation per customer that supervised downstream tasks can reuse. EventGPT is trained by predicting each next event token of a customer's event stream. This paper describes the architecture and measures both uses on a public banking benchmark.
+A model pretrained to predict a customer's next event can be useful in two ways. It can answer questions about future events directly, from its own predictions and without labels, and it can give one representation per customer that supervised downstream tasks can reuse. EventGPT\footnote{It is unrelated to EventGPT for event-camera streams \cite{eventgptcam}.} is trained by predicting each next event token of a customer's event stream. This paper describes the architecture and measures both uses on a public banking benchmark.
 
 The usual starting point is a feature table including counts, sums and recencies computed per customer and window that is fed into a machine learning algorithm. Building the table requires business knowledge (which field is the amount, which event types matter, which windows), and that work is repeated for every new event source. Each new question therefore needs labels and a model of its own. When events of many kinds with different fields are combined, as in a lender's applications, repayments and account events, there is often no obvious table to build. A pretrained event model needs neither the table nor, for questions about events, the labels.
 
@@ -281,7 +281,7 @@ The product targets are rare and drift (Figure~\ref{fig:labels}): \tok{target\_1
 
 \subsection{Heads and metrics}\label{sec:metrics}
 
-For each label we fit a logistic regression ($C = 0.1$) on the frozen, standardized embeddings of rows from folds 1--4, and score every row of fold 0. Positives are rare, so the training rows are every row positive for any label plus 60,000 rows sampled uniformly from the rest, reweighted to their share. We report ROC-AUC and PR-AUC (average precision). PR-AUC matters because a ranking can reach a high ROC-AUC while its top is still mostly negatives. A random ranking has a PR-AUC equal to the prevalence, which the tables give beside it.
+For each label we fit a logistic regression ($C = 0.1$) on the frozen, standardized embeddings of rows from folds 1--4, and score every row of fold 0. Positives are rare, so the training rows are every row positive for any label plus 60,000 rows sampled uniformly from the rest, reweighted to their share. We report ROC-AUC and PR-AUC (average precision). PR-AUC matters because a ranking can reach a high ROC-AUC while its top is still mostly negatives. A random ranking has a PR-AUC equal to the prevalence.
 
 Standard errors follow DeLong's method \cite{delong}, which writes ROC-AUC as a mean of placement values, clustered by client \cite{obuchowski}. Each test client contributes twelve monthly rows, which are not independent, so each row's contribution to the AUC is summed within its client and the variance is taken over the 20,217 clients. On simulated data with twelve correlated rows per client, this matches a bootstrap over clients (0.0129 against 0.0132), while the unclustered variance gives 0.0102. The same client sums give the covariance of two AUCs on the same rows, and from it the standard error of the official mean and of the difference between two models. Because both models rank the same clients, the difference is paired, and its standard error (about 0.005 on the official mean) is smaller than either model's own (about 0.006).
 
@@ -422,17 +422,21 @@ churn & 0.956 & 0.955 & 0.955 & 0.875 & 0.899 & 0.935 & 0.932 \\
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
-\caption{PR-AUC on the official targets, with the prevalence a random ranking would reach.}
+\caption{PR-AUC on the official targets, mean of two seeds, and the share of positives in the top 1\% of test rows. A random ranking scores the prevalence and 0.010. Late fusion and the ensemble are those of Table~\ref{tab:gap}.}
 \label{tab:main-pr}
-\begin{tabular}{lcccccccc}
+\begin{tabular}{lccccc}
 \toprule
- & & engineered & \multicolumn{2}{c}{token counts} & \multicolumn{2}{c}{flat decoder} & \multicolumn{2}{c}{EventGPT, last} \\
-target & prevalence & features & full & 2,048 tokens & last & recency & random & aligned \\
+ & & engineered & \multicolumn{2}{c}{EventGPT} & \\
+\cmidrule(lr){4-5}
+target & prevalence & features & hidden state & + profile fields, token counts & ensemble \\
 \midrule
-\tok{target\_1} & 0.0044 & 0.023 & 0.020 & 0.016 & 0.011 & 0.012 & 0.013 & 0.014 \\
-\tok{target\_2} & 0.0005 & 0.014 & 0.009 & 0.016 & 0.006 & 0.008 & 0.010 & 0.008 \\
-\tok{target\_3} & 0.0038 & 0.021 & 0.020 & 0.015 & 0.011 & 0.015 & 0.012 & 0.014 \\
-\tok{target\_4} & 0.0026 & 0.017 & 0.013 & 0.010 & 0.007 & 0.011 & 0.010 & 0.011 \\
+\tok{target\_1} & 0.0044 & 0.023 & 0.014 & 0.016 & 0.023 \\
+\tok{target\_2} & 0.0005 & 0.014 & 0.008 & 0.017 & 0.021 \\
+\tok{target\_3} & 0.0038 & 0.021 & 0.014 & 0.019 & 0.022 \\
+\tok{target\_4} & 0.0026 & 0.017 & 0.011 & 0.018 & 0.019 \\
+mean & 0.0028 & 0.019 & 0.012 & 0.017 & 0.021 \\
+\midrule
+recall, top 1\% & 0.010 & 0.157 & 0.113 & 0.154 & 0.166 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -537,6 +541,8 @@ ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.
 
 The ensemble's weights are equal and fixed in advance, and it costs one prediction from each model. With any weight on EventGPT from 0.3 to 0.6, the official mean stays within 0.002 of its peak on both seeds. The 0.014 is also paired: the average and the engineered-feature model are scored on the same test rows, with the same fit of that model in both. The variation between fits, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A second draw of the training rows of the embedding's own classification head (seed 42) gives 0.808 for the embedding against 0.810 and the same ensemble score, 0.830.
 
+\paragraph{Top of the ranking.} On PR-AUC the hidden state trails the engineered features on every official target, by more than its ROC-AUC suggests (Table~\ref{tab:main-pr}). With late fusion of the profile fields and token counts, EventGPT leads the engineered features on \tok{target\_2} and \tok{target\_4} and puts about as many positives in the top 1\% of test rows (15\% against 16\%). The ensemble is highest on both measures.
+
 
 \subsection{Ablations}\label{sec:ablations}
 
@@ -637,6 +643,8 @@ The code (tokenization, model, training, evaluation and baselines) is at \url{ht
 \bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A. (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the 2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
 
 \bibitem{latte} Fadeev, E., Mollaev, D., Shestov, A., Zoloev, O., Sakhno, A., Korolev, D., Kireev, I., Savchenko, A., and Makarenko, M. (2025). LATTE: Learning aligned transactions and textual embeddings for bank clients. arXiv:2508.10021.
+
+\bibitem{eventgptcam} Liu, S., Li, J., Zhao, G., Zhang, Y., Meng, X., Yu, F.~R., Ji, X., and Li, M. (2025). EventGPT: Event stream understanding with multimodal large language models. In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}. doi:10.1109/CVPR52734.2025.02713.
 
 \bibitem{delong} DeLong, E.~R., DeLong, D.~M., and Clarke-Pearson, D.~L. (1988). Comparing the areas under two or more correlated receiver operating characteristic curves: a nonparametric approach. \emph{Biometrics} 44(3), 837--845.
 
