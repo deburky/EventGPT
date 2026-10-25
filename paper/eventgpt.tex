@@ -79,7 +79,7 @@ causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGM
 foundation model for banking event sequences, trained on a public benchmark, with code anyone can rerun. The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are released (Section~\ref{app:code}). \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a supervised head on two of them; the engineered features pass it only after 10,000 to more than 300,000 randomly labeled client-months, depending on the target (Section~\ref{sec:zero-shot}). \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against engineered features and
 a schema-free token-count table, with paired standard errors clustered by client. The embedding is below both tables and exceeds token counts only inside its own window. The gap lies in the static attributes and the history before the window; read beside the embedding, these leave differences of $-0.006$ and $-0.009$ from the engineered features on two seeds ($p = 0.16$ and 0.057) (Sections~\ref{sec:protocol}--\ref{sec:results}).
 \item \textbf{The embedding as a second ranker beside a feature table}: averaging its ranks with those of the engineered features adds 0.014 to their ROC-AUC on both seeds (intervals excluding zero, not tuned on the test fold), while as features inside the table it leaves their ROC-AUC unchanged or lower (Section~\ref{sec:gap}).
-\item \textbf{Profile features}: the profile fields' token embeddings appended to the hidden state, which add 0.013 to 0.019 to the ROC-AUC of the product targets at width 384 and brings \tok{target\_4} level with the engineered features.
+\item \textbf{Profile features}: the profile fields' token embeddings appended to the hidden state, which add 0.013 to 0.019 rank-ordering points to the product targets at width 384 and brings \tok{target\_4} level with the engineered features.
 Adding the attributes to every event during pretraining does not put them into the hidden state
 (Sections~\ref{sec:static} and~\ref{sec:gap}).
 \item \textbf{Aligned training windows} that open as the embedded histories do, with the time since the client's first event, which raise the product targets by 0.013 over windows drawn at random offsets (Section~\ref{sec:aligned}).
@@ -89,6 +89,18 @@ that date, so it can be stored and reused across tasks without leaking the futur
 \item \textbf{A tokenization of MBD} that separates static client attributes into a profile event and thins geolocation to one event per day, which cuts the stream by 27\% with no loss of information
 (Section~\ref{sec:data}).
 \end{enumerate}
+
+\paragraph{Terms.}
+\begin{description}[leftmargin=0pt, itemsep=2pt]
+\item[As-of date.] The first day of a month. A customer's history at an as-of date is every event before it, and every score and embedding is computed at one.
+\item[Product targets.] MBD's four labels, also called the official targets, \tok{target\_1} to \tok{target\_4}: the customer takes product $k$ during the month. Their mean ROC-AUC is the \emph{official mean}.
+\item[Event targets.] The customer makes a transaction of a given kind (type and subtype) for the first time during the month. Five such kinds are used.
+\item[Engineered features.] 114 features built by hand from the schema (counts, amounts, recencies and the profile fields), read by CatBoost.
+\item[Token counts.] Counts of the 200 most frequent tokens over time windows, read by CatBoost. They need no knowledge of the schema.
+\item[Hidden state.] The history decoder's output after an event. The last hidden state before the as-of date is the customer embedding.
+\item[Zero-shot score.] The model's probability that the next event is of a given kind, read with no labels and no classification head.
+\end{description}
+
 
 % -------------------------------------------------------------------------------
 \section{Related work}\label{sec:related}
@@ -104,7 +116,7 @@ transactions and fuses the embedding with a tabular network at fine-tuning time 
 % -------------------------------------------------------------------------------
 \section{Model}\label{sec:model}
 
-EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each event into one vector, a history decoder models the sequence of those vectors for each client, and a token decoder predicts the tokens of the next event. One loss, next-token cross-entropy, trains all three.
+EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each event into one vector. A history decoder runs over these vectors for each client. A token decoder predicts the tokens of the next event. One loss, next-token cross-entropy, trains all three.
 
 \begin{figure}[htbp]
 \centering
@@ -126,12 +138,11 @@ An event is a short run of tokens that starts with \tok{[EVT]}, followed by its 
 
 \subsection{History decoder and time positions}\label{sec:time}
 
-Six causal layers run over the event vectors of each client, so the history that event $i$ sees is the vectors of events $1, \dots, i-1$, one per event, rather than their tokens. Positions are elapsed time. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
+Six causal layers run over each client's event vectors. Event $i$ therefore sees its history as the vectors of events $1, \dots, i-1$, one per event, instead of their tokens. Positions come from elapsed time. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
 \begin{equation}\label{eq:pos}
 p_i = 64 \ln\!\left(1 + \frac{\Delta t_i}{60}\right).
 \end{equation}
-Rotary attention depends on the difference of two positions, which here is $64\ln$ of a ratio of
-elapsed times. An hour against a minute is then as far apart as a year against a month, and two events a year apart stay far apart even when no event lies between them (Figure~\ref{fig:time}). The elapsed times come from the \tok{dt} tokens of the stream (each bucket mapped to its midpoint in seconds), so no timestamp enters the model beside the tokens.
+Rotary attention depends on the difference between two positions, and here that difference is $64\ln$ of a ratio of elapsed times. A gap from a minute to an hour is then as long as a gap from a day to a month, and two events a year apart stay far apart even when no event lies between them (Figure~\ref{fig:time}). The elapsed times come from the \tok{dt} tokens of the stream, each bucket mapped to its midpoint in seconds, so no timestamp enters the model besides the tokens.
 
 \begin{figure}[htbp]
 \centering
@@ -144,8 +155,7 @@ ratio of their elapsed times.}
 
 \subsection{Token decoder and the training signal}
 
-Each token of event $i$ receives its embedding, a learned position within the event and the history
-decoder's hidden state $h_{i-1}$ after the previous event; the first event in a window receives zero. Two causal layers within the event then predict the next token through an output layer tied to the input embedding (Figure~\ref{fig:decoder}). Because the token decoder sees $h_{i-1}$ and never the pooled vector of event $i$ itself, the bidirectional read of an event happens only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient path runs from the pooled vector, through the hidden state, to the tokens of the next event, so it keeps the fields of an event that help predict what follows.
+Each token of event $i$ receives its embedding, a learned position within the event and $h_{i-1}$, the history decoder's hidden state after the previous event. The first event in a window receives zero in its place. Two causal layers within the event then predict the next token through an output layer tied to the input embedding (Figure~\ref{fig:decoder}). The token decoder sees $h_{i-1}$ and never the pooled vector of event $i$, so an event is read in both directions only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient comes from the tokens of the next event, through the hidden state, so it keeps the fields of an event that help predict what follows.
 
 \begin{figure}[htbp]
 \centering
@@ -156,17 +166,15 @@ decoder's hidden state $h_{i-1}$ after the previous event; the first event in a 
 
 \subsection{Packed attention within events}\label{sec:packed}
 
-The event encoder and the token decoder never attend across an event boundary, yet a dense mask over a window of $t$ tokens costs memory in proportion to $t^2$. We instead lay each event out as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows, so both stages cost in proportion to the number of events times $L^2$. On real windows the packed and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. This is what makes histories of 8,192 tokens and more affordable (Section~\ref{sec:context}).
+Neither the event encoder nor the token decoder attends across an event boundary, but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the packed and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Packing is what makes windows of 8,192 tokens affordable (Section~\ref{sec:context}).
 
 \subsection{Customer embedding}\label{sec:embedding}
 
-The embedding of a customer at a cut is read from the history decoder's hidden states for the events before the as-of date, in one of three ways: the last hidden state (\emph{last}), the mean of the hidden states (\emph{mean}), or a mean weighted by $\exp(-a/32)$ for an event $a$ events before the last
-(\emph{recency}). One forward pass gives all three. Each history ends in a \emph{now} event,
-\tok{[EVT] dt=<gap>}, whose gap runs from the last event to the as-of date, so the last hidden state sits at the as-of date and two customers with the same events but different silences before it get different embeddings. When a history is longer than the window, the window keeps the most recent events and starts with \tok{[USR]} and the profile event, which would otherwise be cut off, so the clients with the longest histories keep their static attributes.
+The embedding of a client at an as-of date is read from the history decoder's hidden states for the events before that date. The last hidden state (\emph{last}) is the embedding used throughout the paper; the mean of the hidden states (\emph{mean}) and a mean weighted by $\exp(-a/32)$ for the event $a$ events before the last (\emph{recency}) are compared in Section~\ref{sec:ablations}. One forward pass gives all three. Each history ends in a \emph{now} event, \tok{[EVT] dt=<gap>}, whose gap runs from the last event to the as-of date. The last hidden state then sits at the as-of date, and two clients with the same events but different silences before it get different embeddings. When a history is longer than the window, the window keeps the most recent events and starts with \tok{[USR]} and the profile event, which would otherwise be cut off, so the clients with the longest histories keep their static attributes.
 
 \subsection{Static attributes}\label{sec:static}
 
-The profile event reaches the hidden state at an as-of date only through the mean pooling of its tokens and the causal layers above it, and predicting the next event gives the model little reason to carry the four attributes to the last state. Two additions give them a direct path. \emph{Profile features} are the input embeddings of the profile event's four field tokens, one learned vector per category, appended to the hidden state, so a head reads the attributes beside it; they need no retraining. The \emph{profile path} adds them during pretraining: the four embeddings are concatenated, projected to the model width by a linear map initialized at zero, and added to the vector of every event of the client from the profile event on, before the history decoder. The \tok{[USR]} event gets no profile vector, since its state predicts the profile event's own tokens. Both read the tokens off the client's own stream and need no knowledge of what the attributes mean.
+The profile event reaches the hidden state at an as-of date only through the mean pooling of its tokens and the causal layers above it. Predicting the next event gives the model little reason to carry the four attributes forward to the last hidden state. Profile features and a profile path give them a direct path. \emph{Profile features} are the input embeddings of the profile event's four field tokens, one learned vector per category, appended to the hidden state so that a classification head reads the attributes beside it. They need no retraining. The \emph{profile path} adds the attributes during pretraining instead: the four embeddings are concatenated, projected to the model width by a linear layer initialized at zero, and added to the vector of every event of the client from the profile event on, before the history decoder. The \tok{[USR]} event gets no profile vector, because its hidden state predicts the profile event's own tokens. Both read the tokens from the client's own stream and need no knowledge of what the attributes mean.
 
 \subsection{Training windows and tenure}\label{sec:windows}
 
@@ -174,16 +182,13 @@ Windows drawn at random offsets of the packed stream usually start partway throu
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
-The embedding is what the pretraining is for. Computed once per customer and as-of date, it serves every
-downstream task through a small head fitted on it, and the backbone is neither retrained nor fine-tuned per task. In this paper one set of embeddings serves ten labels (four product targets, five event targets and churn, Section~\ref{sec:protocol}), each through a logistic regression. A new task then costs a head on stored vectors rather than a new model on raw events, which is the arrangement Revolut and Nubank describe for their backbones \cite{pragma, nuformer}.
+The embedding is what pretraining is for. Computed once per client and as-of date, it serves every downstream task through a small classification head, and the backbone is not retrained per task. In this paper one set of embeddings serves ten labels (four product targets, five event targets and churn, Section~\ref{sec:protocol}), each through a logistic regression. A new task then needs only a head fitted on stored vectors. Revolut and Nubank describe the same arrangement for their backbones \cite{pragma, nuformer}.
 
-That reuse is safe only if the embedding at an as-of date is a function of events before that date alone. An
-embedding that has seen the future inflates the offline results of every task built on it, and because every head inherits the embedding, the error is not confined to one model. EventGPT
-guarantees the property at two levels.
+This reuse is safe only if the embedding at an as-of date depends on events before that date alone. An embedding that has seen the future inflates the offline results of every task built on it, and because every head inherits the embedding, the error spreads to all of them. EventGPT guarantees the property in its architecture and in its data.
 
-\paragraph{In the architecture.} The history decoder is causal, so the state after event $i$ depends on events $1, \dots, i$ only. The bidirectional read of the event encoder stays within one event, and the token decoder reaches earlier events only through $h_{i-1}$, the state of the previous event; no token of event $i$ has a path to the encoded vector of event $i$ itself. The embedding read after the last event before an as-of date is therefore the same whether or not later events exist in the stream. Evaluation also builds each input to end at its as-of date, so later events are never present in it.
+\paragraph{In the architecture.} The history decoder is causal, so the hidden state after event $i$ depends on events $1, \dots, i$ only. The event encoder reads in both directions only within one event, and the token decoder reaches earlier events only through $h_{i-1}$. No token of event $i$ has a path to the encoded vector of event $i$ itself. The embedding after the last event before an as-of date is therefore the same whether or not later events exist in the stream. Evaluation also builds each input to end at its as-of date, so later events are never present in it.
 
-\paragraph{In the data.} Point-in-time correctness also depends on how events are built, and each step of Section~\ref{sec:data} is placed to keep it.
+\paragraph{In the data.} How events are built matters as well, and each step of Section~\ref{sec:data} keeps the property.
 \begin{itemize}
 \item The history for an as-of date is every event strictly before the first day of the month, in the bank's own time zone.
 \item A daily geolocation event is stamped at the day's last ping, so a summary of the day never appears before the pings it summarizes.
@@ -191,7 +196,9 @@ guarantees the property at two levels.
 \item The vocabulary and the amount-bin edges are fitted on the pretraining folds only, and the test fold is never seen in pretraining.
 \end{itemize}
 
-Because the history prefix itself fixes the as-of time, an embedding can be stored in a feature store like any other timestamped feature: keyed by customer, stamped with its as-of date rather than with the time it was computed, and joined to labels by the store's point-in-time join, which then returns for each label the latest embedding before it. The join chooses which snapshot a label sees; the prefix guarantees that the snapshot itself depends only on events before its as-of date. Embeddings from different checkpoints are not comparable, so each backbone version needs its own feature set, and a head is valid only on the version it was fitted on. What the guarantee does not cover is the population: pretraining reads the full 2021--2022 histories of the pretraining clients, so the backbone has seen the period in which the test clients' labels fall, although never those clients (Section~\ref{sec:limits}).
+Because the history itself fixes its as-of date, an embedding can be stored in a feature store like any other dated feature. It is keyed by client, stamped with its as-of date instead of the time it was computed, and joined to labels by the store's point-in-time join, which returns for each label the latest embedding before it. The join decides which embedding a label sees; the history guarantees that this embedding depends only on events before its as-of date. Embeddings from different checkpoints are not comparable, so each version of the backbone needs its own feature set, and a head is valid only on the version it was fitted on.
+
+The guarantee does not cover the population. Pretraining reads the full 2021--2022 histories of the pretraining clients, so the backbone has seen the period in which the test clients' labels fall, although never those clients (Section~\ref{sec:limits}).
 
 % -------------------------------------------------------------------------------
 \section{Data}\label{sec:data}
