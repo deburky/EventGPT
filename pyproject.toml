@@ -1,7 +1,9 @@
 [project]
 name = "event-gpt"
 version = "0.1.0"
-description = "EventGPT: a hierarchical event foundation model, trained and evaluated on public banking event data"
+description = "EventGPT: an open generative pretrained transformer for banking event sequences"
+license = "Apache-2.0"
+authors = [{ name = "Denis Burakov" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

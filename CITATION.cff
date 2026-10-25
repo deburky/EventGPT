@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use EventGPT, please cite the paper."
+title: "EventGPT: Next-Event Pretraining on Banking Customer Histories"
+authors:
+  - family-names: Burakov
+    given-names: Denis
+license: Apache-2.0
+repository-code: "https://github.com/deburky/event-gpt"
+url: "https://huggingface.co/deburky/eventgpt"
+date-released: 2026-10-25
+keywords:
+  - event sequences
+  - banking
+  - foundation model
+  - generative pretrained transformer
