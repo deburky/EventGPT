@@ -56,26 +56,23 @@
 
 \begin{abstract}
 \noindent
-A model pretrained to predict a customer's next event can score questions about future events with no
-labels and give each customer an embedding that supervised tasks share. We pretrain EventGPT, a
-hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset
-(MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its
-next-event distribution alone it scores five targets of the form ``the client makes a transaction of a
-given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, against 0.84 to 0.93 for a logistic
-head fitted on labels, and exceeds the head on two. Gradient boosting on hand-built features needs 10,000 to more than 300,000
-randomly labeled client-months to pass these scores. As a frozen embedding it reaches a mean ROC-AUC of
-0.787 on MBD's four product targets. That is above a schema-free table of token counts over the same
-2,048-token window (0.777) and below gradient boosting on 114 hand-built features (0.816). The gap lies in
-the client's static attributes and in the history before the window. Read beside the embedding, the token
-embeddings of the four profile fields and token counts over the full history bring it to 0.810 and 0.807
-on two pretraining seeds, paired differences of $-0.006$ and $-0.009$ (95\% intervals $-0.015$ to $+0.003$
-and $-0.018$ to $+0.000$). Averaging the ranks of this model and the hand-built one reaches 0.830 on both
-seeds, 0.014 above the hand-built model alone. Fine-tuning, a window four
-times longer and a model six times wider raise the product targets by at most 0.005. The embedding at a
-cut depends only on events before it, so it can be stored as a point-in-time feature. EventGPT pools each
-event into one vector and decodes the next event from the history state before it. Trained on the same
-windows as a flat decoder of the same size, it is level with it as an embedding (0.774 against 0.777) and
-trains 2.5 times faster.
+A model pretrained to predict a customer's next event can score questions about future events without
+labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public
+Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million
+geolocation pings). From its next-event distribution alone it scores five targets of the form ``the client
+makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, above a
+logistic head fitted on labels on two of them. Gradient boosting on 114 hand-built features needs 10,000
+to more than 300,000 randomly labeled client-months to pass these scores, depending on how rare the kind
+is. As a frozen embedding, EventGPT is below both feature tables on MBD's four product targets: 0.787
+against 0.803 for token counts over the full history and 0.816 for the hand-built features. It exceeds
+token counts over its own 2,048-token window (0.777), and the gap lies in the client's static attributes
+and the history before the window. Reading the profile fields and full-history token counts beside the
+embedding brings it to 0.810 and 0.807 on two pretraining seeds, still below the hand-built features
+($p = 0.16$ and 0.057). Averaging its ranks with those of the hand-built model gives 0.830 on both seeds,
+0.014 above that model alone (95\% interval $+0.009$ to $+0.019$), while the embedding added as features
+inside the table adds nothing. A window four times longer raises token counts by 0.024 and EventGPT not
+at all, which suggests that the history state limits what the embedding carries from long histories;
+fine-tuning and a model six times wider add at most 0.005.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -120,12 +117,14 @@ results can be reproduced.
 event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a
 supervised head on two of them; the hand-built aggregates pass it only after 10,000 to more than
 300,000 randomly labeled client-months, depending on the target (Section~\ref{sec:zero-shot}).
-\item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against a schema-free
-token-count table, which the embedding exceeds inside the same window, and against hand-built
-aggregates, with paired standard errors clustered by client. The gap to the aggregates lies in the static
-attributes and the history before the window; read beside the embedding, these bring it within 0.006 and
-0.009 of the aggregates on two seeds, and averaged with the aggregates it adds 0.014 to them
-(Sections~\ref{sec:protocol}--\ref{sec:results}).
+\item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against hand-built aggregates and
+a schema-free token-count table, with paired standard errors clustered by client. The embedding is below
+both tables and exceeds token counts only inside its own window. The gap lies in the static attributes
+and the history before the window; read beside the embedding, these leave differences of $-0.006$ and
+$-0.009$ from the aggregates on two seeds ($p = 0.16$ and 0.057) (Sections~\ref{sec:protocol}--\ref{sec:results}).
+\item \textbf{The embedding as a second ranker beside a feature table}: averaging its ranks with those of
+the aggregates adds 0.014 to them on both seeds (intervals excluding zero, nothing tuned on the test
+fold), while as features inside the table it adds nothing (Section~\ref{sec:gap}).
 \item \textbf{A static readout} that reads the profile fields' token embeddings beside the history state,
 which adds 0.013 to 0.019 to the product targets at width 384 and brings \tok{target\_4} level with the aggregates.
 Adding the attributes to every event during pretraining does not put them into the history state
@@ -908,6 +907,10 @@ geolocation), while a 2,048-token window holds about 250 events. Token counts ga
 8,192 tokens. EventGPT gains nothing on random windows and loses 0.008 on aligned ones, and the flat
 decoder is level at 4,096 tokens (0.785 against 0.786). Churn does not change with the window either:
 0.934 to 0.936 on random windows and 0.933 and 0.935 on aligned ones.
+The token-count table reads the same longer windows and gains from them, so the extra history carries
+information for these targets. EventGPT does not pass it to its embedding, which suggests that the
+history state limits the embedding on long histories at this size. A
+compressed summary of the history before the window, read as a prefix, is the change we would test next.
 
 A wider model raises them by 0.005, as much as QK-norm. On aligned windows with QK-norm (seed 42), width 512 (16 heads
 of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) lower the
@@ -972,7 +975,7 @@ with one setting of its learning rates, and its step was chosen on clients from 
 The standard errors cover the sampling of test clients only. A head fitted on another draw of training
 rows moves \tok{target\_2}, with 132 test positives, by up to 0.07 and the official mean by up to 0.02,
 so differences of that size between models fitted on different draws are not established. The widths
-beyond 384 were run with one seed,
+beyond 384 were run with one seed, and no model was larger than 140 million parameters,
 and the regularization of the head was not tuned for the wider readouts. The events of MBD are mostly
 transactions with one field layout, which gives the event encoder less to do than histories that mix
 applications, repayments and other kinds of event with different fields. Zero-shot scoring covers only targets that are events in
@@ -988,34 +991,37 @@ pretrain on events before February 2022 only.
 % -------------------------------------------------------------------------------
 \section{Code and data availability}\label{app:code}
 
-The code (tokenization, model, training, probe and baseline) is at \note{repository URL}. MBD-mini is
+The code (tokenization, model, training, probe and baseline) is at \url{https://github.com/deburky/event-gpt}. MBD-mini is
 available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
 
 \begin{thebibliography}{99}
 
 \bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A.
 (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the
-2022 International Conference on Management of Data (SIGMOD)}. \note{verify author list and venue}
+2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
 
 \bibitem{delong} DeLong, E.~R., DeLong, D.~M., and Clarke-Pearson, D.~L. (1988). Comparing the areas under
 two or more correlated receiver operating characteristic curves: a nonparametric approach.
 \emph{Biometrics} 44(3), 837--845.
 
 \bibitem{qknorm} Henry, A., Dachapally, P.~R., Pawar, S., and Chen, Y. (2020). Query-key normalization for
-transformers. In \emph{Findings of the Association for Computational Linguistics: EMNLP 2020}.
-\note{verify author list and venue}
+transformers. In \emph{Findings of the Association for Computational Linguistics: EMNLP 2020},
+4246--4253.
 
 \bibitem{catboost} Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A.~V., and Gulin, A. (2018).
 CatBoost: unbiased boosting with categorical features. In \emph{Advances in Neural Information
 Processing Systems 31}.
 
-\bibitem{mbd} Multimodal Banking Dataset: Understanding Client Needs through Event Sequences (2024).
-arXiv:2409.17587. \note{add authors}
+\bibitem{mbd} Mollaev, D., Kostin, A., Postnova, M., Karpukhin, I., Kireev, I., Gusev, G., and Savchenko,
+A. (2024). Multimodal Banking Dataset: Understanding client needs through event sequences.
+arXiv:2409.17587.
 
 \bibitem{mbdmini} MBD-mini. Hugging Face dataset \tok{ai-lab/MBD-mini}, CC BY 4.0.
 \url{https://huggingface.co/datasets/ai-lab/MBD-mini}.
 
-\bibitem{nuformer} nuFormer (Nubank) (2025). arXiv:2507.23267. \note{add authors and title}
+\bibitem{nuformer} Braithwaite, D.~T., Cavalcanti, M., McEver, R.~A., Udagawa, H., Silva, D., Ramanath, R.,
+Meneses, F., Yoshida, A., Wingert, E., Ramos, M., Zanfelice, B., and Gupta, A. (2025). Your spending
+needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
 
 \bibitem{nvidia} NVIDIA. Build your own transaction foundation model for financial intelligence.
 \url{https://developer.nvidia.com/blog/build-your-own-transaction-foundation-model-for-financial-intelligence/}.
@@ -1023,17 +1029,19 @@ arXiv:2409.17587. \note{add authors}
 \bibitem{obuchowski} Obuchowski, N.~A. (1997). Nonparametric analysis of clustered ROC curve data.
 \emph{Biometrics} 53(2), 567--578.
 
-\bibitem{pragma} PRAGMA (Revolut) (2026). arXiv:2604.08649. \note{add authors and title}
+\bibitem{pragma} Ostroukhov, M., Mikhailov, R., Iashin, V., Sokolov, A., Akshonov, A., Protasov, V.,
+Goncharov, A., Beloborodov, D., Mullin, V., Enzmann, R.~Y., Kolovos, G., Renders, J., Nesterov, P., and
+Repushko, A. (2026). PRAGMA: Revolut foundation model. arXiv:2604.08649.
 
 \bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced
 transformer with rotary position embedding. arXiv:2104.09864.
 
 \bibitem{tabbert} Padhi, I., Schiff, Y., Melnyk, I., Rigotti, M., Mroueh, Y., Dognin, P., Ross, J., Nair,
 R., and Altman, E. (2021). Tabular transformers for modeling multivariate time series. In \emph{ICASSP
-2021}. \note{verify}
+2021}. arXiv:2011.01843.
 
-\bibitem{transactiongpt} TransactionGPT (Visa Research) (2025). arXiv:2511.08939. \note{add authors and
-title}
+\bibitem{transactiongpt} Dou, Y., Jiang, Z., Zhang, T., Hu, M., Xu, Z., Jain, S., Saini, U.~S., et al.
+(2025). TransactionGPT. arXiv:2511.08939.
 
 \end{thebibliography}
 
