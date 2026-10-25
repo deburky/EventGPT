@@ -105,7 +105,14 @@ that date, so it can be stored and reused across tasks without leaking the futur
 % -------------------------------------------------------------------------------
 \section{Related work}\label{sec:related}
 
-\paragraph{Event-sequence models in banking.} CoLES learns client embeddings by contrastive learning
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/timeline.pdf}
+\caption{Event-sequence models for banking by year of publication. Color marks the pretraining objective; TabBERT and TabGPT are a masked and a causal model from one paper, and MBD is the dataset used here.}
+\label{fig:timeline}
+\end{figure}
+
+\paragraph{Event-sequence models in banking.} Most published models of banking event sequences appeared in 2025 and 2026, with contrastive, masked and generative objectives (Figure~\ref{fig:timeline}). CoLES learns client embeddings by contrastive learning
 on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestream library implements it with other pretraining methods for event sequences \cite{lifestream}. LATTE aligns event embeddings with the embeddings a frozen language model gives to short text summaries of a client's behavior \cite{latte}. TabBERT and TabGPT treat each transaction as a row of fields, encode fields into a row embedding and model the rows with a masked or a causal transformer \cite{tabbert}. The MBD paper evaluates these methods, aggregate features and a supervised recurrent network on the same product-propensity task used here \cite{mbd}.
 
 \paragraph{Industrial foundation models.} nuFormer pretrains a flat causal decoder on tokenized

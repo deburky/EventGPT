@@ -77,7 +77,7 @@ class Svg:
         """Color keys in a row along the top."""
         x = 20.0
         for fill, label in items:
-            self.rect(x, y - 10, 12, 12, fill, r=3)
+            self.rect(x, y - 10, 12, 12, fill, LINE if fill.upper() in ("WHITE", "#FFFFFF") else "none", r=3)
             self.text(x + 18, y, label, size=11, fill=MUTED)
             x += 18 + len(label) * 6.1 + 22
 
@@ -262,6 +262,41 @@ def decoder() -> None:
     g.save("decoder")
 
 
+def timeline() -> None:
+    """Event-sequence models for banking by year of publication, colored by pretraining objective."""
+    g = Svg(780, 340)
+    g.legend([(ENC, "Contrastive"), (HID, "Masked"), (DEC, "Generative"), ("white", "Dataset"), (EMB, "This paper")])
+    # per year, in order of publication: (title, subtitle, fill)
+    years = {
+        2021: [("TabBERT, TabGPT", "masked and causal", HID)],
+        2022: [("CoLES", "contrastive", ENC)],
+        2023: [],
+        2024: [("MBD", "public dataset", "white")],
+        2025: [
+            ("nuFormer", "Nubank · causal", DEC),
+            ("LATTE", "contrastive, with an LLM", ENC),
+            ("TransactionGPT", "Visa · generative", DEC),
+            ("Open Banking FM", "masked, with text", HID),
+        ],
+        2026: [("PRAGMA", "Revolut · masked", HID), ("EventGPT", "causal · open weights", EMB)],
+    }
+    line_y, top, step, w, h = 62, 98, 58, 118, 48
+    g.items.append(f'<line x1="20" y1="{line_y}" x2="760" y2="{line_y}" stroke="{INK}" stroke-width="1.4"/>')
+    for k, (year, papers) in enumerate(years.items()):
+        cx = 75 + k * 126
+        if papers:
+            g.items.append(f'<line x1="{cx}" y1="{line_y}" x2="{cx}" y2="{top}" stroke="{MUTED}" stroke-width="1"/>')
+        g.rect(cx - 24, line_y - 11, 48, 22, "white", INK, r=11)
+        g.text(cx, line_y + 4, str(year), size=10.5, weight=600, anchor="middle")
+        for n, (title, subtitle, fill) in enumerate(papers):
+            y0 = top + n * step
+            dark = fill == EMB
+            g.rect(cx - w / 2, y0, w, h, fill, LINE if fill == "white" else "none", r=10)
+            g.text(cx, y0 + 20, title, size=11.5, weight=600, fill="white" if dark else INK, anchor="middle")
+            g.text(cx, y0 + 36, subtitle, size=9.5, fill="#BFD0E2" if dark else MUTED, anchor="middle")
+    g.save("timeline")
+
+
 def time_positions() -> None:
     """Ordinal positions against positions from elapsed time, Eq. (1)."""
     g = Svg(760, 330)
@@ -407,6 +442,6 @@ def embeddings() -> None:
 if __name__ == "__main__":
     import sys
 
-    names = sys.argv[1:] or ["hierarchy", "decoder", "attention", "time_positions", "labels", "embeddings"]
+    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "time_positions", "labels", "embeddings"]
     for name in names:
         globals()[name]()
