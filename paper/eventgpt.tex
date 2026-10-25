@@ -586,7 +586,9 @@ The rule for earlier occurrences matters most where the kind is common. Without 
 0.906 to 0.722 (seed 42), because the model predicts the kind for clients who already make it every
 month; the rule changes 48/31, a rare kind, by 0.001. The score is the probability of the kind as the
 \emph{next} event, while the label covers the whole month. Sampling a month of events from the model
-and testing for the kind would match the label's horizon; we have not run it.
+and testing for the kind would match the label's horizon; we have not run it. Scaling the score by the
+client's recent number of transactions, a cruder fix for the same mismatch, raises it on four of the five
+targets (Section~\ref{sec:ablations}).
 
 The aggregates need labels for every target, and zero-shot scoring needs none. To put a number on that
 difference, we fit the aggregates on $n$ client-months drawn uniformly from the 699,380 rows of the
@@ -850,7 +852,7 @@ and 0.021 on \tok{target\_4} and 0.016 to 0.021 on four of the five event target
 The weights are equal and nothing is tuned on the test fold. Averaged instead with the token-count table,
 which needs no schema either, the readout reaches 0.816 on both seeds, level with the aggregates.
 
-\subsection{Ablations}
+\subsection{Ablations}\label{sec:ablations}
 
 Each ablation changes one element (Table~\ref{tab:ablations}), measured with two seeds except where
 marked.
@@ -886,7 +888,16 @@ geolocation events the 2,048-token window holds more transactions, and token cou
 effect: on transactions alone they lose 0.008 to the window (0.793 against 0.785), against 0.026 with
 geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.010 and is level with
 token counts over the full transaction history. Zero-shot scores fall to 0.71 to 0.89 without
-geolocation, against 0.79 to 0.92 with it; we have not found the cause.
+geolocation, against 0.79 to 0.92 with it. The score is the probability that the next event is of the
+kind, a share of the client's next events, while the label asks whether the kind occurs within a month,
+which also depends on how many events the month holds. With a geolocation event on most days, a
+transaction kind takes a smaller share of the next events of a client who transacts rarely, so the score
+carries the client's activity: its logarithm correlates with that of the transactions in the 30 days
+before the cut at 0.39 to 0.49. On transactions alone the correlation is $-0.15$ to 0.20. Multiplying the
+score by one plus those transactions, which needs no labels, gives 0.79 to 0.93 on transactions alone
+and 0.82 to 0.93 with geolocation, where the count alone reaches 0.76 to 0.85. The scaling was chosen
+after the scores of Table~\ref{tab:zero-shot} were known, from two forms tried on the test fold, so that
+table keeps the unscaled scores.
 
 Removing the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to
 need, leaves the official mean at 0.775 against 0.774. The tokens stay in the input and only their
