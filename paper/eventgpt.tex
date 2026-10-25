@@ -558,7 +558,10 @@ path (Section~\ref{sec:static}) adds it to this configuration, which adds 0.6 mi
 Scored from the next-event distribution alone, the five event targets reach ROC-AUC 0.79 to 0.92
 (Table~\ref{tab:zero-shot}). A logistic head fitted on labels reaches 0.84 to 0.93 on the same rows.
 The zero-shot score is higher on 48/31 and 50/19, within 0.012 on 23/49, and lower by 0.046 to 0.048 on
-26/28 and 48/10. The two seeds differ by at most 0.014, on 48/31, which has 59 positives.
+26/28 and 48/10. The two seeds differ by at most 0.014, on 48/31, which has 59 positives. Part of what the score misses
+is the client's level of activity: multiplied by one plus the client's transactions in the 30 days
+before the cut, a form checked on a training fold, it reaches 0.82 to 0.93 on seed 42, which passes the
+supervised head on three of the five targets (48/31, 23/49 and 50/19; Section~\ref{sec:ablations}).
 
 On aligned windows (mean of two seeds) the zero-shot scores are 0.78 to 0.91, within 0.009 of those
 above, and they exceed a head fitted on the aligned embedding on 48/31 and 50/19.
@@ -917,9 +920,12 @@ transaction kind takes a smaller share of the next events of a client who transa
 carries the client's activity: its logarithm correlates with that of the transactions in the 30 days
 before the cut at 0.39 to 0.49. On transactions alone the correlation is $-0.15$ to 0.20. Multiplying the
 score by one plus those transactions, which needs no labels, gives 0.79 to 0.93 on transactions alone
-and 0.82 to 0.93 with geolocation, where the count alone reaches 0.76 to 0.85. The scaling was chosen
-after the scores of Table~\ref{tab:zero-shot} were known, from two forms tried on the test fold, so that
-table keeps the unscaled scores.
+and 0.82 to 0.93 with geolocation, where the count alone reaches 0.76 to 0.85. We first tried the
+scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, with a second form
+that multiplies by the client's transactions per day over the whole history. Repeated on training fold 1
+(20,967 rows), the count of the last 30 days is ahead of the daily rate on all ten pairs of model and
+target and raises every unscaled score, by 0.011 to 0.060 with geolocation and by 0.030 to 0.170 without
+it. Table~\ref{tab:zero-shot} keeps the unscaled scores, which use nothing but the model.
 
 Removing the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to
 need, leaves the official mean at 0.775 against 0.774. The tokens stay in the input and only their

@@ -99,6 +99,7 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=Path, default=None, help="csv path; default <ckpt dir>/zero_shot.csv")
     p.add_argument("--save-scores", action="store_true", help="also write each row's scores to zero_shot_scores.parquet")
+    p.add_argument("--fold", type=int, default=None, help="score this training fold's probe rows, without the supervised head")
     a = p.parse_args()
 
     t0 = time.time()
@@ -108,6 +109,8 @@ def main() -> None:
         if t not in vocab.structured:
             raise SystemExit(f"{t} is not in the vocabulary")
     te = pd.read_parquet(a.probe_dir / "test_rows.parquet")
+    if a.fold is not None:
+        te = pd.read_parquet(a.probe_dir / "train_rows.parquet").query("fold == @a.fold").reset_index(drop=True)
     rand = np.random.default_rng(a.seed).choice(len(te), a.n_random, replace=False)
     pick = np.union1d(np.flatnonzero(te[FIRST].to_numpy().any(1)), rand)
     in_rand = np.isin(pick, rand)
@@ -138,9 +141,11 @@ def main() -> None:
     for k, lab in enumerate(FIRST):
         ev = in_rand | (rows[lab].to_numpy() == 1)  # this target's positives and the uniform sample
         y = rows[lab].to_numpy()[ev]
-        head_k = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
-        head_k.fit(emb["train_last"], tr[lab].to_numpy(), logisticregression__sample_weight=tr["weight"].to_numpy())
-        sup = head_k.predict_proba(emb["test_last"][pick][ev])[:, 1]
+        sup = np.full(len(y), 0.5)  # the head is fitted on the training folds, so it is scored on the test rows only
+        if a.fold is None:
+            head_k = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
+            head_k.fit(emb["train_last"], tr[lab].to_numpy(), logisticregression__sample_weight=tr["weight"].to_numpy())
+            sup = head_k.predict_proba(emb["test_last"][pick][ev])[:, 1]
         z, u = zs[ev, k], unseen[ev, k]
         res.append((lab, int(y.sum()), *(score(y, q)["roc_auc"] for q in (z, z * u, sup, sup * u))))
     cols = ["positives", "zero_shot", "zero_shot_unseen", "supervised_head", "supervised_head_unseen"]
