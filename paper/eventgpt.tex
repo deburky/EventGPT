@@ -236,7 +236,8 @@ dialogues & 0.22M & 46,320 & Feb 2021 -- Dec 2022 & 3 / 10 / 27 \\
 Each client's stream starts with \tok{[USR]} and a profile event, then interleaves transactions and
 geolocation in time order:
 \begin{center}
-\small
+\footnotesize
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{ll}
 profile & \tok{[EVT] name=profile dt=140 s21 s22 s31 s32} \\
 transaction & \tok{[EVT] name=trx\_<type> dt=<b> sub=<subtype> amt\_bin=<b> [cur] s11 s12 d11 d12} \\
