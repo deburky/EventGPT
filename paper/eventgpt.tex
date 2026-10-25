@@ -73,6 +73,7 @@ embedding brings it to 0.810 and 0.807 on two pretraining seeds, still below the
 inside the table adds nothing. A window four times longer raises token counts by 0.024 and EventGPT not
 at all, which suggests that the history state limits what the embedding carries from long histories;
 fine-tuning and a model with six times the parameters add at most 0.005.
+The code and the pretrained checkpoints are released.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -113,6 +114,10 @@ results can be reproduced.
 
 \paragraph{Contributions.}
 \begin{enumerate}
+\item \textbf{An open event foundation model}: to our knowledge, the first open-weights, generative
+foundation model for banking event sequences, trained on a public benchmark, with code anyone can rerun.
+The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are
+released (Section~\ref{app:code}).
 \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next
 event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a
 supervised head on two of them; the hand-built aggregates pass it only after 10,000 to more than
@@ -146,7 +151,10 @@ thins geolocation to one event per day, which cuts the stream by 27\% with no lo
 \section{Related work}\label{sec:related}
 
 \paragraph{Event-sequence models in banking.} CoLES learns client embeddings by contrastive learning
-on subsequences of a client's transactions \cite{coles}. TabBERT and TabGPT treat each transaction as a
+on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestream library implements it
+with other pretraining methods for event sequences \cite{lifestream}. LATTE aligns event embeddings with
+the embeddings a frozen language model gives to short text summaries of a client's behavior
+\cite{latte}. TabBERT and TabGPT treat each transaction as a
 row of fields, encode fields into a row embedding and model the rows with a masked or a causal
 transformer \cite{tabbert}. The MBD paper evaluates these methods, aggregate features and a supervised
 recurrent network on the same product-propensity task used here \cite{mbd}.
@@ -156,7 +164,9 @@ transactions and fuses the embedding with a tabular network at fine-tuning time 
 reconstructs masked tokens with a profile-state encoder, a per-event encoder and a history encoder, and
 serves credit scoring, fraud and lifetime value from one backbone \cite{pragma}. TransactionGPT applies
 a three-dimensional transformer to payment-network transactions \cite{transactiongpt}. NVIDIA describes the
-same recipe, tokenizer to decoder to embedding to classifier, for card transactions \cite{nvidia}.
+same recipe, tokenizer to decoder to embedding to classifier, for card transactions \cite{nvidia}. A masked model of transactions with their text descriptions has been
+trained on data from thousands of North American institutions \cite{openbanking}. Their checkpoints are
+not released.
 
 \paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a
 position \cite{rope}. Nothing in the rotation requires the position to be an integer, which is what lets
@@ -1015,7 +1025,8 @@ pretrain on events before February 2022 only.
 % -------------------------------------------------------------------------------
 \section{Code and data availability}\label{app:code}
 
-The code (tokenization, model, training, probe and baseline) is at \url{https://github.com/deburky/event-gpt}. MBD-mini is
+The code (tokenization, model, training, probe and baseline) and the pretrained checkpoints are at
+\url{https://github.com/deburky/event-gpt}. MBD-mini is
 available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
 
 \begin{thebibliography}{99}
@@ -1023,6 +1034,10 @@ available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite
 \bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A.
 (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the
 2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
+
+\bibitem{latte} Fadeev, E., Mollaev, D., Shestov, A., Zoloev, O., Sakhno, A., Korolev, D., Kireev, I.,
+Savchenko, A., and Makarenko, M. (2025). LATTE: Learning aligned transactions and textual embeddings for
+bank clients. arXiv:2508.10021.
 
 \bibitem{delong} DeLong, E.~R., DeLong, D.~M., and Clarke-Pearson, D.~L. (1988). Comparing the areas under
 two or more correlated receiver operating characteristic curves: a nonparametric approach.
@@ -1056,6 +1071,12 @@ needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
 \bibitem{pragma} Ostroukhov, M., Mikhailov, R., Iashin, V., Sokolov, A., Akshonov, A., Protasov, V.,
 Goncharov, A., Beloborodov, D., Mullin, V., Enzmann, R.~Y., Kolovos, G., Renders, J., Nesterov, P., and
 Repushko, A. (2026). PRAGMA: Revolut foundation model. arXiv:2604.08649.
+
+\bibitem{openbanking} Polleti, G., Santana, M., and Fontes, E. (2025). Open Banking foundational model:
+Learning language representations from few financial transactions. arXiv:2511.12154.
+
+\bibitem{lifestream} pytorch-lifestream. A library for self-supervised learning on event sequences.
+\url{https://github.com/dllllb/pytorch-lifestream}.
 
 \bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced
 transformer with rotary position embedding. arXiv:2104.09864.
