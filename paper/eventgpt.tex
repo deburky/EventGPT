@@ -51,99 +51,42 @@
 
 \title{EventGPT: Next-Event Pretraining\\on Banking Customer Histories}
 \author{Denis Burakov}
-\date{October 2026 (working draft)}
+\date{October 2026}
 \maketitle
 
 \begin{abstract}
 \noindent
-A model pretrained to predict a customer's next event can score questions about future events without
-labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public
-Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million
-geolocation pings). From its next-event distribution alone it scores five targets of the form ``the client
-makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, above a
-logistic head fitted on labels on two of them. Gradient boosting on 114 hand-built features needs 10,000
-to more than 300,000 randomly labeled client-months to pass these scores, depending on how rare the kind
-is. As a frozen embedding, EventGPT is below both feature tables on MBD's four product targets: 0.787
-against 0.803 for token counts over the full history and 0.816 for the hand-built features. It exceeds
-token counts over its own 2,048-token window (0.777), and the gap lies in the client's static attributes
-and the history before the window. Reading the profile fields and full-history token counts beside the
-embedding brings it to 0.810 and 0.807 on two pretraining seeds, still below the hand-built features
-($p = 0.16$ and 0.057). Averaging its ranks with those of the hand-built model gives 0.830 on both seeds,
-0.014 above that model alone (95\% interval $+0.009$ to $+0.019$), while the embedding added as features
-inside the table adds nothing. A window four times longer raises token counts by 0.024 and EventGPT not
-at all, which suggests that the history state limits what the embedding carries from long histories;
-fine-tuning and a model with six times the parameters add at most 0.005.
-The code and the pretrained checkpoints are released.
+A model pretrained to predict a customer's next event can score questions about future events without labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92, above a logistic head fitted on labels on two of them. Gradient boosting on 114 hand-built features needs 10,000 to more than 300,000 randomly labeled client-months to attain these scores, depending on prevalence. As a frozen embedding, EventGPT is below both feature tables on MBD's four product targets: 0.787 against 0.803 for token counts over the full history and 0.816 for the hand-built features. It exceeds token counts over its own 2,048-token window (0.777), and the gap lies in the client's static attributes and the history before the window. Reading the profile fields and full-history token counts beside the embedding brings it to 0.810 and 0.807 on two pretraining seeds, still below the hand-built features ($p = 0.16$ and 0.057). Averaging its ranks with those of the hand-built model gives 0.830 on both seeds, 0.014 above that model alone (95\% interval $+0.009$ to $+0.019$), while the embedding added as features inside the table does not raise it. A window four times longer raises token counts by 0.024 and EventGPT not at all, which suggests that the history state limits what the embedding carries from long histories; fine-tuning and a model with six times the parameters add at most 0.005. The code and the pretrained checkpoints are released.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
 \section{Introduction}\label{sec:intro}
 
-A model pretrained to predict a customer's next event can be used in two ways. It can answer questions
-about future events directly, from its own predictions and without labels, and it can give one
-representation per customer that supervised tasks share through small heads. EventGPT is trained by
-predicting each next token of a customer's event stream. This paper describes the architecture and
-measures both uses on a public banking benchmark.
+A model pretrained to predict a customer's next event can be useful in two ways. It can answer questions about future events directly, from its own predictions and without labels, and it can give one representation per customer that supervised downstream tasks can reuse. EventGPT is trained by predicting each next event token of a customer's event stream. This paper describes the architecture and measures both uses on a public banking benchmark.
 
-The usual alternative is a feature table: counts, sums and recencies computed per customer and window,
-with a gradient-boosted model fitted per label. Building the table takes knowledge of the schema (which
-field is the amount, which event types matter, which windows), and that work is repeated for every new
-event source. Each new question then needs labels and a model of its own. When events of many kinds with
-different fields are combined, as in a lender's applications, repayments and account events, there is
-often no obvious table to build. A pretrained event model needs neither the table nor, for questions
-about events, the labels.
+The usual starting point is a feature table including counts, sums and recencies computed per customer and window that is fed into a machine learning algorithm. Building the table requires business knowledge (which field is the amount, which event types matter, which windows), and that work is repeated for every new event source. Each new question therefore needs labels and a model of its own. When events of many kinds with different fields are combined, as in a lender's applications, repayments and account events, there is often no obvious table to build. A pretrained event model needs neither the table nor, for questions about events, the labels.
 
 We first measure how well the next-event distribution scores event targets with no labels
 (Section~\ref{sec:zero-shot}), then how a frozen embedding compares with a flat decoder of the same
-size and with aggregate tables, one built by hand and one computed mechanically from the token stream
-(Section~\ref{sec:propensity}). We then test which training choices move these numbers: the layout and
-length of the training windows, the width of the model and fine-tuning (Sections~\ref{sec:aligned},
-\ref{sec:finetune} and~\ref{sec:context}). Last, we locate the remaining gap to hand-built aggregates
-and close most of it at readout (Section~\ref{sec:gap}).
+size and with aggregate tables, one built by hand and one computed mechanically from the token stream (Section~\ref{sec:propensity}). We then test which training choices move these numbers: the layout and length of the training windows, the width of the model and fine-tuning (Sections~\ref{sec:aligned}, \ref{sec:finetune} and~\ref{sec:context}). Last, we locate the remaining gap to hand-built aggregates and close most of it (Section~\ref{sec:gap}).
 
 Several financial institutions describe foundation models of this kind. Nubank's nuFormer is a flat
-causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGMA is a masked model with
-separate encoders for profile state, single events and history \cite{pragma}, and Visa's TransactionGPT
-encodes the aspects of each transaction before modeling across transactions \cite{transactiongpt}. None
-of these releases checkpoints or evaluates on shared data, and a released checkpoint would be of little use
-to another institution: its vocabulary is the issuer's own event schema, so each institution pretrains its
-own backbone (Section~\ref{sec:per-institution}). EventGPT combines a per-event encoder, as in
-PRAGMA and TransactionGPT, with the causal objective of nuFormer, and it was first developed on the
-product histories of a consumer lender. Here we train and evaluate it only on public data so that the
-results can be reproduced.
+causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGMA is a masked model with separate encoders for profile state, single events and history \cite{pragma}, and Visa's TransactionGPT encodes the aspects of each transaction before modeling across transactions \cite{transactiongpt}. None of these releases checkpoints or evaluates on publicly available data. Beyond that, a released checkpoint would be of little use to another institution anyway: its vocabulary is the issuer's own event schema, so each institution pretrains its own backbone (Section~\ref{sec:per-institution}). EventGPT combines a per-event encoder, as in PRAGMA and TransactionGPT, with the causal objective of nuFormer, designed to be pretrained on product histories of a consumer lender. Here we train and evaluate it only on public data so that the results can be reproduced.
 
 \paragraph{Contributions.}
 \begin{enumerate}
 \item \textbf{An open event foundation model}: to our knowledge, the first open-weights, generative
-foundation model for banking event sequences, trained on a public benchmark, with code anyone can rerun.
-The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are
-released (Section~\ref{app:code}).
-\item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next
-event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a
-supervised head on two of them; the hand-built aggregates pass it only after 10,000 to more than
-300,000 randomly labeled client-months, depending on the target (Section~\ref{sec:zero-shot}).
-\item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against hand-built aggregates and
-a schema-free token-count table, with paired standard errors clustered by client. The embedding is below
-both tables and exceeds token counts only inside its own window. The gap lies in the static attributes
-and the history before the window; read beside the embedding, these leave differences of $-0.006$ and
-$-0.009$ from the aggregates on two seeds ($p = 0.16$ and 0.057) (Sections~\ref{sec:protocol}--\ref{sec:results}).
-\item \textbf{The embedding as a second ranker beside a feature table}: averaging its ranks with those of
-the aggregates adds 0.014 to them on both seeds (intervals excluding zero, nothing tuned on the test
-fold), while as features inside the table it adds nothing (Section~\ref{sec:gap}).
-\item \textbf{A static readout} that reads the profile fields' token embeddings beside the history state,
-which adds 0.013 to 0.019 to the product targets at width 384 and brings \tok{target\_4} level with the aggregates.
+foundation model for banking event sequences, trained on a public benchmark, with code anyone can rerun. The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are released (Section~\ref{app:code}). \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels and exceeds a supervised head on two of them; the hand-built aggregates pass it only after 10,000 to more than 300,000 randomly labeled client-months, depending on the target (Section~\ref{sec:zero-shot}). \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against hand-built aggregates and
+a schema-free token-count table, with paired standard errors clustered by client. The embedding is below both tables and exceeds token counts only inside its own window. The gap lies in the static attributes and the history before the window; read beside the embedding, these leave differences of $-0.006$ and $-0.009$ from the aggregates on two seeds ($p = 0.16$ and 0.057) (Sections~\ref{sec:protocol}--\ref{sec:results}).
+\item \textbf{The embedding as a second ranker beside a feature table}: averaging its ranks with those of the aggregates adds 0.014 to their ROC-AUC on both seeds (intervals excluding zero, not tuned on the test fold), while as features inside the table it leaves their ROC-AUC unchanged or lower (Section~\ref{sec:gap}).
+\item \textbf{A static readout} that reads the profile fields' token embeddings beside the history state, which adds 0.013 to 0.019 rank-ordering points to the product targets at width 384 and brings \tok{target\_4} level with the aggregates.
 Adding the attributes to every event during pretraining does not put them into the history state
 (Sections~\ref{sec:static} and~\ref{sec:gap}).
-\item \textbf{Aligned training windows} that open as the embedded histories do, with the time since the
-client's first event, which raise the product targets by 0.013 over windows drawn at random offsets
-(Section~\ref{sec:aligned}).
-\item \textbf{Embeddings as point-in-time features}: the conditions under which a stored embedding holds
-nothing after its cut, in the architecture and in the data (Section~\ref{sec:pit}).
-\item \textbf{A hierarchical decoder} that matches a flat decoder of the same size as an embedding at 2.5
-times its training throughput, reading one state where the flat decoder pools 256, at the cost of a
-higher token loss (Sections~\ref{sec:model} and~\ref{sec:propensity}).
-\item \textbf{A tokenization of MBD} that separates static client attributes into a profile event and
-thins geolocation to one event per day, which cuts the stream by 27\% with no loss of information
+\item \textbf{Aligned training windows} that open as the embedded histories do, with the time since the client's first event, which raise the product targets by 0.013 over windows drawn at random offsets (Section~\ref{sec:aligned}).
+\item \textbf{Embeddings as point-in-time features}: an embedding for a date uses only events before
+that date, so it can be stored and reused across tasks without leaking the future (Section~\ref{sec:pit}).
+\item \textbf{A hierarchical decoder} that matches a flat decoder of the same size as an embedding at 2.5 times its training throughput, reading one state where the flat decoder pools 256, at the cost of a higher token loss (Sections~\ref{sec:model} and~\ref{sec:propensity}).
+\item \textbf{A tokenization of MBD} that separates static client attributes into a profile event and thins geolocation to one event per day, which cuts the stream by 27\% with no loss of information
 (Section~\ref{sec:data}).
 \end{enumerate}
 
@@ -151,75 +94,44 @@ thins geolocation to one event per day, which cuts the stream by 27\% with no lo
 \section{Related work}\label{sec:related}
 
 \paragraph{Event-sequence models in banking.} CoLES learns client embeddings by contrastive learning
-on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestream library implements it
-with other pretraining methods for event sequences \cite{lifestream}. LATTE aligns event embeddings with
-the embeddings a frozen language model gives to short text summaries of a client's behavior
-\cite{latte}. TabBERT and TabGPT treat each transaction as a
-row of fields, encode fields into a row embedding and model the rows with a masked or a causal
-transformer \cite{tabbert}. The MBD paper evaluates these methods, aggregate features and a supervised
-recurrent network on the same product-propensity task used here \cite{mbd}.
+on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestream library implements it with other pretraining methods for event sequences \cite{lifestream}. LATTE aligns event embeddings with the embeddings a frozen language model gives to short text summaries of a client's behavior \cite{latte}. TabBERT and TabGPT treat each transaction as a row of fields, encode fields into a row embedding and model the rows with a masked or a causal transformer \cite{tabbert}. The MBD paper evaluates these methods, aggregate features and a supervised recurrent network on the same product-propensity task used here \cite{mbd}.
 
 \paragraph{Industrial foundation models.} nuFormer pretrains a flat causal decoder on tokenized
-transactions and fuses the embedding with a tabular network at fine-tuning time \cite{nuformer}. PRAGMA
-reconstructs masked tokens with a profile-state encoder, a per-event encoder and a history encoder, and
-serves credit scoring, fraud and lifetime value from one backbone \cite{pragma}. TransactionGPT applies
-a three-dimensional transformer to payment-network transactions \cite{transactiongpt}. NVIDIA describes the
-same recipe, tokenizer to decoder to embedding to classifier, for card transactions \cite{nvidia}. A masked model of transactions with their text descriptions has been
-trained on data from thousands of North American institutions \cite{openbanking}. Their checkpoints are
-not released.
+transactions and fuses the embedding with a tabular network at fine-tuning time \cite{nuformer}. PRAGMA reconstructs masked tokens with a profile-state encoder, a per-event encoder and a history encoder, and serves credit scoring, fraud and lifetime value from one backbone \cite{pragma}. TransactionGPT applies a three-dimensional transformer to payment-network transactions \cite{transactiongpt}. NVIDIA describes the same recipe, tokenizer to decoder to embedding to classifier, for card transactions \cite{nvidia}. A masked model of transactions with their text descriptions has been trained on data from thousands of North American institutions \cite{openbanking}. Their checkpoints are not publicly available.
 
-\paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a
-position \cite{rope}. Nothing in the rotation requires the position to be an integer, which is what lets
-EventGPT feed elapsed time in its place.
+\paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a position \cite{rope}. The rotation does not require the position to be an integer, so EventGPT can feed elapsed time in its place.
 
 % -------------------------------------------------------------------------------
 \section{Model}\label{sec:model}
 
-EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each event into one vector, a
-history decoder models the sequence of those vectors for each client, and a token decoder predicts the
-tokens of the next event. One loss, next-token cross-entropy, trains all three.
+EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each event into one vector, a history decoder models the sequence of those vectors for each client, and a token decoder predicts the tokens of the next event. One loss, next-token cross-entropy, trains all three.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/hierarchy.pdf}
-\caption{The three stages of EventGPT on three MBD events. Token layers read each event on its own and
-mean-pool it into one vector; causal event layers with time positions model the event vectors; token
-layers decode the next event given the history state of the previous one. The event layers' states are
-the customer embedding; the token decoder trains them and gives the distribution of the next event.}
+\caption{The three stages of EventGPT on three MBD events. Token layers read each event on its own and mean-pool it into one vector; causal event layers with time positions model the event vectors; token layers decode the next event given the history state of the previous one. The event layers' states are the customer embedding; the token decoder trains them and gives the distribution of the next event.}
 \label{fig:arch}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/attention.pdf}
-\caption{Attention at the two levels. Within an event every token attends to every other; across events
-attention is causal and confined to one customer. The tokens of an event reach earlier events only
-through the history state of the previous event.}
+\caption{Attention at the two levels. Within an event every token attends to every other; across events attention is causal and confined to one customer. The tokens of an event reach earlier events only through the history state of the previous event.}
 \label{fig:masks}
 \end{figure}
 
 \subsection{Event encoder}
 
-An event is a short run of tokens that starts with \tok{[EVT]}, followed by its name, its time gap and
-its fields as \tok{key=value} tokens (Section~\ref{sec:data}). The fields of an event are a record, and
-reading \tok{amt\_bin} before \tok{sub} states the same fact as reading them in the other order. The
-encoder is therefore bidirectional within an event, has no positions inside it, and cannot attend across
-an event boundary. Two layers produce token states that are mean-pooled into one vector per event.
+An event is a short run of tokens that starts with \tok{[EVT]}, followed by its name, its time gap and its fields as \tok{key=value} tokens (Section~\ref{sec:data}). The fields of an event are a record, and reading \tok{amt\_bin} before \tok{sub} states the same fact as reading them in the other order. The event encoder is therefore bidirectional within an event, has no positions inside it, and cannot attend across an event boundary. Two layers produce token states that are mean-pooled into one vector per event.
 
 \subsection{History decoder and time positions}\label{sec:time}
 
-Six causal layers run over the event vectors of each client, so the history that event $i$ sees is the
-vectors of events $1, \dots, i-1$, one per event, rather than their tokens. Positions are elapsed time.
-With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary
-position is
+Six causal layers run over the event vectors of each client, so the history that event $i$ sees is the vectors of events $1, \dots, i-1$, one per event, rather than their tokens. Positions are elapsed time. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
 \begin{equation}\label{eq:pos}
 p_i = 64 \ln\!\left(1 + \frac{\Delta t_i}{60}\right).
 \end{equation}
 Rotary attention depends on the difference of two positions, which here is $64\ln$ of a ratio of
-elapsed times. An hour against a minute is then as far apart as a year against a month, and two events a
-year apart stay far apart even when no event lies between them (Figure~\ref{fig:time}). The elapsed times come from the
-\tok{dt} tokens of the stream (each bucket mapped to its midpoint in seconds), so no timestamp enters the
-model beside the tokens.
+elapsed times. An hour against a minute is then as far apart as a year against a month, and two events a year apart stay far apart even when no event lies between them (Figure~\ref{fig:time}). The elapsed times come from the \tok{dt} tokens of the stream (each bucket mapped to its midpoint in seconds), so no timestamp enters the model beside the tokens.
 
 \begin{figure}[htbp]
 \centering
@@ -233,100 +145,46 @@ ratio of their elapsed times.}
 \subsection{Token decoder and the training signal}
 
 Each token of event $i$ receives its embedding, a learned position within the event and the history
-state $h_{i-1}$ of the previous event; the first event in a window receives zero. Two causal layers within
-the event then predict the next token through an output layer tied to the input embedding. Because the
-token decoder sees $h_{i-1}$ and never the pooled vector of event $i$ itself, the bidirectional read of
-an event happens only once it is complete and in the past. The event encoder has no loss of its own. Its
-only gradient path runs from the pooled vector, through the history state, to the tokens of the next
-event, so it keeps the fields of an event that help predict what follows.
+state $h_{i-1}$ of the previous event; the first event in a window receives zero. Two causal layers within the event then predict the next token through an output layer tied to the input embedding. Because the token decoder sees $h_{i-1}$ and never the pooled vector of event $i$ itself, the bidirectional read of an event happens only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient path runs from the pooled vector, through the history state, to the tokens of the next event, so it keeps the fields of an event that help predict what follows.
 
 \subsection{Packed attention within events}\label{sec:packed}
 
-The event encoder and the token decoder never attend across an event boundary, yet a dense mask over a
-window of $t$ tokens costs memory in proportion to $t^2$. We instead lay each event out as one row of at
-most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows, so
-both stages cost in proportion to the number of events times $L^2$. On real windows the packed and the
-dense computations agree to within $1.2 \times 10^{-6}$ on every event. This is what makes histories of
-8,192 tokens and more affordable (Section~\ref{sec:context}).
+The event encoder and the token decoder never attend across an event boundary, yet a dense mask over a window of $t$ tokens costs memory in proportion to $t^2$. We instead lay each event out as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows, so both stages cost in proportion to the number of events times $L^2$. On real windows the packed and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. This is what makes histories of 8,192 tokens and more affordable (Section~\ref{sec:context}).
 
 \subsection{Customer embedding}\label{sec:embedding}
 
-The embedding of a customer at a cut is read from the history decoder's states for the events before the
-cut, in one of three ways: the state after the last event (\emph{last}), the mean over events
-(\emph{mean}), or a mean weighted by $\exp(-a/32)$ for an event $a$ events before the last
+The embedding of a customer at a cut is read from the history decoder's states for the events before the cut, in one of three ways: the state after the last event (\emph{last}), the mean over events (\emph{mean}), or a mean weighted by $\exp(-a/32)$ for an event $a$ events before the last
 (\emph{recency}). One forward pass gives all three. Each history ends in a \emph{now} event,
-\tok{[EVT] dt=<gap>}, whose gap runs from the last event to the cut, so the readout sits at the cut time and
-two customers with the same events but different silences before the cut get different embeddings.
-A history longer than the window keeps \tok{[USR]} and the profile event in front of its most recent
-events, so the static attributes stay in view for the clients with the longest histories.
+\tok{[EVT] dt=<gap>}, whose gap runs from the last event to the cut, so the readout sits at the cut time and two customers with the same events but different silences before the cut get different embeddings. When a history is longer than the window, the window keeps the most recent events and starts with \tok{[USR]} and the profile event, which would otherwise be cut off, so the clients with the longest histories keep their static attributes.
 
 \subsection{Static attributes}\label{sec:static}
 
-The profile event reaches the history state at a cut only through the mean pooling of its tokens and the
-causal layers above it, and predicting the next event gives the model little reason to carry the four
-attributes to the last state. Two additions give them a direct path. The \emph{profile readout} appends
-the input embeddings of the profile event's four field tokens, one learned vector per category, to the
-history state, so a head reads the attributes beside it; it needs no retraining. The \emph{profile path}
-adds them during pretraining: the four embeddings are concatenated, projected to the model width by a
-linear map initialized at zero, and added to the vector of every event of the client from the profile
-event on, before the history decoder. The \tok{[USR]} event gets nothing, since its state predicts the
-profile event's own tokens. Both read the tokens off the client's own stream and need no knowledge of what
-the attributes mean.
+The profile event reaches the history state at a cut only through the mean pooling of its tokens and the causal layers above it, and predicting the next event gives the model little reason to carry the four attributes to the last state. Two additions give them a direct path. The \emph{profile readout} appends the input embeddings of the profile event's four field tokens, one learned vector per category, to the history state, so a head reads the attributes beside it; it needs no retraining. The \emph{profile path} adds them during pretraining: the four embeddings are concatenated, projected to the model width by a linear map initialized at zero, and added to the vector of every event of the client from the profile event on, before the history decoder. The \tok{[USR]} event gets no profile vector, since its state predicts the profile event's own tokens. Both read the tokens off the client's own stream and need no knowledge of what the attributes mean.
 
 \subsection{Training windows and tenure}\label{sec:windows}
 
-Windows drawn at random offsets of the packed stream usually start inside a client's history, without
-\tok{[USR]} or the profile event, while every history the probe embeds opens with both. In an
-\emph{aligned} window that starts inside a client, \tok{[USR]} and the client's first event are put back
-in front, as the probe cuts a long history, and the first event after them carries in its \tok{dt} token
-the gap from the client's first event instead of the gap from the event cut away before it. Every \tok{dt}
-then measures the gap to the previous event in the sequence the model reads, and the time positions of
-Eq.~(\ref{eq:pos}) count from the client's first event, so the model can read how long a client has
-banked. The probe and the zero-shot scorer build histories by the same rule for a model trained this way.
-An aligned window holds the same tokens as a random one apart from the profile head and one \tok{dt}.
+Windows drawn at random offsets of the packed stream usually start partway through a client's history and so lack \tok{[USR]} and the profile event, while every history the probe embeds opens with both. An \emph{aligned} window removes this mismatch. When it starts partway through a client's history, \tok{[USR]} and the profile event are put back at its start, as the probe does when it truncates a long history. The first event after them then follows the profile event, which is stamped at the client's first event, so its \tok{dt} token holds the gap from that first event instead of the gap from the event that was cut away. Every \tok{dt} thus measures the gap to the previous event the model sees, and the time positions of Eq.~(\ref{eq:pos}) count from the client's first event, which tells the model how long the client has been with the bank. Apart from the profile event and this one \tok{dt}, an aligned window holds the same tokens as a random one. The probe and the zero-shot scorer build histories by the same rule for models trained this way.
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
 The embedding is what the pretraining is for. Computed once per customer and cut, it serves every
-downstream task through a small head fitted on it, and the backbone is neither retrained nor fine-tuned
-per task. In this paper one set of embeddings serves ten labels (four product targets, five event
-targets and churn, Section~\ref{sec:protocol}), each through a logistic regression. A new task then costs
-a head on stored vectors rather than a new model on raw events, which is the arrangement Revolut and
-Nubank describe for their backbones \cite{pragma, nuformer}.
+downstream task through a small head fitted on it, and the backbone is neither retrained nor fine-tuned per task. In this paper one set of embeddings serves ten labels (four product targets, five event targets and churn, Section~\ref{sec:protocol}), each through a logistic regression. A new task then costs a head on stored vectors rather than a new model on raw events, which is the arrangement Revolut and Nubank describe for their backbones \cite{pragma, nuformer}.
 
 That reuse is safe only if the embedding at a cut is a function of events before the cut alone. An
-embedding that has seen the future inflates the offline results of every task built on it, and because
-every head inherits the embedding, the error is not confined to one model. EventGPT
+embedding that has seen the future inflates the offline results of every task built on it, and because every head inherits the embedding, the error is not confined to one model. EventGPT
 guarantees the property at two levels.
 
-\paragraph{In the architecture.} The history decoder is causal, so the state after event $i$ depends on
-events $1, \dots, i$ only. The bidirectional read of the event encoder stays within one event, and the
-token decoder reaches earlier events only through $h_{i-1}$, the state of the previous event; no token
-of event $i$ has a path to the encoded vector of event $i$ itself. The embedding read after the last event
-before a cut is therefore the same whether or not later events exist in the stream. The probe also builds
-each input to end at its cut, so later events are never present in it.
+\paragraph{In the architecture.} The history decoder is causal, so the state after event $i$ depends on events $1, \dots, i$ only. The bidirectional read of the event encoder stays within one event, and the token decoder reaches earlier events only through $h_{i-1}$, the state of the previous event; no token of event $i$ has a path to the encoded vector of event $i$ itself. The embedding read after the last event before a cut is therefore the same whether or not later events exist in the stream. The probe also builds each input to end at its cut, so later events are never present in it.
 
-\paragraph{In the data.} Point-in-time correctness also depends on how events are built, and each step of
-Section~\ref{sec:data} is placed to keep it.
+\paragraph{In the data.} Point-in-time correctness also depends on how events are built, and each step of Section~\ref{sec:data} is placed to keep it.
 \begin{itemize}
-\item The history for a cut is every event strictly before the first day of the month, in the bank's own
-time zone.
-\item A daily geolocation event is stamped at the day's last ping, so a summary of the day never appears
-before the pings it summarizes.
-\item The profile event carries fields that never change within a client and is stamped at the client's
-first event, so it enters a history only when some event does.
-\item The vocabulary and the amount-bin edges are fitted on the pretraining folds only, and the test fold
-is never seen in pretraining.
+\item The history for a cut is every event strictly before the first day of the month, in the bank's own time zone.
+\item A daily geolocation event is stamped at the day's last ping, so a summary of the day never appears before the pings it summarizes.
+\item The profile event carries fields that never change within a client and is stamped at the client's first event, so it enters a history only when some event does.
+\item The vocabulary and the amount-bin edges are fitted on the pretraining folds only, and the test fold is never seen in pretraining.
 \end{itemize}
 
-Because the history prefix itself fixes the as-of time, an embedding can be stored in a feature store
-like any other timestamped feature: keyed by customer, stamped with its cut rather than with the time it
-was computed, and joined to labels by the store's point-in-time join, which then returns for each label
-the latest embedding before it. The join chooses which snapshot a label sees; the prefix guarantees that
-the snapshot itself holds nothing after its cut. Embeddings from different checkpoints are not comparable, so each backbone
-version needs its own feature set, and a head is valid only on the version it was fitted on. What the guarantee does not cover is the population: pretraining reads the full
-2021--2022 histories of the pretraining clients, so the backbone has seen the period in which the test
-clients' labels fall, although never those clients (Section~\ref{sec:limits}).
+Because the history prefix itself fixes the as-of time, an embedding can be stored in a feature store like any other timestamped feature: keyed by customer, stamped with its cut rather than with the time it was computed, and joined to labels by the store's point-in-time join, which then returns for each label the latest embedding before it. The join chooses which snapshot a label sees; the prefix guarantees that the snapshot itself depends only on events before its cut. Embeddings from different checkpoints are not comparable, so each backbone version needs its own feature set, and a head is valid only on the version it was fitted on. What the guarantee does not cover is the population: pretraining reads the full 2021--2022 histories of the pretraining clients, so the backbone has seen the period in which the test clients' labels fall, although never those clients (Section~\ref{sec:limits}).
 
 % -------------------------------------------------------------------------------
 \section{Data}\label{sec:data}
@@ -334,10 +192,7 @@ clients' labels fall, although never those clients (Section~\ref{sec:limits}).
 \subsection{MBD-mini}
 
 MBD is a dataset of bank clients released for research on event sequences, with transactions,
-geolocation pings and support dialogues per client, and monthly labels for the purchase of four products
-\cite{mbd}. MBD-mini, a 10\% client sample of it, is published under CC BY 4.0 \cite{mbdmini}. Table~\ref{tab:mbd}
-gives its size. All fields are anonymized integer codes, amounts are rescaled, and timestamps are in UTC
-with the bank's day starting at 21:00 UTC (Moscow time). Clients are split into five folds of equal size.
+geolocation pings and support dialogues per client, and monthly labels for the purchase of four products \cite{mbd}. MBD-mini, a 10\% client sample of it published under CC BY 4.0 \cite{mbdmini}, holds 100,224 clients (Table~\ref{tab:mbd}). All fields are anonymized integer codes, amounts are rescaled, and timestamps are in UTC with the bank's day starting at 21:00 UTC (Moscow time). Clients are split into five folds of equal size.
 
 \begin{table}[htbp]
 \centering
@@ -367,20 +222,12 @@ geolocation & \tok{[EVT] name=geo dt=<b> g4=<cell> g5=<cell>} \\
 \end{tabular}
 \end{center}
 
-\paragraph{Profile event.} The four fields \tok{src\_type21}, \tok{src\_type22}, \tok{src\_type31} and
-\tok{src\_type32} never change within a client: each takes one value per client in all 98,721
-clients with transactions, while on fold 1 \tok{src\_type11} and \tok{src\_type12} change on 13--15\%
-of consecutive transactions and the destination fields and the event type on 55--63\%. They are attributes of the client's account. Repeated on every transaction they took 4 of 13 tokens, so we state them once, in a profile
-event at the client's first event time. Transactions fall to 9 tokens and the pretraining stream from
-454 million to 332 million tokens. The profile event also gives the model what PRAGMA's profile-state
-encoder provides \cite{pragma}, a representation of static attributes learned jointly with the events.
+\paragraph{Profile event.} The four fields \tok{src\_type21}, \tok{src\_type22}, \tok{src\_type31} and \tok{src\_type32} never change within a client: each takes one value per client in all 98,721
+clients with transactions, while on fold 1 \tok{src\_type11} and \tok{src\_type12} change on 13--15\% of consecutive transactions and the destination fields and the event type on 55--63\%. They are attributes of the client's account. Repeated on every transaction they took 4 of 13 tokens, so we state them once, in a profile event at the client's first event time. Transactions fall to 9 tokens and the pretraining stream from 454 million to 332 million tokens. The profile event also gives the model what PRAGMA's profile-state encoder provides \cite{pragma}, a representation of static attributes learned jointly with the events.
 
 \paragraph{Geolocation.} Raw pings outnumber transactions 1.7 to 1 and would crowd them out of a
 window. We keep one geolocation event per client per Moscow day, carrying the day's most frequent
-\tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, stamped at the day's last ping so
-that the event never runs ahead of what it summarizes. This keeps 14.7 million events. The geohash codes
-are anonymized, so no spatial adjacency can be computed, but every \tok{geohash\_5} cell lies in exactly
-one \tok{geohash\_4} cell, and the shared \tok{g4} token lets cells in the same area share information.
+\tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, stamped at the day's last ping so that the event never runs ahead of what it summarizes. This keeps 14.7 million events. The geohash codes are anonymized, so no spatial adjacency can be computed, but every \tok{geohash\_5} cell lies in exactly one \tok{geohash\_4} cell, and the shared \tok{g4} token lets cells in the same area share information.
 
 \paragraph{Time and amounts.} The gap since the client's previous event becomes a token
 \tok{dt=}$\lfloor 8 \ln(1 + \Delta s/8) \rfloor$, capped at 140, so 141 buckets span seconds to
@@ -391,9 +238,7 @@ counterparty-like fields seen fewer than 1,000 times and geohash cells seen fewe
 (\tok{g4}) or 300 (\tok{g5}) times fall into an \tok{other} token per key. The vocabulary has 12,828
 tokens, and no token of the held-out fold is unknown. Dialogue embeddings are left out of this version.
 
-The stream holds 53.4 million events in all, about 8 tokens per event. Folds 1--4 give the pretraining
-stream, with 2\% of their clients held out for validation loss: 332 million training tokens and 6.8
-million validation tokens. Fold 0 is never seen in pretraining or vocabulary fitting.
+The stream holds 53.4 million events in all, about 8 tokens per event. Folds 1--4 give the pretraining stream, with 2\% of their clients held out for validation loss: 332 million training tokens and 6.8 million validation tokens. Fold 0 is never seen in pretraining or vocabulary fitting.
 
 % -------------------------------------------------------------------------------
 \section{Evaluation protocol}\label{sec:protocol}
@@ -404,118 +249,52 @@ A row is a client and a month from February 2022 to January 2023, 12 per client.
 history for a month is every event strictly before the first day of that month \cite{mbd}, here in
 Moscow time. Two kinds of label share these rows.
 
-\paragraph{Official targets.} \tok{target\_1} to \tok{target\_4} indicate that the client takes product
-$k$ during the month. They are rare: on the test fold, \tok{target\_1} has 1,072 positives in 243,936
-rows (0.44\%), \tok{target\_2} 132 (0.05\%), \tok{target\_3} 934 (0.38\%) and \tok{target\_4} 634
-(0.26\%). Of these rows, 1,332 belong to 111 clients with no transactions or geolocation, who have no stream; both the
-probe and the baseline drop them, leaving 242,604 scored rows. No single event type marks a purchase: the event type most often seen for the first time in
+\paragraph{Official targets.} \tok{target\_1} to \tok{target\_4} indicate that the client takes product $k$ during the month. They are rare: on the test fold, \tok{target\_1} has 1,072 positives in 243,936 rows (0.44\%), \tok{target\_2} 132 (0.05\%), \tok{target\_3} 934 (0.38\%) and \tok{target\_4} 634 (0.26\%). Of these rows, 1,332 belong to 111 clients with no transactions or geolocation, who have no stream; both the probe and the baseline drop them, leaving 242,604 scored rows. No single event type marks a purchase: the event type most often seen for the first time in
 the month of a purchase covers at most 10\% of its positives.
 
-\paragraph{Event targets.} Purchases do leave traces in the stream. Among \tok{target\_2} positives, the
-transaction kinds (type, subtype) 48/31, 23/49, 26/28 and 48/10 appear for the first time in the
-client's history 56 to 262 times more often than among negatives, and 50/19 does so 27 times more often
-among \tok{target\_3} positives. We define an event target for each of these kinds (the kind appears in
-the client's history for the first time during the month) and a \emph{churn} target (no transaction
-during the month from a client with at least one before the cut). These are read from the stream.
+\paragraph{Event targets.} Purchases do leave traces in the stream. Among \tok{target\_2} positives, the transaction kinds (type, subtype) 48/31, 23/49, 26/28 and 48/10 appear for the first time in the client's history 56 to 262 times more often than among negatives, and 50/19 does so 27 times more often among \tok{target\_3} positives. We define an event target for each of these kinds (the kind appears in the client's history for the first time during the month) and a \emph{churn} target (no transaction during the month from a client with at least one before the cut). These are read from the stream.
 
-\paragraph{The last month.} The transaction tables end on 31 December 2022, so in January 2023 no client
-has a transaction and 99.1\% of that month's rows are labeled churn, against 12.7\% to 20.4\% in the
-other months. That month holds 20,032 of the test fold's 55,920 churn positives. A model that can tell
-the month of the cut scores those rows without reading any behavior, and the time since a client's
-first event tells it: with January 2023 included, EventGPT on aligned windows (Section~\ref{sec:windows})
-reached 0.910 on churn against 0.830 on random windows, and without it both reach 0.93. We therefore
-leave January 2023 out of the churn label, in training and in testing, which keeps 35,888 test positives.
-The event targets have no positives in that month and change by at most 0.014 without it; the official
-targets are the dataset's own labels and keep all twelve months.
+\paragraph{The last month.} The transaction tables end on 31 December 2022, so in January 2023 no client has a transaction and 99.1\% of that month's rows are labeled churn, against 12.7\% to 20.4\% in the other months. That month holds 20,032 of the test fold's 55,920 churn positives. A model that can tell the month of the cut scores those rows without reading any behavior, and the time since a client's first event tells it: with January 2023 included, EventGPT on aligned windows (Section~\ref{sec:windows}) reached 0.910 on churn against 0.830 on random windows, and without it both reach 0.93. We therefore leave January 2023 out of the churn label, in training and in testing, which keeps 35,888 test positives. The event targets have no positives in that month and change by at most 0.014 without it; the official targets are the dataset's own labels and keep all twelve months.
 
-Figure~\ref{fig:labels} shows the monthly rate of every label over the five folds. The product targets
-are rare and drift: \tok{target\_1} falls from 0.56\% of rows in February 2022 to 0.16\% in January
-2023, while \tok{target\_2} stays near 0.05\%. The event targets lie between 0.01\% and 0.4\%, and
-churn rises from 12.7\% to 20.1\% before the last month.
+The product targets are rare and drift (Figure~\ref{fig:labels}): \tok{target\_1} falls from 0.56\% of rows in February 2022 to 0.16\% in January 2023, while \tok{target\_2} stays near 0.05\%. The event targets lie between 0.01\% and 0.4\%, and churn rises from 12.7\% to 20.1\% before the last month.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/labels.pdf}
-\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold
-in full, the training rows weighted back to their share). Product targets are solid, event targets dashed
-and churn blue. January 2023 follows the last transaction, so the event targets and churn end in
-December.}
+\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
 \label{fig:labels}
 \end{figure}
 
 \subsection{Heads and metrics}\label{sec:metrics}
 
 Embeddings are frozen. For each label we fit a logistic regression on standardized embeddings
-($C = 0.1$) on rows from folds 1--4 and score every row of fold 0. Positives are rare, so the training
-rows are every row positive for any label plus 60,000 rows sampled uniformly from the rest, reweighted
-to their share. We report ROC-AUC and PR-AUC (average precision). PR-AUC matters here because a ranking
-can reach a high ROC-AUC while its top is still mostly negatives; a random ranking has a PR-AUC equal to
-the prevalence, which the tables give beside it.
+($C = 0.1$) on rows from folds 1--4 and score every row of fold 0. Positives are rare, so the training rows are every row positive for any label plus 60,000 rows sampled uniformly from the rest, reweighted to their share. We report ROC-AUC and PR-AUC (average precision). PR-AUC matters here because a ranking can reach a high ROC-AUC while its top is still mostly negatives; a random ranking has a PR-AUC equal to the prevalence, which the tables give beside it.
 
-Where a comparison gives standard errors, they follow DeLong's method \cite{delong}, which writes ROC-AUC
-as a mean of placement values, clustered by client \cite{obuchowski}: each test client contributes twelve
-monthly rows, which are not independent, so each row's influence on the AUC is summed within its client and
-the variance is taken over the 20,217 clients. On simulated data with twelve correlated rows per client,
-this matches a bootstrap over clients (0.0129 against 0.0132), while the unclustered variance gives
-0.0102. The same client sums give the covariance of AUCs on the same rows, and so the standard error of
-the mean over the official targets and of the difference between two models. The difference is paired: both
-models rank the same clients, and its standard error (about 0.005 on the official mean) is smaller than
-either model's own (about 0.006).
+Where a comparison gives standard errors, they follow DeLong's method \cite{delong}, which writes ROC-AUC as a mean of placement values, clustered by client \cite{obuchowski}: each test client contributes twelve monthly rows, which are not independent, so each row's influence on the AUC is summed within its client and the variance is taken over the 20,217 clients. On simulated data with twelve correlated rows per client, this matches a bootstrap over clients (0.0129 against 0.0132), while the unclustered variance gives 0.0102. The same client sums give the covariance of AUCs on the same rows, and so the standard error of the mean over the official targets and of the difference between two models. Because both models rank the same clients, the difference is paired, and its standard error (about 0.005 on the official mean) is smaller than either model's own (about 0.006).
 
 \subsection{Zero-shot event targets}\label{sec:zs-protocol}
 
-An event target, the kind $(X, Y)$ appearing in a client's history for the first time during the month,
-can be scored by the pretrained model with no head and no labels. After the history at a cut we append
-the start of a next event, \tok{[EVT] name=trx\_X dt=<g>}, where $g$ is the bucketed gap from the last
-event to the cut. The token decoder gives $P(\tok{name=trx\_X})$ at \tok{[EVT]} and
-$P(\tok{sub=Y} \mid \tok{name=trx\_X}, \tok{dt=g})$ at the \tok{dt} token, and the score is their product,
-the probability that the next event is of kind $(X, Y)$. A client who already had the kind before the cut
-cannot be positive under the label's definition, so that client's score is set to zero. This rule uses
-no labels, and we apply it to the supervised scores as well when comparing the two. For EventGPT the
-history stages run once per row and the token decoder once per type $X$; the flat decoder is scored the
-same way and runs whole once per type.
+An event target, the kind $(X, Y)$ appearing in a client's history for the first time during the month, can be scored by the pretrained model with no head and no labels. After the history at a cut we append the start of a next event, \tok{[EVT] name=trx\_X dt=<g>}, where $g$ is the bucketed gap from the last event to the cut. The token decoder gives $P(\tok{name=trx\_X})$ at \tok{[EVT]} and
+$P(\tok{sub=Y} \mid \tok{name=trx\_X}, \tok{dt=g})$ at the \tok{dt} token, and the score is their product, the probability that the next event is of kind $(X, Y)$. A client who already had the kind before the cut cannot be positive under the label's definition, so that client's score is set to zero. This rule uses no labels, and we apply it to the supervised scores as well when comparing the two. For EventGPT the history stages run once per row and the token decoder once per type $X$; the flat decoder is scored the same way and runs whole once per type.
 
 Zero-shot scoring is evaluated on every test row positive for one of the five event targets and on
-20,000 rows sampled uniformly from the test fold. Each target's ROC-AUC uses its own positives and the
-uniform sample, so the positives of the other targets do not enter as negatives, and uniform sampling
-of negatives leaves ROC-AUC unbiased. The supervised comparison is the logistic head on the last
-readout, scored on the same rows.
+20,000 rows sampled uniformly from the test fold. Each target's ROC-AUC uses its own positives and the uniform sample, so the positives of the other targets do not enter as negatives, and uniform sampling of negatives leaves ROC-AUC unbiased. The supervised comparison is the logistic head on the last hidden-state readout, scored on the same rows.
 
 \subsection{Baselines}
 
 \paragraph{Aggregate features.} On the same rows we compute 114 features from events before the cut:
 transaction counts and amount sum, mean and maximum, count and amount per event type for the 15 most
-frequent types, geolocation pings and active days, each over all history, the last month and the last
-three months, together with days since the first and last transaction and the four profile fields as
-categorical features. CatBoost \cite{catboost} (depth 6, learning rate 0.05, at most 2,000 trees with
-early stopping on 10\% of training clients) is fitted per label on the same training rows. Refitted
-without one group of features at a time, the official mean falls by 0.010 without the profile fields
-(0.036 on \tok{target\_4}), 0.009 without the two timing features, 0.005 without the full-history
-window, 0.001 without geolocation and nothing without the amounts. These features need the schema: which table holds transactions, which field is the amount and which event
-types are frequent.
+frequent types, geolocation pings and active days, each over all history, the last month and the last three months, together with days since the first and last transaction and the four profile fields as categorical features. CatBoost \cite{catboost} (depth 6, learning rate 0.05, at most 2,000 trees with early stopping on 10\% of training clients) is fitted per label on the same training rows. Refitted without one group of features at a time, the official mean falls by 0.010 without the profile fields (0.036 on \tok{target\_4}), 0.009 without the two timing features, 0.005 without the full-history window, 0.001 without geolocation and does not change without the amounts. These features need the schema: which table holds transactions, which field is the amount and which event types are frequent.
 
-\paragraph{Token counts.} A table that needs no knowledge of the schema: for each of the 200 most frequent
-tokens of the stream (any \tok{key=value}, amount bin or time bucket, 90.9\% of all non-special tokens),
-its count over all history, the last 91 days and the last 30 days, with the number of events in each
-window and the days since the first and the last event, 605 features in all. It is computed either over
-the full history or over the same 2,048-token window that EventGPT reads, and fitted with the same
-CatBoost settings. Any tokenized event stream with timestamps yields this table, so it is the
-alternative an institution has when no one has written features for its events.
+\paragraph{Token counts.} A table that needs no knowledge of the schema: for each of the 200 most frequent tokens of the stream (any \tok{key=value}, amount bin or time bucket, 90.9\% of all non-special tokens), its count over all history, the last 91 days and the last 30 days, with the number of events in each window and the days since the first and the last event, 605 features in all. It is computed either over the full history or over the same 2,048-token window that EventGPT reads, and fitted with the same CatBoost settings. Any tokenized event stream with timestamps yields this table, so it is the alternative an institution has when no one has written features for its events.
 
-\paragraph{Flat decoder.} A GPT-style decoder of width 384 with ten layers and learned positions over
-the same token stream, 23.5 million parameters against EventGPT's 22.9 million, trained identically. It
-has no event states, so its readouts run over tokens: the last token, the mean over tokens and a recency
-weight over about 256 tokens, as many as 32 events hold.
+\paragraph{Flat decoder.} A GPT-style decoder of width 384 with ten layers and learned positions over the same token stream, 23.5 million parameters against EventGPT's 22.9 million, trained identically. Its readouts are the state of the last token, the mean over token states and a recency-weighted mean over about 256 tokens, which 32 events hold on average.
 
-\paragraph{Published results.} The MBD paper reports mean ROC-AUC on full MBD, a population ten times
-larger with its own five-fold split (Table~\ref{tab:published}). These numbers give context only:
-MBD-mini is a different sample, and the comparison on full MBD is planned
-(Section~\ref{sec:limits}).
+\paragraph{Published results.} The MBD paper reports mean ROC-AUC on full MBD, a population ten times larger with its own five-fold split (Table~\ref{tab:published}). These numbers give context only: MBD-mini is a different sample, and the comparison on full MBD is planned (Section~\ref{sec:limits}).
 
 \begin{table}[htbp]
 \centering
-\caption{Mean ROC-AUC over the four product targets on full MBD, as reported by \cite{mbd} (late fusion
-for the two-source column).}
+\caption{Mean ROC-AUC over the four product targets on full MBD, as reported by \cite{mbd} (late fusion for the two-source column).}
 \label{tab:published}
 \begin{tabular}{lcc}
 \toprule
@@ -530,25 +309,13 @@ supervised RNN & 0.819 & 0.819 \\
 \end{tabular}
 \end{table}
 
-\subsection{Training}
+\subsection{Pretraining}
 
 EventGPT has width 384, 12 heads of width 32, two event-encoder layers, six history layers and two
-token-decoder layers: 22.9 million parameters, of which 4.9 million are the tied token embedding. It is
-trained with AdamW (learning rate $6 \times 10^{-4}$, $\beta = (0.9, 0.95)$, weight decay 0.1), linear
-warmup for 200 steps and cosine decay to 10\% of the peak, on windows of 2,048 tokens drawn at uniform
-offsets from the packed stream, 16 windows (32,768 tokens) per step, for 20,000 steps, about two passes
-over the data. Windows start mid-event and mid-client; \tok{[USR]} tokens bound the attention of each
-client. On one NVIDIA L4 in bfloat16 a run of 655 million tokens takes 1.5 hours (about 118,000 tokens
-per second), against 3.9 hours (about 47,000) for the flat decoder. Every model is trained with two
-seeds, 42 and 43, and model results are the mean of the two unless stated.
+token-decoder layers: 22.9 million parameters, of which 4.9 million are the tied token embedding. It is trained with AdamW (learning rate $6 \times 10^{-4}$, $\beta = (0.9, 0.95)$, weight decay 0.1), linear warmup for 200 steps and cosine decay to 10\% of the peak, on windows of 2,048 tokens drawn at uniform offsets from the packed stream, 16 windows (32,768 tokens) per step, for 20,000 steps, about two passes over the data. Windows start mid-event and mid-client; \tok{[USR]} tokens bound the attention of each client. On one NVIDIA L4 in bfloat16 a run of 655 million tokens takes 1.5 hours (about 118,000 tokens per second), against 3.9 hours (about 47,000) for the flat decoder. Every model is trained with two seeds, 42 and 43, and model results are the mean of the two unless stated.
 
 The final configuration, labeled \emph{aligned} in the tables, trains on aligned windows
-(Section~\ref{sec:windows}) and normalizes queries and keys in every attention head by their root mean
-square \cite{qknorm}. Without the normalization, the seed-43 run on aligned windows diverged at step
-4,400, at the peak learning rate: its validation loss rose from 1.16 to 1.5 and did not recover. With it
-both seeds train smoothly to a validation loss of 1.020 and 1.019, at about 90,000 tokens per second. The
-comparisons with the flat decoder use windows at random offsets for both models. The run with the profile
-path (Section~\ref{sec:static}) adds it to this configuration, which adds 0.6 million parameters.
+(Section~\ref{sec:windows}) and normalizes queries and keys in every attention head by their root mean square \cite{qknorm}. Without the normalization, the seed-43 run on aligned windows diverged at step 4,400, at the peak learning rate: its validation loss rose from 1.16 to 1.5 and did not recover. With it both seeds train smoothly to a validation loss of 1.020 and 1.019, at about 90,000 tokens per second. The comparisons with the flat decoder use windows at random offsets for both models. The run with the profile path (Section~\ref{sec:static}) adds it to this configuration, which adds 0.6 million parameters.
 
 % -------------------------------------------------------------------------------
 \section{Results}\label{sec:results}
@@ -557,27 +324,16 @@ path (Section~\ref{sec:static}) adds it to this configuration, which adds 0.6 mi
 
 Scored from the next-event distribution alone, the five event targets reach ROC-AUC 0.79 to 0.92
 (Table~\ref{tab:zero-shot}). A logistic head fitted on labels reaches 0.84 to 0.93 on the same rows.
-The zero-shot score is higher on 48/31 and 50/19, within 0.012 on 23/49, and lower by 0.046 to 0.048 on
-26/28 and 48/10. The two seeds differ by at most 0.014, on 48/31, which has 59 positives. Part of what the score misses
-is the client's level of activity: multiplied by one plus the client's transactions in the 30 days
-before the cut, a form checked on a training fold, it reaches 0.82 to 0.93 on seed 42, which passes the
-supervised head on three of the five targets (48/31, 23/49 and 50/19; Section~\ref{sec:ablations}).
+The zero-shot score is higher on 48/31 and 50/19, within 0.012 on 23/49, and lower by 0.046 to 0.048 on 26/28 and 48/10. The two seeds differ by at most 0.014, on 48/31, which has 59 positives. Part of what the score misses is the client's level of activity: multiplied by one plus the client's transactions in the 30 days before the cut, a form checked on a training fold, it reaches 0.82 to 0.93 on seed 42, which passes the supervised head on three of the five targets (48/31, 23/49 and 50/19; Section~\ref{sec:ablations}).
 
 On aligned windows (mean of two seeds) the zero-shot scores are 0.78 to 0.91, within 0.009 of those
 above, and they exceed a head fitted on the aligned embedding on 48/31 and 50/19.
 
-Zero-shot scoring needs only a model trained on next events, and the flat decoder scored the same way
-reaches 0.78 to 0.92 (mean of two seeds). It is level with EventGPT on 48/31 and 48/10, 0.010 higher on
-50/19, and 0.013 and 0.029 lower on 23/49 and 26/28. Its zero-shot scores exceed a logistic head on its
-own last-token state on all five targets.
+Zero-shot scoring needs only a model trained on next events, and the flat decoder scored the same way reaches 0.78 to 0.92 (mean of two seeds). It is level with EventGPT on 48/31 and 48/10, 0.010 higher on 50/19, and 0.013 and 0.029 lower on 23/49 and 26/28. Its zero-shot scores exceed a logistic head on its own last-token state on all five targets.
 
 \begin{table}[htbp]
 \centering
-\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients
-who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of
-two seeds, as is the aligned column. The supervised
-head is the logistic head on the seed-42 embedding (random windows), on the same rows. The aggregates column is the
-full test fold, so it is comparable in expectation but not row for row.}
+\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of two seeds, as is the aligned column. The supervised head is the logistic head on the seed-42 embedding (random windows), on the same rows. The aggregates column is the full test fold, so it is comparable in expectation but not row for row.}
 \label{tab:zero-shot}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -597,31 +353,15 @@ first 50/19 & 770 & 0.906 & 0.904 & 0.905 & 0.915 & 0.896 & 0.937 \\
 
 The rule for earlier occurrences matters most where the kind is common. Without it, 50/19 falls from
 0.906 to 0.722 (seed 42), because the model predicts the kind for clients who already make it every
-month; the rule changes 48/31, a rare kind, by 0.001. The score is the probability of the kind as the
-\emph{next} event, while the label covers the whole month. Sampling a month of events from the model
-and testing for the kind would match the label's horizon; we have not run it. Scaling the score by the
-client's recent number of transactions, a cruder fix for the same mismatch, raises it on four of the five
-targets (Section~\ref{sec:ablations}).
+month; the rule changes 48/31, a rare kind, by 0.001. The score is the probability of the kind as the \emph{next} event, while the label covers the whole month. Sampling a month of events from the model and testing for the kind would match the label's horizon; we have not run it. Scaling the score by the client's recent number of transactions, a cruder fix for the same mismatch, raises it on four of the five targets (Section~\ref{sec:ablations}).
 
-The aggregates need labels for every target, and zero-shot scoring needs none. To put a number on that
-difference, we fit the aggregates on $n$ client-months drawn uniformly from the 699,380 rows of the
-pretraining folds, as a team labeling rows at random would, and score the whole test fold
-(Table~\ref{tab:labels}). Each budget is drawn five times up to 30,000 rows, three times at 100,000 and
-twice at 300,000, and a draw without a positive is scored 0.5. CatBoost's scores take the same rule for
-earlier occurrences, which raises them by up to 0.15 at the smallest budgets. The aggregates pass the
-zero-shot score between 10,000 and 30,000 labeled rows on 50/19, the most common kind, and between 30,000
-and 100,000 on 26/28. On 48/10 and 48/31 they need 100,000 to 300,000 rows. On 23/49 they stay below it at
-300,000 rows and reach 0.920 only with every positive of the pretraining folds. Measured in positives, the
-crossings lie between about 20 and 400, and above 260 on 23/49. The zero-shot scores come from a sample of the test fold and the
+The aggregates need labels for every target, and zero-shot scoring needs none. To put a number on that difference, we fit the aggregates on $n$ client-months drawn uniformly from the 699,380 rows of the pretraining folds, as a team labeling rows at random would, and score the whole test fold
+(Table~\ref{tab:labels}). Each budget is drawn five times up to 30,000 rows, three times at 100,000 and twice at 300,000, and a draw without a positive is scored 0.5. CatBoost's scores take the same rule for earlier occurrences, which raises them by up to 0.15 at the smallest budgets. The aggregates pass the zero-shot score between 10,000 and 30,000 labeled rows on 50/19, the most common kind, and between 30,000 and 100,000 on 26/28. On 48/10 and 48/31 they need 100,000 to 300,000 rows. On 23/49 they stay below it at 300,000 rows and reach 0.920 only with every positive of the pretraining folds. Measured in positives, the crossings lie between about 20 and 400, and above 260 on 23/49. The zero-shot scores come from a sample of the test fold and the
 aggregates from the whole fold, so the two are comparable in expectation.
 
 \begin{table}[htbp]
 \centering
-\caption{Aggregates fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of
-the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws, with
-the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The
-last column is the aggregates baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the
-pretraining folds and 60,000 negatives.}
+\caption{Aggregates fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws, with the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The last column is the aggregates baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the pretraining folds and 60,000 negatives.}
 \label{tab:labels}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -642,18 +382,12 @@ first 50/19 & 0.905 & 0.746 (2) & 0.821 (8) & 0.854 (34) & 0.921 (95) & 0.929 (3
 
 \subsection{Frozen embeddings with a supervised head}\label{sec:propensity}
 
-Table~\ref{tab:main} gives every label for the embeddings and the baselines.
-
 \begin{table}[htbp]
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
-\caption{ROC-AUC on the test fold. Model columns are the mean of two seeds, with a logistic head on the
-frozen readout; EventGPT is trained on windows at random offsets or on aligned windows
-(Section~\ref{sec:windows}). Token counts and aggregates are fitted with CatBoost. Churn leaves out January
-2023 (Section~\ref{sec:protocol}). The aggregates are fitted on the training rows drawn once January 2023
-had left the churn label, the other columns on rows drawn before, which also held the 20,000 January
-churn positives. PR-AUC for the official targets is in Table~\ref{tab:main-pr}.}
+\caption{ROC-AUC on the test fold. Model columns are the mean of two seeds, with a logistic head on the frozen readout; EventGPT is trained on windows at random offsets or on aligned windows
+(Section~\ref{sec:windows}). Token counts and aggregates are fitted with CatBoost. Churn leaves out January 2023 (Section~\ref{sec:protocol}). The aggregates are fitted on the training rows drawn once January 2023 had left the churn label, the other columns on rows drawn before, which also held the 20,000 January churn positives. PR-AUC for the official targets is in Table~\ref{tab:main-pr}.}
 \label{tab:main}
 \begin{tabular}{lccccccc}
 \toprule
@@ -695,77 +429,36 @@ target & prevalence & full history & full & 2,048 tokens & last & recency & rand
 \end{tabular}
 \end{table}
 
-\paragraph{Hierarchy against the flat decoder.} Both are trained on windows at random offsets, and as
-embeddings the two are level. EventGPT's state after
-the last event reaches a mean of 0.774 on the official targets, and the flat decoder reaches 0.777 when
-its recency readout pools about 256 token states (0.786 and 0.768 on the two seeds, against 0.7741 and
-0.7745 for EventGPT). Read at one state, the flat decoder's last token reaches 0.714 and is lower than
-EventGPT on all ten labels in both seeds. Of the other labels, EventGPT is higher on churn (0.935 against
-0.899) and on two event targets, the flat decoder on two, and 23/49 is tied. The trade is in training:
-EventGPT runs at 2.5 times the throughput, and its token loss is higher (validation loss 1.020 against
-0.944 and 0.947), because the token decoder sees the past only through the history state of the previous
-event. The fields that repeat from recent events show it most: the flat decoder predicts the next
-\tok{geohash\_5} cell with top-1 accuracy 0.68, EventGPT with 0.57, while for the event name, which
-depends on the history as a whole, they are level (0.574 and 0.58). Next-token loss therefore does not rank the two as embeddings.
+\paragraph{Hierarchy against the flat decoder.} Both are trained on windows at random offsets, and as embeddings the two are level (Table~\ref{tab:main}). EventGPT's state after the last event reaches a mean of 0.774 on the official targets, and the flat decoder reaches 0.777 when its recency readout pools about 256 token states (0.786 and 0.768 on the two seeds, against 0.7741 and
+0.7745 for EventGPT). Read at one state, the flat decoder's last token reaches 0.714 and is lower than EventGPT on all ten labels in both seeds. Of the other labels, EventGPT is higher on churn (0.935 against 0.899) and on two event targets, the flat decoder on two, and 23/49 is tied. EventGPT trains at 2.5 times the flat decoder's throughput, and its token loss is higher (validation loss 1.020 against 0.944 and 0.947), because the token decoder sees the past only through the history state of the previous event. The loss gap is largest on fields that repeat from recent events, such as the \tok{geohash\_5} cell, which the flat decoder predicts with top-1 accuracy 0.68 and EventGPT with 0.57. For the event name, which depends on the history as a whole, the two are level (0.574 and 0.58). Next-token loss therefore does not rank the two as embeddings.
 
 \paragraph{Against aggregate tables.} With the same 2,048-token window, EventGPT on random windows
 (0.774) and the token-count table (0.777) are level on the official targets, and EventGPT on aligned
 windows exceeds the table by 0.010 (0.787). Over the full history, token counts reach 0.803 and the
-hand-built aggregates 0.816. On churn the token-count table reaches 0.955 within the window and over the
-full history alike, against 0.935 for EventGPT. On transactions alone (Section~\ref{sec:ablations})
-EventGPT reaches 0.793 (0.795 and 0.791 on the two seeds), 0.008 above token counts in its window and
-level with them over the full transaction history (0.793).
+hand-built aggregates 0.816. On churn the token-count table reaches 0.955 within the window and over the full history alike, against 0.935 for EventGPT. On transactions alone (Section~\ref{sec:ablations}) EventGPT reaches 0.793 (0.795 and 0.791 on the two seeds), 0.008 above token counts in its window and level with them over the full transaction history (0.793).
 
-Figure~\ref{fig:tsne} shows the embeddings of 12,000 test clients at the December 2022 cut, the last
-with a month of transactions after it. Clients with no transaction in the following month gather in
-regions of the map rather than spreading evenly over it.
+In a t-SNE map of the embeddings of 12,000 test clients at the December 2022 cut, the last with a month of transactions after it, clients with no transaction in the following month gather in regions of the map (Figure~\ref{fig:tsne}).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.6\textwidth]{figures/embeddings.pdf}
-\caption{t-SNE of the EventGPT embedding (aligned windows, seed 42, last state) for 12,000 test clients at
-the December 2022 cut, after a projection to 50 principal components. Blue marks the clients with no
-transaction in the following month.}
+\caption{t-SNE of the EventGPT embedding (aligned windows, seed 42, last state) for 12,000 test clients at the December 2022 cut, after a projection to 50 principal components. Blue marks the clients with no transaction in the following month.}
 \label{fig:tsne}
 \end{figure}
 
 \subsection{Aligned training windows}\label{sec:aligned}
 
-Aligned windows raise the official mean from 0.774 to 0.787 (Table~\ref{tab:main}); the two seeds give
-0.786 and 0.788. Every event target gains 0.003 to 0.012 with the supervised head, and the zero-shot
-scores stay within 0.009 of those on random windows (Table~\ref{tab:zero-shot}). Churn stays where it
-was (0.932 against 0.935): the gain of 0.08 that aligned windows appeared to give it came from
-recognizing the last month (Section~\ref{sec:protocol}). Without January 2023 the official mean is
-0.784 on aligned windows (two seeds) and 0.775 on random ones (seed 42), so the gain on the product
-targets holds. It suggests that the mismatch between random training windows, which contain the profile
-event only when they reach the start of a client, and the probe's histories, which always open with it,
-cost the product targets about 0.01.
+Aligned windows raise the official mean from 0.774 to 0.787 (Table~\ref{tab:main}); the two seeds give 0.786 and 0.788. Every event target gains 0.003 to 0.012 with the supervised head, and the zero-shot scores stay within 0.009 of those on random windows (Table~\ref{tab:zero-shot}). Churn stays where it was (0.932 against 0.935): the gain of 0.08 that aligned windows appeared to give it came from recognizing the last month (Section~\ref{sec:protocol}). Without January 2023 the official mean is 0.784 on aligned windows (two seeds) and 0.775 on random ones (seed 42), so the gain on the product targets holds. It suggests that the mismatch between random training windows, which contain the profile event only when they reach the start of a client, and the probe's histories, which always open with it, cost the product targets about 0.01.
 
 \subsection{Fine-tuning and gradient boosting on the embedding}\label{sec:finetune}
 
-Fine-tuning the whole model does not raise the official targets (Table~\ref{tab:boost}). Starting from
-the aligned checkpoint of seed 42 trained without QK-norm (frozen 0.788), we train it end to end with one logistic output per
-label on the probe's training rows: the head alone for the first 2,000 steps, then every weight, at a
-peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head, for one
-pass. The step is chosen by the official mean on a tenth of the training clients. The test mean stays at
-0.788, while the event targets gain 0.005 to 0.035, reaching 0.940 on 48/31 and 0.931 on 23/49, both
-above the hand-built aggregates (0.920 on both). This run kept January 2023 in the churn label, and its
-churn of 0.945 cannot be separated from the last-month effect, so we do not report it as a gain. The validation
-clients belong to the pretraining folds, and their official mean (0.849) overstates the test mean by
-0.06.
+Fine-tuning the whole model does not raise the official targets (Table~\ref{tab:boost}). Starting from the aligned checkpoint of seed 42 trained without QK-norm (frozen 0.788), we train it end to end with one logistic output per label on the probe's training rows: the head alone for the first 2,000 steps, then every weight, at a peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head, for one pass. The step is chosen by the official mean on a tenth of the training clients. The test mean stays at 0.788, while the event targets gain 0.005 to 0.035, reaching 0.940 on 48/31 and 0.931 on 23/49, both above the hand-built aggregates (0.920 on both). This run kept January 2023 in the churn label, and its churn of 0.945 cannot be separated from the last-month effect, so we do not report it as a gain. The validation clients belong to the pretraining folds, and their official mean (0.849) overstates the test mean by 0.06.
 
-Gradient boosting reads the embedding less well than the logistic head. CatBoost takes it either as 384
-numeric columns or as one embedding feature, from which it derives its own features (by default linear
-discriminant projections and counts of nearest training rows per class). As numeric columns the
-embedding reaches 0.775, and as an embedding feature 0.700, which fails on \tok{target\_4} (0.501).
-Added as an embedding feature to the hand-built table, it lowers the mean by 0.007.
+Gradient boosting reads the embedding less well than the logistic head. CatBoost takes it either as 384 numeric columns or as one embedding feature, from which it derives its own features (by default linear discriminant projections and counts of nearest training rows per class). As numeric columns the embedding reaches 0.775, and as an embedding feature 0.700, which fails on \tok{target\_4} (0.501). Added as an embedding feature to the hand-built table, it lowers the mean by 0.007.
 
 \begin{table}[htbp]
 \centering
-\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42, trained without QK-norm. ROC-AUC on the test fold;
-the CatBoost rows use the same labels and early stopping as the aggregates, on the probe's training rows,
-drawn before January 2023 left the churn label, so the aggregates are 0.815 here against 0.816 in
-Table~\ref{tab:main}.}
+\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42, trained without QK-norm. ROC-AUC on the test fold; the CatBoost rows use the same labels and early stopping as the aggregates, on the probe's training rows, drawn before January 2023 left the churn label, so the aggregates are 0.815 here against 0.816 in Table~\ref{tab:main}.}
 \label{tab:boost}
 \begin{tabular}{lc}
 \toprule
@@ -784,21 +477,11 @@ CatBoost, aggregates and embedding feature & 0.808 \\
 \subsection{Where the gap to aggregates comes from}\label{sec:gap}
 
 Read beside the history state of the model pretrained with the profile path, the profile fields add
-0.019 and 0.014 to the official mean on the two pretraining seeds (0.014 and 0.013 for the model without
-the path). Token counts over the full history, read beside the state and the fields, add another 0.007 on
-seed 42 and nothing on seed 43, which leaves differences of $-0.006$ (95\% interval $-0.015$ to $+0.003$, $p = 0.16$) and
-$-0.009$ ($-0.018$ to $+0.000$, $p = 0.057$) (Table~\ref{tab:gap}). The table pairs every model with the
-aggregates on the same test rows (Section~\ref{sec:metrics}); both seeds read the same training rows.
+0.019 and 0.014 to the official mean on the two pretraining seeds (0.014 and 0.013 for the model without the path). Token counts over the full history, read beside the state and the fields, add another 0.007 on seed 42 and 0.000 on seed 43, which leaves differences of $-0.006$ (95\% interval $-0.015$ to $+0.003$, $p = 0.16$) and $-0.009$ ($-0.018$ to $+0.000$, $p = 0.057$) (Table~\ref{tab:gap}). The table pairs every model with the aggregates on the same test rows (Section~\ref{sec:metrics}); both seeds read the same training rows.
 
 \begin{table}[htbp]
 \centering
-\caption{The gap to the hand-built aggregates, aligned windows with QK-norm, two pretraining seeds. Official
-mean ROC-AUC with its difference from the aggregates (0.816), a 95\% interval and $p$ from the paired
-standard error, clustered by client. The last two rows average, with equal weights, the ranks given by the
-readout with profile fields and token counts and by CatBoost on token counts over the full history or on
-the aggregates. The timing and token-count rows each add their features to the profile readout, not to the
-row above. Fitted on these training rows, the token counts reach 0.783 against 0.803 in
-Table~\ref{tab:main}, most of it on \tok{target\_2} (0.780 against 0.849).}
+\caption{The gap to the hand-built aggregates, aligned windows with QK-norm, two pretraining seeds. Official mean ROC-AUC with its difference from the aggregates (0.816), a 95\% interval and $p$ from the paired standard error, clustered by client. The last two rows average, with equal weights, the ranks given by the readout with profile fields and token counts and by CatBoost on token counts over the full history or on the aggregates. The timing and token-count rows each add their features to the profile readout, not to the row above. Fitted on these training rows, the token counts reach 0.783 against 0.803 in Table~\ref{tab:main}, most of it on \tok{target\_2} (0.780 against 0.849).}
 \label{tab:gap}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -824,54 +507,18 @@ rank average with aggregates & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.001$ 
 \end{tabular}}
 \end{table}
 
-\paragraph{Static attributes.} Without the four profile fields the aggregates lose 0.010 on the official
-mean and 0.036 on \tok{target\_4}, the largest loss of any feature group. Read beside the history state
-(Section~\ref{sec:static}), the field embeddings raise the official mean from 0.786 to 0.800, and
-\tok{target\_4} from 0.754 to 0.821 (seed 42). With the profile path in pretraining as well, \tok{target\_4}
-reaches 0.830 and 0.822 on the two seeds against 0.818 for the aggregates ($p = 0.11$ and 0.61). The path on
-its own does not reach the head: the history state of the model trained with it scores 0.784 and 0.793,
-against 0.786 and 0.788 without it, and \tok{target\_4} 0.763 and 0.755. The model uses the path, whose projection grows from zero to a norm of 15.6 during pretraining,
-to predict next tokens, and next-token prediction does not put the attributes into the last state in a
-form a linear head can read. The readout lowers \tok{target\_1} by 0.010, the one official target that
-loses.
+\paragraph{Static attributes.} Without the four profile fields the aggregates lose 0.010 on the official mean and 0.036 on \tok{target\_4}, the largest loss of any feature group. Read beside the history state (Section~\ref{sec:static}), the field embeddings raise the official mean from 0.786 to 0.800, and \tok{target\_4} from 0.754 to 0.821 (seed 42). With the profile path in pretraining as well, \tok{target\_4} reaches 0.830 and 0.822 on the two seeds against 0.818 for the aggregates ($p = 0.11$ and 0.61). The path on its own does not reach the head: the history state of the model trained with it scores 0.784 and 0.793, against 0.786 and 0.788 without it, and \tok{target\_4} 0.763 and 0.755. The model uses the path, whose projection grows from zero to a norm of 15.6 during pretraining, to predict next tokens, and next-token prediction does not put the attributes into the last state in a form a linear head can read. The readout lowers \tok{target\_1} by 0.010, the one official target that loses.
 
-\paragraph{Timing.} Five numbers read off the event timestamps, the days since the last and since the
-first event and the events in the last 30 days, the last 90 days and in all, each as $\log(1 + x)$, add
-0.001 and 0.003 to the official mean and nothing to churn. The aggregates lose 0.009 without their timing features,
-so the history state, with the now event and time positions from the client's first event, appears to hold
-them already.
+\paragraph{Timing.} Five numbers read off the event timestamps, the days since the last and since the first event and the events in the last 30 days, the last 90 days and in all, each as $\log(1 + x)$, add 0.001 and 0.003 to the official mean and leave churn unchanged. The aggregates lose 0.009 without their timing features, so the history state, with the now event and time positions from the client's first event, appears to hold them already.
 
-\paragraph{History before the window.} The token-count table over the full history (Section~\ref{sec:protocol}),
-as $\log(1 + x)$ beside the state and the profile fields, adds 0.007 and 0.000 to the official mean, where
-\tok{target\_2} moves by $+0.017$ and $-0.011$. Its other gains repeat on both seeds: churn rises by 0.007
-and 0.006 (to 0.941), first 50/19 from 0.843 to 0.924 and from 0.846 to 0.922, and first 48/10 from 0.793
-to 0.828 and from 0.803 to 0.832. Token counts
-restricted to EventGPT's window lose 0.026 against the full history (0.777 against 0.803), so the counts carry
-information from before the window that the history state lacks, and a longer window did not recover it
-for EventGPT (Section~\ref{sec:context}).
+\paragraph{History before the window.} The token-count table over the full history (Section~\ref{sec:protocol}), as $\log(1 + x)$ beside the state and the profile fields, adds 0.007 and 0.000 to the official mean, where \tok{target\_2} moves by $+0.017$ and $-0.011$. Its other gains repeat on both seeds: churn rises by 0.007 and 0.006 (to 0.941), first 50/19 from 0.843 to 0.924 and from 0.846 to 0.922, and first 48/10 from 0.793 to 0.828 and from 0.803 to 0.832. Token counts
+restricted to EventGPT's window lose 0.026 against the full history (0.777 against 0.803), so the counts carry information from before the window that the history state lacks, and a longer window did not recover it for EventGPT (Section~\ref{sec:context}).
 
-\paragraph{Schema knowledge.} Hand-built features add 0.013 over full-history token counts (0.816 against
-0.803). This is the part that needs someone who knows which field is the amount and which event types
-matter.
+\paragraph{Schema knowledge.} Hand-built features add 0.013 over full-history token counts (0.816 against 0.803). This is the part that needs someone who knows which field is the amount and which event types matter.
 
-\paragraph{Amount resolution.} EventGPT sees amounts as one of 21 quantile bins. Replacing each amount in
-the hand-built table by the mean of its bin lowers the official mean by 0.005 with 21 bins and leaves it
-unchanged with 256 bins, against exact amounts fitted on the same rows. Most of the 0.005 lost with 21 bins is on \tok{target\_2}, whose 132 test
-positives make it the noisiest target; the other three official targets lose 0.001 to 0.003.
+\paragraph{Amount resolution.} EventGPT sees amounts as one of 21 quantile bins. Replacing each amount in the hand-built table by the mean of its bin lowers the official mean by 0.005 with 21 bins and leaves it unchanged with 256 bins, against exact amounts fitted on the same rows. Most of the 0.005 lost with 21 bins is on \tok{target\_2}, whose 132 test positives make it the noisiest target; the other three official targets lose 0.001 to 0.003.
 
-\paragraph{Combining the two.} As features inside the hand-built table the embedding adds nothing: 32
-principal components leave the mean unchanged (seed 42, embedding read without the now event), and the
-aligned embedding as a CatBoost embedding feature lowers it by 0.007 (Section~\ref{sec:finetune}). As a
-separate model it does add. The average of the ranks given by the readout with profile fields and token
-counts and by the aggregates reaches 0.830 on both seeds, 0.014 above the aggregates alone (intervals
-$+0.010$ to $+0.019$ and $+0.009$ to $+0.019$), with gains of 0.032 and 0.033 on \tok{target\_2}, 0.023
-and 0.021 on \tok{target\_4} and 0.016 to 0.021 on four of the five event targets; churn falls by 0.001.
-The weights are equal and nothing is tuned on the test fold. The 0.014 is paired: the average and the
-aggregates are scored on the same test rows, and the aggregates are the same fit in both, so the
-variation between fits of the aggregates, which moves the token-count table from 0.803 to 0.783 between
-draws of training rows, does not enter it. A different draw of the readout's own training rows was not
-tried. Averaged instead with the token-count table,
-which needs no schema either, the readout reaches 0.816 on both seeds, level with the aggregates.
+\paragraph{Combining the two.} Added as features inside the hand-built table, the embedding does not raise its mean: 32 principal components leave the mean unchanged (seed 42, embedding read without the now event), and the aligned embedding as a CatBoost embedding feature lowers it by 0.007 (Section~\ref{sec:finetune}). As a separate model it does add. The average of the ranks given by the readout with profile fields and token counts and by the aggregates reaches 0.830 on both seeds, 0.014 above the aggregates alone (intervals $+0.010$ to $+0.019$ and $+0.009$ to $+0.019$), with gains of 0.032 and 0.033 on \tok{target\_2}, 0.023 and 0.021 on \tok{target\_4} and 0.016 to 0.021 on four of the five event targets; churn falls by 0.001. The weights are equal and fixed in advance. The 0.014 is paired: the average and the aggregates are scored on the same test rows, and the aggregates are the same fit in both, so the variation between fits of the aggregates, which moves the token-count table from 0.803 to 0.783 between draws of training rows, does not enter it. A different draw of the readout's own training rows was not tried. Averaged instead with the token-count table, which needs no schema either, the readout reaches 0.816 on both seeds, level with the aggregates.
 
 \subsection{Ablations}\label{sec:ablations}
 
@@ -903,74 +550,29 @@ event encoder & one feed-forward per event kind$^\dagger$ & 0.779 \\
 \end{tabular}
 \end{table}
 
-Pretraining and probing on transactions alone raises the official mean from 0.774 to 0.793 (0.795 and
-0.791 on the two seeds) and churn from 0.934 to 0.950 and 0.949, and the supervised head improves on all five event targets. Geolocation
-is part of MBD and of every other result here, so this row answers a different question, what the model
-gives on the transaction stream alone. The hand-built aggregates lose 0.001
-without their geolocation features (Section~\ref{sec:protocol}), so the input that costs EventGPT 0.019 is
-one the feature table barely uses. Without daily
-geolocation events the 2,048-token window holds more transactions, and token counts show the same
-effect: on transactions alone they lose 0.008 to the window (0.793 against 0.785), against 0.026 with
-geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.008 and is level with
-token counts over the full transaction history. Zero-shot scores fall to 0.72 to 0.89 without
-geolocation (mean of two seeds), against 0.79 to 0.92 with it. The score is the probability that the next event is of the
-kind, a share of the client's next events, while the label asks whether the kind occurs within a month,
-which also depends on how many events the month holds. With a geolocation event on most days, a
-transaction kind takes a smaller share of the next events of a client who transacts rarely, so the score
-carries the client's activity: its logarithm correlates with that of the transactions in the 30 days
-before the cut at 0.39 to 0.49 (seed 42, as for the rest of this paragraph). On transactions alone the correlation is $-0.15$ to 0.20. Multiplying the
-score by one plus those transactions, which needs no labels, gives 0.79 to 0.93 on transactions alone
-and 0.82 to 0.93 with geolocation, where the count alone reaches 0.76 to 0.85. We first tried the
-scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, with a second form
-that multiplies by the client's transactions per day over the whole history. Repeated on training fold 1
-(20,967 rows), the count of the last 30 days is ahead of the daily rate on all ten pairs of model and
-target and raises every unscaled score, by 0.011 to 0.060 with geolocation and by 0.030 to 0.170 without
-it. Table~\ref{tab:zero-shot} keeps the unscaled scores, which use nothing but the model.
+Pretraining and probing on transactions alone raises the official mean from 0.774 to 0.793 (0.795 and 0.791 on the two seeds) and churn from 0.934 to 0.950 and 0.949, and the supervised head improves on all five event targets. Geolocation is part of MBD and of every other result here, so this row answers a different question, what the model gives on the transaction stream alone. The hand-built aggregates lose 0.001 without their geolocation features (Section~\ref{sec:protocol}), so the input that costs EventGPT 0.019 is one the feature table barely uses. Without daily geolocation events the 2,048-token window holds more transactions, and token counts show the same
+effect: on transactions alone they lose 0.008 to the window (0.793 against 0.785), against 0.026 with geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.008 and is level with token counts over the full transaction history. Zero-shot scores fall to 0.72 to 0.89 without geolocation (mean of two seeds), against 0.79 to 0.92 with it. The score is the probability that the next event is of the kind, a share of the client's next events, while the label asks whether the kind occurs within a month, which also depends on how many events the month holds. With a geolocation event on most days, a transaction kind takes a smaller share of the next events of a client who transacts rarely, so the score carries the client's activity: its logarithm correlates with that of the transactions in the 30 days before the cut at 0.39 to 0.49 (seed 42, as for the rest of this paragraph). On transactions alone the correlation is $-0.15$ to 0.20. Multiplying the
+score by one plus those transactions, which needs no labels, gives 0.79 to 0.93 on transactions alone and 0.82 to 0.93 with geolocation, where the count alone reaches 0.76 to 0.85. We first tried the scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, with a second form that multiplies by the client's transactions per day over the whole history. Repeated on training fold 1 (20,967 rows), the count of the last 30 days is ahead of the daily rate on all ten pairs of model and target and raises every unscaled score, by 0.011 to 0.060 with geolocation and by 0.030 to 0.170 without it. Table~\ref{tab:zero-shot} keeps the unscaled scores, which use only the model.
 
-Removing the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to
-need, leaves the official mean at 0.775 against 0.774. The tokens stay in the input and only their
-prediction is dropped. Churn rises from 0.934 to 0.940 (seed 42), and the zero-shot scores change by $-0.023$ to
-$+0.003$. Predicting these tokens costs the embedding nothing on the product targets and does not help
-it.
+Removing the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to need, leaves the official mean at 0.775 against 0.774. The tokens stay in the input and only their prediction is dropped. Churn rises from 0.934 to 0.940 (seed 42), and the zero-shot scores change by $-0.023$ to $+0.003$.
 
 Normalizing queries and keys, and giving the event encoder one feed-forward network per event kind
-(transactions, geolocation and the rest, routed by the event name) each add 0.005 on seed 42. That is
-small beside the 0.018 between the two seeds of the flat decoder, and both leave the zero-shot scores
-within 0.016. Neither moves churn by more than 0.002.
+(transactions, geolocation and the rest, routed by the event name) each add 0.005 on seed 42. That is small beside the 0.018 between the two seeds of the flat decoder, and both leave the zero-shot scores within 0.016. Neither moves churn by more than 0.002.
 
 \subsection{Length of history}\label{sec:context}
 
 Longer windows do not raise the official targets for either model (Table~\ref{tab:window}). MBD
 histories are long (the 90th percentile client has about 1,000 transactions and 300 days of
-geolocation), while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to
-8,192 tokens. EventGPT gains nothing on random windows and loses 0.008 on aligned ones, and the flat
-decoder is level at 4,096 tokens (0.785 against 0.786). Churn does not change with the window either:
-0.934 to 0.936 on random windows and 0.933 and 0.935 on aligned ones.
-The token-count table reads the same longer windows and gains from them, so the extra history carries
-information for these targets. EventGPT does not pass it to its embedding, which suggests that the
-history state limits the embedding on long histories at this size. A
-compressed summary of the history before the window, read as a prefix, is the change we would test next.
+geolocation), while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to 8,192 tokens. EventGPT goes from 0.774 to 0.772 on random windows and loses 0.008 on aligned ones, and the flat decoder is level at 4,096 tokens (0.785 against 0.786). Churn does not change with the window either: 0.934 to 0.936 on random windows and 0.933 and 0.935 on aligned ones.
+The token-count table reads the same longer windows and gains from them, so the extra history carries information for these targets. EventGPT does not pass it to its embedding, which suggests that the history state limits the embedding on long histories at this size. A compressed summary of the history before the window, read as a prefix, is the change we would test next.
 
-A wider model raises them by 0.005, as much as QK-norm. On aligned windows with QK-norm (seed 42), width 512 (16 heads
-of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) lower the
-validation loss from 1.020 at width 384 to 1.014 and 0.997, and the official mean goes from 0.786 to
-0.791 at both widths. Churn rises from 0.932 to 0.937 and 0.939. With the profile readout the three
-widths reach 0.800, 0.798 and 0.787: at width 1024 the readout loses 0.004 where it gained at the smaller
-widths, possibly because the four field embeddings add 4,096 columns to a head regularized as at width
-384. A lower
-token loss does not give a better embedding here, as between the hierarchy and the flat decoder
-(Section~\ref{sec:propensity}).
+A wider model raises them by 0.005, as much as QK-norm. On aligned windows with QK-norm (seed 42), width 512 (16 heads of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) lower the validation loss from 1.020 at width 384 to 1.014 and 0.997, and the official mean goes from 0.786 to 0.791 at both widths. Churn rises from 0.932 to 0.937 and 0.939. With the profile readout the three widths reach 0.800, 0.798 and 0.787: at width 1024 the readout loses 0.004 where it gained at the smaller widths, possibly because the four field embeddings add 4,096 columns to a head regularized as at width 384. A lower token loss does not give a better embedding here, as between the hierarchy and the flat decoder (Section~\ref{sec:propensity}).
 
-The cost of a longer window differs between the two models. The history decoder of EventGPT attends over
-events, and with packed attention its token stages grow linearly with the window: it trains at about
-126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. The flat decoder falls from 47,000 at
-2,048 tokens to about 30,000 at 4,096.
+The cost of a longer window differs between the two models. The history decoder of EventGPT attends over events, and with packed attention its token stages grow linearly with the window: it trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. The flat decoder falls from 47,000 at 2,048 tokens to about 30,000 at 4,096.
 
 \begin{table}[htbp]
 \centering
-\caption{Mean ROC-AUC over the official targets (churn without January 2023 in parentheses) against the
-window, seed 42 for the models. The aligned column is trained without QK-norm (0.786 with it at 2,048
-tokens). Token counts at full history reach 0.803.}
+\caption{Mean ROC-AUC over the official targets (churn without January 2023 in parentheses) against the window, seed 42 for the models. The aligned column is trained without QK-norm (0.786 with it at 2,048 tokens). Token counts at full history reach 0.803.}
 \label{tab:window}
 \begin{tabular}{lcccc}
 \toprule
@@ -988,85 +590,43 @@ window & (CatBoost) & random & aligned & recency \\
 \section{Pretraining per institution}\label{sec:per-institution}
 
 An event model is pretrained by each institution on its own events, and what transfers between
-institutions is the method: the architecture, the rules that turn an event into tokens, and the training
-procedure. The weights do not transfer the way a language model's do. A language model reads text through
-a vocabulary that any user shares, so one pretrained checkpoint serves any text written in its languages.
-An event model's vocabulary is the issuer's event schema. Its tokens name the event types, field codes and
-categories of one bank's systems, and its amount bins are quantiles of that bank's amounts.
+institutions is the method: the architecture, the rules that turn an event into tokens, and the training procedure. The weights do not transfer the way a language model's do. A language model reads text through a vocabulary that any user shares, so one pretrained checkpoint serves any text written in its languages. An event model's vocabulary is the issuer's event schema. Its tokens name the event types, field codes and categories of one bank's systems, and its amount bins are quantiles of that bank's amounts.
 
-MBD shows each layer of this. Every field is an integer code assigned by the bank, so \tok{name=trx\_1}
-or \tok{s21=18808} means nothing outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on
-the pretraining folds of this one population, and a token id has its meaning only together with the
-vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids
-anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint
-against a vocabulary it was not trained on. The time-gap tokens are the exception, since
-$\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
+MBD shows each layer of this. Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \tok{s21=18808} has no meaning outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on the pretraining folds of this one population, and a token id has its meaning only together with the vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint against a vocabulary it was not trained on. The time-gap tokens are the exception, since $\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
 
 Serving such a model therefore starts with pretraining on the institution's own history, and the
-comparisons in this paper are between methods trained on the same data. Privacy and competition keep the
-checkpoints of the industrial models in Section~\ref{sec:related} private in any case; the vocabulary means
-that another institution could not use one without its issuer's schema.
+comparisons in this paper are between methods trained on the same data. Privacy and competition keep the checkpoints of the industrial models in Section~\ref{sec:related} private in any case; the vocabulary means that another institution could not use one without its issuer's schema.
 
 \section{Limitations}\label{sec:limits}
 
-The results are on MBD-mini, for which no published numbers exist, so the comparison with the MBD paper's
-methods (Table~\ref{tab:published}) waits for a run on full MBD. Fine-tuning was run once, on one seed
-with one setting of its learning rates, and its step was chosen on clients from the pretraining folds.
-The standard errors cover the sampling of test clients only. A head fitted on another draw of training
-rows moves \tok{target\_2}, with 132 test positives, by up to 0.07 and the official mean by up to 0.02,
-so differences of that size between models fitted on different draws are not established. The widths
-beyond 384 were run with one seed, and no model was larger than 140 million parameters,
-and the regularization of the head was not tuned for the wider readouts. The events of MBD are mostly
-transactions with one field layout, which gives the event encoder less to do than histories that mix
-applications, repayments and other kinds of event with different fields. Zero-shot scoring covers only targets that are events in
-the stream: MBD's product targets are external labels and need a head. It scores the next event rather
-than the month, and its comparison with the supervised head is on a sample of the test fold. All results
-are on one test fold. The geolocation stream starts a
-year after the transactions, so early cuts carry little of it. Dialogue embeddings are not used.
-The split is by client, as in MBD: pretraining reads the pretraining clients' events from 2021 to 2022,
-including the months in which the test clients' labels fall. Each test history is cut before its label
-month, but the backbone has learned population patterns from that period. An out-of-time evaluation would
-pretrain on events before February 2022 only.
+The results are on MBD-mini, for which no published numbers exist, so the comparison with the MBD paper's methods (Table~\ref{tab:published}) waits for a run on full MBD. Fine-tuning was run once, on one seed with one setting of its learning rates, and its step was chosen on clients from the pretraining folds. The standard errors cover the sampling of test clients only. A head fitted on another draw of training rows moves \tok{target\_2}, with 132 test positives, by up to 0.07 and the official mean by up to 0.02, so differences of that size between models fitted on different draws are not established. The widths beyond 384 were run with one seed, and no model was larger than 140 million parameters, and the regularization of the head was not tuned for the wider readouts. The events of MBD are mostly transactions with one field layout, which gives the event encoder less to do than histories that mix applications, repayments and other kinds of event with different fields. Zero-shot scoring covers only targets that are events in the stream: MBD's product targets are external labels and need a head. It scores the next event rather than the month, and its comparison with the supervised head is on a sample of the test fold. All results are on one test fold. The geolocation stream starts a year after the transactions, so early cuts carry little of it. Dialogue embeddings are not used. The split is by client, as in MBD: pretraining reads the pretraining clients' events from 2021 to 2022, including the months in which the test clients' labels fall. Each test history is cut before its label month, but the backbone has learned population patterns from that period. An out-of-time evaluation would pretrain on events before February 2022 only.
 
 % -------------------------------------------------------------------------------
 \section{Code and data availability}\label{app:code}
 
 The code (tokenization, model, training, probe and baseline) and the pretrained checkpoints are at
-\url{https://github.com/deburky/event-gpt}. MBD-mini is
-available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
+\url{https://github.com/deburky/event-gpt}. MBD-mini is available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
 
 \begin{thebibliography}{99}
 
-\bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A.
-(2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the
-2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
+\bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A. (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the 2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
 
-\bibitem{latte} Fadeev, E., Mollaev, D., Shestov, A., Zoloev, O., Sakhno, A., Korolev, D., Kireev, I.,
-Savchenko, A., and Makarenko, M. (2025). LATTE: Learning aligned transactions and textual embeddings for
-bank clients. arXiv:2508.10021.
+\bibitem{latte} Fadeev, E., Mollaev, D., Shestov, A., Zoloev, O., Sakhno, A., Korolev, D., Kireev, I., Savchenko, A., and Makarenko, M. (2025). LATTE: Learning aligned transactions and textual embeddings for bank clients. arXiv:2508.10021.
 
-\bibitem{delong} DeLong, E.~R., DeLong, D.~M., and Clarke-Pearson, D.~L. (1988). Comparing the areas under
-two or more correlated receiver operating characteristic curves: a nonparametric approach.
-\emph{Biometrics} 44(3), 837--845.
+\bibitem{delong} DeLong, E.~R., DeLong, D.~M., and Clarke-Pearson, D.~L. (1988). Comparing the areas under two or more correlated receiver operating characteristic curves: a nonparametric approach. \emph{Biometrics} 44(3), 837--845.
 
-\bibitem{qknorm} Henry, A., Dachapally, P.~R., Pawar, S., and Chen, Y. (2020). Query-key normalization for
-transformers. In \emph{Findings of the Association for Computational Linguistics: EMNLP 2020},
-4246--4253.
+\bibitem{qknorm} Henry, A., Dachapally, P.~R., Pawar, S., and Chen, Y. (2020). Query-key normalization for transformers. In \emph{Findings of the Association for Computational Linguistics: EMNLP 2020}, 4246--4253.
 
 \bibitem{catboost} Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A.~V., and Gulin, A. (2018).
 CatBoost: unbiased boosting with categorical features. In \emph{Advances in Neural Information
 Processing Systems 31}.
 
-\bibitem{mbd} Mollaev, D., Kostin, A., Postnova, M., Karpukhin, I., Kireev, I., Gusev, G., and Savchenko,
-A. (2024). Multimodal Banking Dataset: Understanding client needs through event sequences.
-arXiv:2409.17587.
+\bibitem{mbd} Mollaev, D., Kostin, A., Postnova, M., Karpukhin, I., Kireev, I., Gusev, G., and Savchenko, A. (2024). Multimodal Banking Dataset: Understanding client needs through event sequences. arXiv:2409.17587.
 
 \bibitem{mbdmini} MBD-mini. Hugging Face dataset \tok{ai-lab/MBD-mini}, CC BY 4.0.
 \url{https://huggingface.co/datasets/ai-lab/MBD-mini}.
 
-\bibitem{nuformer} Braithwaite, D.~T., Cavalcanti, M., McEver, R.~A., Udagawa, H., Silva, D., Ramanath, R.,
-Meneses, F., Yoshida, A., Wingert, E., Ramos, M., Zanfelice, B., and Gupta, A. (2025). Your spending
-needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
+\bibitem{nuformer} Braithwaite, D.~T., Cavalcanti, M., McEver, R.~A., Udagawa, H., Silva, D., Ramanath, R., Meneses, F., Yoshida, A., Wingert, E., Ramos, M., Zanfelice, B., and Gupta, A. (2025). Your spending needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
 
 \bibitem{nvidia} NVIDIA. Build your own transaction foundation model for financial intelligence.
 \url{https://developer.nvidia.com/blog/build-your-own-transaction-foundation-model-for-financial-intelligence/}.
@@ -1075,24 +635,18 @@ needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
 \emph{Biometrics} 53(2), 567--578.
 
 \bibitem{pragma} Ostroukhov, M., Mikhailov, R., Iashin, V., Sokolov, A., Akshonov, A., Protasov, V.,
-Goncharov, A., Beloborodov, D., Mullin, V., Enzmann, R.~Y., Kolovos, G., Renders, J., Nesterov, P., and
-Repushko, A. (2026). PRAGMA: Revolut foundation model. arXiv:2604.08649.
+Goncharov, A., Beloborodov, D., Mullin, V., Enzmann, R.~Y., Kolovos, G., Renders, J., Nesterov, P., and Repushko, A. (2026). PRAGMA: Revolut foundation model. arXiv:2604.08649.
 
-\bibitem{openbanking} Polleti, G., Santana, M., and Fontes, E. (2025). Open Banking foundational model:
-Learning language representations from few financial transactions. arXiv:2511.12154.
+\bibitem{openbanking} Polleti, G., Santana, M., and Fontes, E. (2025). Open Banking foundational model: Learning language representations from few financial transactions. arXiv:2511.12154.
 
 \bibitem{lifestream} pytorch-lifestream. A library for self-supervised learning on event sequences.
 \url{https://github.com/dllllb/pytorch-lifestream}.
 
-\bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced
-transformer with rotary position embedding. arXiv:2104.09864.
+\bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced transformer with rotary position embedding. arXiv:2104.09864.
 
-\bibitem{tabbert} Padhi, I., Schiff, Y., Melnyk, I., Rigotti, M., Mroueh, Y., Dognin, P., Ross, J., Nair,
-R., and Altman, E. (2021). Tabular transformers for modeling multivariate time series. In \emph{ICASSP
-2021}. arXiv:2011.01843.
+\bibitem{tabbert} Padhi, I., Schiff, Y., Melnyk, I., Rigotti, M., Mroueh, Y., Dognin, P., Ross, J., Nair, R., and Altman, E. (2021). Tabular transformers for modeling multivariate time series. In \emph{ICASSP 2021}. arXiv:2011.01843.
 
-\bibitem{transactiongpt} Dou, Y., Jiang, Z., Zhang, T., Hu, M., Xu, Z., Jain, S., Saini, U.~S., et al.
-(2025). TransactionGPT. arXiv:2511.08939.
+\bibitem{transactiongpt} Dou, Y., Jiang, Z., Zhang, T., Hu, M., Xu, Z., Jain, S., Saini, U.~S., et al. (2025). TransactionGPT. arXiv:2511.08939.
 
 \end{thebibliography}
 
