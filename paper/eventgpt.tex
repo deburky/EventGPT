@@ -712,9 +712,9 @@ depends on the history as a whole, they are level (0.574 and 0.58). Next-token l
 (0.774) and the token-count table (0.777) are level on the official targets, and EventGPT on aligned
 windows exceeds the table by 0.010 (0.787). Over the full history, token counts reach 0.803 and the
 hand-built aggregates 0.816. On churn the token-count table reaches 0.955 within the window and over the
-full history alike, against 0.935 for EventGPT. On transactions alone (seed 42,
-Section~\ref{sec:ablations}) EventGPT reaches 0.795, 0.010 above token counts in its window and level
-with them over the full transaction history (0.793).
+full history alike, against 0.935 for EventGPT. On transactions alone (Section~\ref{sec:ablations})
+EventGPT reaches 0.793 (0.795 and 0.791 on the two seeds), 0.008 above token counts in its window and
+level with them over the full transaction history (0.793).
 
 Figure~\ref{fig:tsne} shows the embeddings of 12,000 test clients at the December 2022 cut, the last
 with a month of transactions after it. Clients with no transaction in the following month gather in
@@ -891,7 +891,7 @@ architecture & hierarchy (EventGPT), last state & 0.774 \\
  & flat decoder, last token & 0.714 \\
  & flat decoder, recency over tokens & 0.777 \\
 sources & transactions + geolocation & 0.774 \\
- & transactions only$^\dagger$ & 0.795 \\
+ & transactions only & 0.793 \\
 training loss & all tokens & 0.774 \\
  & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5}$^\dagger$ & 0.775 \\
 readout & last / mean / recency & 0.774 / 0.755 / 0.765 \\
@@ -903,22 +903,22 @@ event encoder & one feed-forward per event kind$^\dagger$ & 0.779 \\
 \end{tabular}
 \end{table}
 
-Pretraining and probing on transactions alone raises the official mean from 0.774 to 0.795 and churn
-from 0.934 to 0.950 (seed 42), and the supervised head improves on all five event targets. Geolocation
+Pretraining and probing on transactions alone raises the official mean from 0.774 to 0.793 (0.795 and
+0.791 on the two seeds) and churn from 0.934 to 0.950 and 0.949, and the supervised head improves on all five event targets. Geolocation
 is part of MBD and of every other result here, so this row answers a different question, what the model
-gives on the transaction stream alone, and it rests on one seed. The hand-built aggregates lose 0.001
-without their geolocation features (Section~\ref{sec:protocol}), so the input that costs EventGPT 0.021 is
+gives on the transaction stream alone. The hand-built aggregates lose 0.001
+without their geolocation features (Section~\ref{sec:protocol}), so the input that costs EventGPT 0.019 is
 one the feature table barely uses. Without daily
 geolocation events the 2,048-token window holds more transactions, and token counts show the same
 effect: on transactions alone they lose 0.008 to the window (0.793 against 0.785), against 0.026 with
-geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.010 and is level with
-token counts over the full transaction history. Zero-shot scores fall to 0.71 to 0.89 without
-geolocation, against 0.79 to 0.92 with it. The score is the probability that the next event is of the
+geolocation. Within the transactions-only window EventGPT exceeds token counts by 0.008 and is level with
+token counts over the full transaction history. Zero-shot scores fall to 0.72 to 0.89 without
+geolocation (mean of two seeds), against 0.79 to 0.92 with it. The score is the probability that the next event is of the
 kind, a share of the client's next events, while the label asks whether the kind occurs within a month,
 which also depends on how many events the month holds. With a geolocation event on most days, a
 transaction kind takes a smaller share of the next events of a client who transacts rarely, so the score
 carries the client's activity: its logarithm correlates with that of the transactions in the 30 days
-before the cut at 0.39 to 0.49. On transactions alone the correlation is $-0.15$ to 0.20. Multiplying the
+before the cut at 0.39 to 0.49 (seed 42, as for the rest of this paragraph). On transactions alone the correlation is $-0.15$ to 0.20. Multiplying the
 score by one plus those transactions, which needs no labels, gives 0.79 to 0.93 on transactions alone
 and 0.82 to 0.93 with geolocation, where the count alone reaches 0.76 to 0.85. We first tried the
 scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, with a second form
