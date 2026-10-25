@@ -202,7 +202,7 @@ This reuse is safe only if the embedding at an as-of date depends on events befo
 
 Because the history itself fixes its as-of date, an embedding can be stored in a feature store like any other dated feature. It is keyed by client, stamped with its as-of date instead of the time it was computed, and joined to labels by the store's point-in-time join, which returns for each label the latest embedding before it. The join decides which embedding a label sees, and since each history ends at its as-of date, that embedding depends only on earlier events. Embeddings from different checkpoints are not comparable, so each version of the backbone needs its own feature set, and a head is valid only on the version it was fitted on.
 
-The guarantee does not cover the population. Pretraining reads the full 2021--2022 histories of the pretraining clients, so the backbone has seen the period in which the test clients' labels fall, although never those clients (Section~\ref{sec:limits}).
+The guarantee does not cover the population. Pretraining reads the full 2021--2022 histories of the pretraining clients, so the backbone has seen the period in which the test clients' labels fall, although never those clients. Pretraining only on events before February 2022, the first label month, lowers the official mean by 0.004 (0.789 against 0.793, two seeds, transactions only) and leaves churn unchanged (Section~\ref{sec:limits}).
 
 % -------------------------------------------------------------------------------
 \section{Data}\label{sec:data}
@@ -547,7 +547,7 @@ marked.
 \begin{table}[htbp]
 \centering
 \caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds; rows marked
-$^\dagger$ are seed 42. Every row but the windows and width rows uses windows at random offsets.}
+$^\dagger$ are seed 42; the row marked $^\ddagger$ uses transactions only. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization.}
 \label{tab:ablations}
 \begin{tabular}{llc}
 \toprule
@@ -558,13 +558,14 @@ architecture & hierarchy (EventGPT), last state & 0.774 \\
  & flat decoder, recency over tokens & 0.777 \\
 sources & transactions + geolocation & 0.774 \\
  & transactions only & 0.793 \\
+pretraining period$^\ddagger$ & full / before Feb.~2022 & 0.793 / 0.789 \\
 training loss & all tokens & 0.774 \\
  & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5}$^\dagger$ & 0.775 \\
 embedding & last / mean / recency & 0.774 / 0.755 / 0.765 \\
 training windows & random offsets & 0.774 \\
  & aligned, with QK normalization & 0.787 \\
 attention & QK normalization$^\dagger$ & 0.779 \\
-width & 384 / 512 / 1024, aligned, QK normalization$^\dagger$ & 0.786 / 0.791 / 0.791 \\
+width & 384 / 512 / 1024, aligned$^\dagger$ & 0.786 / 0.791 / 0.791 \\
 event encoder & one feed-forward per event kind$^\dagger$ & 0.779 \\
 \bottomrule
 \end{tabular}
@@ -625,7 +626,7 @@ The results are on MBD-mini, for which no published numbers exist, so the compar
 
 The standard errors cover the sampling of test clients only, and all results are on one test fold. A head fitted on another draw of training rows moves \tok{target\_2}, with 132 test positives, by up to 0.07 and the official mean by up to 0.02, so differences of that size between models fitted on different draws are not established. Fine-tuning was run once, on one seed with one setting of its learning rates, and its step was chosen on clients from the pretraining folds. Widths beyond 384 were run with one seed, no model was larger than 140 million parameters, and the regularization of the head was not tuned for the wider embeddings.
 
-The split is by client, as in MBD. Pretraining reads the pretraining clients' events from 2021 and 2022, including the months in which the test clients' labels fall, so the backbone has learned population patterns from that period, although each test history ends before its label month. An out-of-time evaluation would pretrain on events before February 2022 only.
+The split is by client, as in MBD. Pretraining reads the pretraining clients' events from 2021 and 2022, including the months in which the test clients' labels fall, so the backbone has learned population patterns from that period, although each test history ends before its label month. An out-of-time run separates the two. Pretrained only on events before February 2022, with 54\% of the tokens, EventGPT on transactions alone reaches an official mean of 0.789 against 0.793 with the full period (mean of two seeds), and the same churn (0.950 and 0.949). The patterns of the label period therefore account for little of the results. The run uses transactions alone because the geolocation stream starts in December 2021, and with the same number of steps it sees each token about 4.4 times instead of 2.4.
 
 % -------------------------------------------------------------------------------
 \section{Code and data availability}\label{app:code}
