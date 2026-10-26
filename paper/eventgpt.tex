@@ -56,7 +56,7 @@
 
 \begin{abstract}
 \noindent
-A model pretrained to predict a customer's next event can estimate the probability of future events without training on their labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92. Gradient boosting on 114 engineered features needs 10,000 to more than 300,000 randomly labeled client-months to attain these scores, depending on prevalence. As a frozen embedding read by a classification head, EventGPT stays below gradient boosting on engineered features for MBD's four product targets (ROC-AUC 0.787 against 0.816). Most of the gap lies in the clients' static attributes and their older history, and adding the profile fields and token counts over the full history narrows it to under 0.01. A rank-averaged ensemble of the embedding and the feature table scores 0.016 above the feature table on each of five test folds. Pretraining only on events before the label period lowers the mean on the product targets by 0.004. The code and the pretrained weights are released.
+A model pretrained to predict a customer's next event can estimate the probability of future events without training on their labels. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92. Gradient boosting on 114 engineered features needs 10,000 to more than 300,000 randomly labeled client-months to attain these scores, depending on prevalence. As a frozen embedding read by a classification head, EventGPT stays below gradient boosting on engineered features for MBD's four product targets (ROC-AUC 0.787 against 0.808, mean of five test folds). Most of the gap lies in the clients' static attributes and their older history, and adding the profile fields and token counts over the full history narrows it to 0.004. A rank-averaged ensemble of the embedding and the feature table scores 0.016 above the feature table on each of five test folds. Pretraining only on transactions before the label period lowers the mean on the product targets by 0.004. The code and the pretrained weights are released.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -541,7 +541,7 @@ We fix the weights in advance. With any weight on EventGPT from 0.3 to 0.6 the o
 
 \begin{table}[htbp]
 \centering
-\caption{Official mean ROC-AUC with each fold as the test fold, EventGPT with early fusion of the profile fields as in Table~\ref{tab:gap}, mean of two pretraining seeds. Engineered features and token counts are refitted on each split. The last row gives the mean over folds and, in parentheses, the standard deviation.}
+\caption{Official mean ROC-AUC with each fold as the test fold, EventGPT with early fusion of the profile fields as in Table~\ref{tab:gap}, mean of two pretraining seeds. Engineered features and token counts are refitted on each split. The last row gives the mean over folds and, in parentheses, the standard deviation. The hidden-state column is the early-fusion model; its fold-0 value (0.789) differs from the aligned column of Table~\ref{tab:main} (0.787), which is trained without early fusion.}
 \label{tab:folds}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -639,7 +639,7 @@ Serving such a model starts with pretraining on the institution's own history, a
 
 \section{Discussion}\label{sec:discussion}
 
-On MBD a model pretrained only to predict the next event scores event targets with no labels at the level that 10,000 to more than 300,000 labeled rows give the engineered features. Product purchases need a classification head. The embedding then scores 0.021 below the engineered features, averaged over five test folds. The profile fields and full-history token counts bring it to 0.004 below. As a second model beside the engineered features it adds 0.016 on every fold.
+On MBD a model pretrained only to predict the next event scores event targets with no labels at the level that 10,000 to more than 300,000 labeled rows give the engineered features. Product purchases need a classification head. The embedding then scores 0.021 below the engineered features, averaged over five test folds. The profile fields and full-history token counts bring it to 0.004 below. As a second model beside the engineered features it adds 0.016 on every fold. In the top 1\% of test rows the ensemble holds the same share of positives as the engineered features (0.150), so the gain does not reach the top of the ranking.
 
 The open question is whether the model can carry history beyond its window. We would next test a compressed summary of the earlier history, read as a prefix before the window. The other test is a lender's mixed applications, repayments and account events, where a feature table is hardest to build.
 
