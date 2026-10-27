@@ -331,13 +331,13 @@ The final configuration, labeled \emph{aligned} in the tables, trains on aligned
 
 \subsection{Event targets without labels}\label{sec:zero-shot}
 
-We score the five event targets from the next-event distribution with no labels (Section~\ref{sec:zs-protocol}). They reach ROC-AUC 0.79 to 0.92 on both seeds (Table~\ref{tab:zero-shot}). A classification head trained on labels scores higher on 23/49, 26/28 and 48/10 and lower on 48/31 and 50/19. Training on aligned windows leaves the zero-shot scores unchanged. We multiply the score by one plus the client's transactions in the 30 days before the as-of date. The scaled score passes the classification head on three of the five targets (Section~\ref{sec:ablations}).
+We score the five event targets from the next-event distribution with no labels (Section~\ref{sec:zs-protocol}). They reach ROC-AUC 0.79 to 0.92 on both seeds (Table~\ref{tab:zero-shot}). We test each zero-shot score against the supervised head of the same model and seed. The head scores 0.045 to 0.061 higher on 26/28 and 48/10 for both seeds of both models ($p < 0.001$). On 48/31 and 50/19 it never scores significantly higher. On 23/49 it scores 0.008 and 0.011 higher with random windows ($p = 0.33$ and 0.16) and 0.025 and 0.034 higher with aligned windows ($p = 0.003$ and $< 0.001$). Training on aligned windows leaves the zero-shot scores unchanged. We multiply the score by one plus the client's transactions in the 30 days before the as-of date. The scaled score passes the classification head on three of the five targets (Section~\ref{sec:ablations}).
 
 We score the flat decoder the same way. It reaches 0.78 to 0.92, the same range as EventGPT, so zero-shot scoring needs only a model trained to predict the next event.
 
 \begin{table}[htbp]
 \centering
-\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of two seeds, as is the aligned column. The supervised head is the logistic head on the seed-42 embedding (random windows), on the same rows. The engineered-feature column is the full test fold, so it is comparable in expectation but not row for row.}
+\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of two seeds, as is the aligned column. The supervised head is the logistic head on the seed-42 embedding (random windows), on the same rows. In brackets the standard error, clustered by client; the seed-43 and aligned columns have standard errors within 0.005 of seed 42. The engineered-feature column is the full test fold, so it is comparable in expectation but not row for row.}
 \label{tab:zero-shot}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -346,11 +346,11 @@ We score the flat decoder the same way. It reaches 0.78 to 0.92, the same range 
  & & \multicolumn{3}{c}{EventGPT zero-shot} & flat decoder & EventGPT & engineered \\
 target & positives & seed 42 & seed 43 & aligned & zero-shot & supervised head & features \\
 \midrule
-first 48/31 & 59 & 0.916 & 0.902 & 0.913 & 0.909 & 0.891 & 0.920 \\
-first 23/49 & 195 & 0.918 & 0.918 & 0.909 & 0.905 & 0.930 & 0.920 \\
-first 26/28 & 252 & 0.829 & 0.827 & 0.826 & 0.799 & 0.875 & 0.868 \\
-first 48/10 & 290 & 0.791 & 0.784 & 0.780 & 0.784 & 0.836 & 0.835 \\
-first 50/19 & 770 & 0.906 & 0.904 & 0.905 & 0.915 & 0.896 & 0.937 \\
+first 48/31 & 59 & 0.916 (0.019) & 0.902 & 0.913 & 0.909 & 0.891 (0.026) & 0.920 \\
+first 23/49 & 195 & 0.918 (0.011) & 0.918 & 0.909 & 0.905 & 0.930 (0.009) & 0.920 \\
+first 26/28 & 252 & 0.829 (0.014) & 0.827 & 0.826 & 0.799 & 0.875 (0.010) & 0.868 \\
+first 48/10 & 290 & 0.791 (0.014) & 0.784 & 0.780 & 0.784 & 0.836 (0.012) & 0.835 \\
+first 50/19 & 770 & 0.906 (0.006) & 0.904 & 0.905 & 0.915 & 0.896 (0.006) & 0.937 \\
 \bottomrule
 \end{tabular}
 \end{table}
