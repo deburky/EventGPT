@@ -79,7 +79,7 @@ if [[ "$PROBE" == "1" || "$PROBE" == "only" ]]; then
 fi
 if [[ "$PROBE" == "1" || "$PROBE" == "only" || "$PROBE" == "zero-shot" ]]; then
     # zero-shot event targets on the probe's rows, which the probe wrote (or a previous VM mirrored) to ckpt/probe
-    uv run --no-dev python -m eventgpt.evaluation.zero_shot "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" --out "$WORK/ckpt/zero_shot.csv"
+    uv run --no-dev python -m eventgpt.evaluation.zero_shot "$WORK/ckpt/$RUN.pt" --probe-dir "$WORK/ckpt/probe" --save-scores --out "$WORK/ckpt/zero_shot.csv"
 fi
 if [[ "$PROBE" == "finetune" ]]; then
     # the checkpoint and the probe's rows were copied into this run's ckpt folder before launch

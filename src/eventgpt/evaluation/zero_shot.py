@@ -140,14 +140,15 @@ def main() -> None:
     tr = pd.read_parquet(a.probe_dir / "train_rows.parquet")
     emb = np.load(a.probe_dir / "embeddings.npz")
     res = []
+    heads = np.full((len(rows), len(FIRST)), 0.5)  # the head is fitted on the training folds, so it is scored on the test rows only
     for k, lab in enumerate(FIRST):
         ev = in_rand | (rows[lab].to_numpy() == 1)  # this target's positives and the uniform sample
         y = rows[lab].to_numpy()[ev]
-        sup = np.full(len(y), 0.5)  # the head is fitted on the training folds, so it is scored on the test rows only
         if a.fold is None:
             head_k = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
             head_k.fit(emb["train_last"], tr[lab].to_numpy(), logisticregression__sample_weight=tr["weight"].to_numpy())
-            sup = head_k.predict_proba(emb["test_last"][pick][ev])[:, 1]
+            heads[:, k] = head_k.predict_proba(emb["test_last"][pick])[:, 1]
+        sup = heads[ev, k]
         z, u = zs[ev, k], unseen[ev, k]
         res.append((lab, int(y.sum()), *(score(y, q)["roc_auc"] for q in (z, z * u, sup, sup * u))))
     cols = ["positives", "zero_shot", "zero_shot_unseen", "supervised_head", "supervised_head_unseen"]
@@ -157,7 +158,7 @@ def main() -> None:
     if a.save_scores:
         saved = rows[["client_id", "mon", "cut", "n_hist", *FIRST]].assign(in_rand=in_rand)
         for k, lab in enumerate(FIRST):
-            saved[f"zs_{lab}"], saved[f"unseen_{lab}"] = zs[:, k], unseen[:, k]
+            saved[f"zs_{lab}"], saved[f"unseen_{lab}"], saved[f"head_{lab}"] = zs[:, k], unseen[:, k], heads[:, k]
         saved.to_parquet(out.with_name("zero_shot_scores.parquet"))
     r.to_csv(out)
     print(f"written to {out} ({time.time() - t0:.0f}s)")
