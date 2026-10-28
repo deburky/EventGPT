@@ -136,7 +136,7 @@ An event is a short run of tokens that starts with \tok{[EVT]}, followed by its 
 
 \subsection{History decoder and temporal RoPE}\label{sec:time}
 
-Six causal layers run over each client's event vectors. Event $i$ sees its history as the vectors of events $1, \dots, i-1$, one per event, instead of their tokens. Positions come from elapsed time, a temporal RoPE in the sense of the TMRoPE of Qwen2.5-Omni \cite{qwenomni}. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
+The history decoder needs a position for each event vector, and EventGPT takes it from elapsed time. Six causal layers run over each client's event vectors. Event $i$ sees its history as the vectors of events $1, \dots, i-1$, one per event, instead of their tokens. Positions come from elapsed time, a temporal RoPE in the sense of the TMRoPE of Qwen2.5-Omni \cite{qwenomni}. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
 \begin{equation}\label{eq:pos}
 p_i = 64 \ln\!\left(1 + \frac{\Delta t_i}{60}\right).
 \end{equation}
