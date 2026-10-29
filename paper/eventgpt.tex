@@ -572,7 +572,7 @@ We change one element of the model or its data at a time (Table~\ref{tab:ablatio
 \begin{table}[htbp]
 \centering
 \caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds; rows marked
-$^\dagger$ are seed 42; the row marked $^\ddagger$ uses transactions only. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization.}
+$^\dagger$ are seed 42; the row marked $^\ddagger$ uses transactions only; the row marked $^\S$ trains at learning rate $3\times10^{-4}$. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization.}
 \label{tab:ablations}
 \begin{tabular}{llc}
 \toprule
@@ -581,6 +581,7 @@ element & variant & mean ROC-AUC \\
 architecture & hierarchy (EventGPT), last state & 0.774 \\
  & flat decoder, last token & 0.714 \\
  & flat decoder, recency over tokens & 0.777 \\
+positions$^\S$ & temporal RoPE / ordinal & 0.781 / 0.778 \\
 modalities & transactions + geolocation & 0.774 \\
  & transactions only & 0.793 \\
 pretraining period$^\ddagger$ & full / before Feb.~2022 & 0.793 / 0.789 \\
@@ -603,6 +604,8 @@ Without geolocation the zero-shot scores fall to 0.72 to 0.89, from 0.79 to 0.92
 We multiply the score by one plus the client's transactions in the 30 days before the as-of date. This uses no labels. The scaled score reaches 0.79 to 0.93 on transactions alone and 0.82 to 0.93 with geolocation, above the count alone. We first tried this scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, beside a second form based on transactions per day over the whole history. We then compared the two on training fold 1. The 30-day count scores above the daily rate for every model and target and raises every unscaled score. Table~\ref{tab:zero-shot} keeps the unscaled scores, which use only the model.
 
 We remove the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to need. We keep these tokens in the input and drop only their prediction. The official mean does not change (0.775 against 0.774). Churn rises slightly (seed 42), and the zero-shot scores change by at most 0.023.
+
+We replace temporal RoPE with learned ordinal positions in the history decoder. At the learning rate of the other rows, $6\times10^{-4}$, the ordinal model diverges after 3,000 to 5,000 steps in both seeds. At $3\times10^{-4}$ both train stably. Temporal RoPE then scores 0.781 and ordinal positions 0.778, ahead on both seeds by less than two seeds of one model differ. The ordinal model also adds learned positions within each event, which the RoPE model leaves out, so the comparison changes both.
 
 We test query-key normalization and one feed-forward network per event kind in the event encoder (transactions, geolocation and the rest, routed by the event name). Each adds 0.005 on seed 42. Two seeds of the same configuration differ by up to 0.018 for the flat decoder and up to 0.022 for EventGPT across the five test folds, so a difference of 0.005 on one seed is not established.
 
@@ -651,7 +654,7 @@ The results are on MBD-mini, for which no published numbers exist, so the compar
 
 The standard errors cover the sampling of test clients only. We repeat the main comparison on five test folds and every other result on fold 0 alone. On fold 0 the engineered features and the ensemble score 0.008 and 0.006 above their five-fold means. A head fitted on another draw of training rows moves \tok{target\_2}, with 132 test positives, by up to 0.07 and the official mean by up to 0.02. Differences of that size between models fitted on different draws are not established. We ran fine-tuning once, on one seed with one setting of the learning rates, and chose its step on clients from the pretraining folds. We ran widths beyond 384 with one seed, trained no model larger than 140 million parameters and did not tune the regularization of the head for the wider embeddings.
 
-The split is by client, as in MBD. Pretraining reads the pretraining clients' events from 2021 and 2022, which include the test clients' label months, although each test history ends before its label month. We separate the two with an out-of-time run: we pretrain on transactions before February 2022 only, with 54\% of the tokens. EventGPT then scores 0.789 against 0.793 with the full period (mean of two seeds) and the same churn (0.950 and 0.949). We use transactions alone because the geolocation stream starts in December 2021. With the same number of steps the run sees each token about 4.4 times instead of 2.4.
+The split is by client, as in MBD. Pretraining reads the pretraining clients' events from 2021 and 2022, which include the test clients' label months, although each test history ends before its label month. We separate the two with an out-of-time run: we pretrain on transactions before February 2022 only, with 54\% of the tokens. EventGPT then scores 0.789 against 0.793 with the full period (mean of two seeds) and the same churn (0.950 and 0.949). We use transactions alone because the geolocation stream starts in December 2021. With the same number of steps the run sees each token about 4.4 times instead of 2.4. We also stop the out-of-time run at 11,000 steps, where it sees each token about 2.4 times. It then scores 0.787 (mean of two seeds), with churn of 0.947 and 0.949.
 
 % -------------------------------------------------------------------------------
 \section{Code and data availability}\label{app:code}
