@@ -19,7 +19,7 @@ the event targets are on test fold 0.
 
 | | EventGPT | CatBoost, hand-built features |
 |---|---|---|
-| Five "first transaction of a kind next month" targets, no labels | 0.79 to 0.92 | needs 10,000 to more than 300,000 labeled rows to pass |
+| Five "first transaction of a kind next month" targets, no labels | 0.79 to 0.92 | passes after 10,000 to 300,000 labeled rows on four targets, still below at 300,000 on the fifth |
 | Four product targets, logistic head on the frozen embedding | 0.787 | 0.808 |
 | The same, with profile fields and full-history token counts beside the embedding | 0.804 | 0.808 |
 | Rank average of the two models | 0.824 | |
