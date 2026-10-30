@@ -81,6 +81,20 @@ class Block(nn.Module):
         hd = cfg.d_model // cfg.n_head
         self.q_norm = RMSNorm(hd) if cfg.qk_norm else None
         self.k_norm = RMSNorm(hd) if cfg.qk_norm else None
+        # keep_attn: store the head-averaged attention weights (b, t, t) in self.attn on each forward, for readouts
+        self.keep_attn = False
+        self.attn: torch.Tensor | None = None
+
+    def _weights(self, q: torch.Tensor, k: torch.Tensor, attn_mask: torch.Tensor | None) -> torch.Tensor:
+        """Softmax attention weights averaged over heads, (b, t, t); rows with no allowed key are zero."""
+        t = q.size(-2)
+        s = (q.float() @ k.float().transpose(-1, -2)) * q.size(-1) ** -0.5
+        mask = attn_mask
+        if mask is None and self.causal:
+            mask = torch.ones(t, t, dtype=torch.bool, device=q.device).tril()
+        if mask is not None:
+            s = s.masked_fill(~mask, float("-inf"))
+        return torch.nan_to_num(s.softmax(-1)).mean(1)
 
     def forward(
         self,
@@ -106,6 +120,8 @@ class Block(nn.Module):
             q, k = self.q_norm(q), self.k_norm(k)
         if pos is not None:
             q, k = rotary(q, pos), rotary(k, pos)
+        if self.keep_attn:
+            self.attn = self._weights(q, k, attn_mask)
         if attn_mask is not None:
             y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.drop.p if self.training else 0.0)
         else:

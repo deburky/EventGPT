@@ -48,6 +48,7 @@ from eventgpt.models.flat import load_checkpoint
 from eventgpt.training.train import device
 
 READOUTS = ("last", "mean", "recency")
+ATTN = "attn"  # optional readout: hidden states pooled by the attention rollout from the last event (--attn)
 STREAM_ARRAYS = ("tokens", "client_ids", "client_events", "event_start", "event_time")
 RECENCY_EVENTS = 32.0  # e-folding length of the recency-weighted pool, in events
 TOKENS_PER_EVENT = 8  # mean on MBD, for the flat decoder's token-level recency pool
@@ -198,14 +199,16 @@ def history_tokens(fold: Fold, ci: int, n: int, block: int, now: np.ndarray | No
 
 
 @torch.no_grad()
-def _readouts(model: Any, seqs: list[np.ndarray], idx: np.ndarray, dev: torch.device) -> list[np.ndarray]:
-    """Last, mean and recency readouts for the sequences seqs[idx], padded into one batch."""
+def _readouts(model: Any, seqs: list[np.ndarray], idx: np.ndarray, dev: torch.device, attn: bool = False) -> list[np.ndarray]:
+    """Last, mean and recency readouts for the sequences seqs[idx], padded into one batch, and the attention readout with attn."""
     x = np.zeros((len(idx), max(len(seqs[j]) for j in idx)), dtype=np.int64)
     for r, j in enumerate(idx):
         x[r, : len(seqs[j])] = seqs[j]
     xt = torch.from_numpy(x).to(dev)
     real = xt != 0
     if hasattr(model, "history"):
+        for blk in model.hist_blocks:
+            blk.keep_attn = attn
         h, event, _ = model.history(xt, key_mask=real)
         valid = torch.zeros(h.shape[:2], dtype=torch.float32, device=dev)
         valid.scatter_(1, torch.where(real, event, torch.zeros_like(event)), 1.0)
@@ -223,14 +226,35 @@ def _readouts(model: Any, seqs: list[np.ndarray], idx: np.ndarray, dev: torch.de
     last = (rank * valid).argmax(1)
     w = torch.exp(-(n - rank) / span) * valid
     rows = torch.arange(len(idx), device=dev)
-    return [
+    out = [
         h[rows, last].cpu().numpy(),
         ((h * valid.unsqueeze(-1)).sum(1) / n).cpu().numpy(),
         ((h * w.unsqueeze(-1)).sum(1) / w.sum(1, keepdim=True).clamp(min=1e-9)).cpu().numpy(),
     ]
+    if attn:
+        a = rollout(model)[rows, last] * valid
+        a = a / a.sum(1, keepdim=True).clamp(min=1e-12)
+        out.append((h * a.unsqueeze(-1)).sum(1).cpu().numpy())
+    return out
 
 
-def embed(model: Any, seqs: list[np.ndarray], dev: torch.device, bsz: int) -> dict[str, np.ndarray]:
+def rollout(model: Any) -> torch.Tensor:
+    """Attention rollout over the history decoder (b, n_ev, n_ev): heads averaged, R <- (I + A) R / 2 per layer.
+
+    Reads and clears the weights the blocks stored with keep_attn (Abnar and Zuidema, 2020).
+    """
+    r: torch.Tensor | None = None
+    for blk in model.hist_blocks:
+        a = blk.attn
+        assert a is not None, "history() ran without keep_attn"
+        blk.keep_attn, blk.attn = False, None
+        m = 0.5 * (torch.eye(a.size(-1), device=a.device) + a)
+        r = m if r is None else m @ r
+    assert r is not None
+    return r
+
+
+def embed(model: Any, seqs: list[np.ndarray], dev: torch.device, bsz: int, attn: bool = False) -> dict[str, np.ndarray]:
     """Last, mean and recency-weighted states per sequence: history states for EventGPT, token states for a flat GPT.
 
     Sequences go in length order, so batch memory grows along the run. A batch that runs out of GPU memory
@@ -239,14 +263,15 @@ def embed(model: Any, seqs: list[np.ndarray], dev: torch.device, bsz: int) -> di
     """
     model.eval()
     d = model.cfg.d_model
-    out = {r: np.zeros((len(seqs), d), dtype=np.float32) for r in READOUTS}
+    names = (*READOUTS, ATTN) if attn else READOUTS
+    out = {r: np.zeros((len(seqs), d), dtype=np.float32) for r in names}
     order = np.argsort([len(s) for s in seqs])
     i, size, done = 0, bsz, 0
     t0 = time.time()
     while i < len(seqs):
         idx = order[i : i + size]
         try:
-            got = _readouts(model, seqs, idx, dev)
+            got = _readouts(model, seqs, idx, dev, attn)
         except (torch.OutOfMemoryError, RuntimeError) as err:
             # CUDA raises OutOfMemoryError; MPS raises a plain RuntimeError that says so
             if size == 1 or "out of memory" not in str(err):
@@ -258,7 +283,7 @@ def embed(model: Any, seqs: list[np.ndarray], dev: torch.device, bsz: int) -> di
                 torch.mps.empty_cache()
             print(f"out of memory at {len(idx)} sequences of up to {len(seqs[idx[-1]])} tokens; batch now {size}", flush=True)
             continue
-        for r, e in zip(READOUTS, got, strict=True):
+        for r, e in zip(names, got, strict=True):
             out[r][idx] = e
         i += len(idx)
         done += 1
@@ -277,6 +302,7 @@ def embed_rows(
     bsz: int,
     vocab: Vocab | None = None,
     cache: Path | None = None,
+    attn: bool = False,
 ) -> dict[str, np.ndarray]:
     """Embeddings for every row; rows of one client with the same history share one forward pass.
 
@@ -302,26 +328,27 @@ def embed_rows(
     aligned = bool(getattr(model.cfg, "aligned", False))
     seqs = [history_tokens(fold, int(c), int(n), block, None if vocab is None else np.array([evt, g]), aligned) for c, n, g in uniq]
     d = model.cfg.d_model
+    names = (*READOUTS, ATTN) if attn else READOUTS
     if cache is None:
-        got = embed(model, seqs, dev, bsz) if uniq else {}
+        got = embed(model, seqs, dev, bsz, attn) if uniq else {}
     else:
         cache.mkdir(parents=True, exist_ok=True)
-        got = {r: np.zeros((len(seqs), d), dtype=np.float32) for r in READOUTS}
+        got = {r: np.zeros((len(seqs), d), dtype=np.float32) for r in names}
         for j in range(0, len(seqs), CACHE_CHUNK):
             f = cache / f"{len(seqs)}_{j}.npz"
             if f.exists():
                 part = dict(np.load(f))
             else:
-                part = embed(model, seqs[j : j + CACHE_CHUNK], dev, bsz)
+                part = embed(model, seqs[j : j + CACHE_CHUNK], dev, bsz, attn)
                 tmp = f.with_suffix(".tmp")
                 with tmp.open("wb") as fh:
                     np.savez(fh, **part)
                 tmp.rename(f)
-            for r in READOUTS:
+            for r in names:
                 got[r][j : j + CACHE_CHUNK] = part[r]
     out = {}
     has = n_hist > 0
-    for r in READOUTS:
+    for r in names:
         e = np.zeros((len(rows), d), dtype=np.float32)
         e[has] = got[r][[pos[k] for k, h in zip(key, has, strict=True) if h]]
         out[r] = e
@@ -409,6 +436,7 @@ def main() -> None:
     p.add_argument("--max-clients", type=int, default=0, help="clients per fold, for a quick run; 0 is every client")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--now", action="store_true", help="end each history in a now event at the cut (see embed_rows)")
+    p.add_argument("--attn", action="store_true", help="add the attention-rollout readout (see rollout)")
     p.add_argument("--out", type=Path, default=None, help="results directory (default: next to the checkpoint)")
     a = p.parse_args()
 
@@ -424,7 +452,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"{a.ckpt.name} step {ck.get('step')} on {dev}, test fold {test_fold}", flush=True)
 
-    emb: dict[str, dict[str, list[np.ndarray]]] = {"train": {r: [] for r in READOUTS}, "test": {r: [] for r in READOUTS}}
+    names = (*READOUTS, ATTN) if a.attn else READOUTS
+    emb: dict[str, dict[str, list[np.ndarray]]] = {"train": {r: [] for r in names}, "test": {r: [] for r in names}}
     frames: dict[str, list[pd.DataFrame]] = {"train": [], "test": []}
     for k in range(N_FOLDS):
         split = "test" if k == test_fold else "train"
@@ -434,19 +463,19 @@ def main() -> None:
             rows = sample_train(rows, a.n_neg // (N_FOLDS - 1), a.seed + k)
         else:
             rows["weight"] = 1.0
-        got = embed_rows(model, fold, rows, dev, a.block, a.batch, vocab if a.now else None, out_dir / "cache" / f"fold{k}")
-        for r in READOUTS:
+        got = embed_rows(model, fold, rows, dev, a.block, a.batch, vocab if a.now else None, out_dir / "cache" / f"fold{k}", a.attn)
+        for r in names:
             emb[split][r].append(got[r])
         frames[split].append(rows.drop(columns=["client_idx"]))
         print(f"fold {k} ({split}): {len(rows):,} rows embedded ({time.time() - t0:.0f}s)", flush=True)
 
     train, test = pd.concat(frames["train"], ignore_index=True), pd.concat(frames["test"], ignore_index=True)
-    np.savez(out_dir / "embeddings.npz", **{f"{s}_{r}": np.concatenate(emb[s][r]) for s in ("train", "test") for r in READOUTS})
+    np.savez(out_dir / "embeddings.npz", **{f"{s}_{r}": np.concatenate(emb[s][r]) for s in ("train", "test") for r in names})
     train.to_parquet(out_dir / "train_rows.parquet")
     test.to_parquet(out_dir / "test_rows.parquet")
 
     results: dict[str, dict[str, dict[str, float]]] = {}
-    for r in READOUTS:
+    for r in names:
         xtr, xte = np.concatenate(emb["train"][r]), np.concatenate(emb["test"][r])
         results[r] = {lab: fit_score(xtr, train[lab].to_numpy(), train["weight"].to_numpy(), xte, test[lab].to_numpy()) for lab in labels()}
     meta = {"ckpt": str(a.ckpt), "step": ck.get("step"), "block": a.block, "now": a.now, "elapsed_s": round(time.time() - t0)}
