@@ -110,9 +110,9 @@ def hierarchy() -> None:
     g.legend([(TOK, "Tokens"), (ENC, "Event vectors"), (HID, "Hidden states"), (DEC, "Next-event decoder"), (EMB, "Customer embedding")])
     cols = [105, 285, 465]
     events = [
-        ("Event 1 · profile", ["[EVT]", "name=profile", "dt=140", "s21=18808", "s22=86"]),
-        ("Event 2 · transaction", ["[EVT]", "name=trx_1", "dt=79", "sub=12", "amt_bin=19", "d12=21619"]),
-        ("Event 3 · geolocation", ["[EVT]", "name=geo", "dt=74", "g4=…", "g5=…"]),
+        ("Event 1: profile", ["[EVT]", "name=profile", "dt=140", "s21=18808", "s22=86"]),
+        ("Event 2: transaction", ["[EVT]", "name=trx_1", "dt=79", "sub=12", "amt_bin=19", "d12=21619"]),
+        ("Event 3: geolocation", ["[EVT]", "name=geo", "dt=74", "g4=318", "g5=4410"]),
     ]
     for c, (title, toks) in zip(cols, events, strict=True):
         x0, y0 = c - 85.0, 46.0
@@ -155,7 +155,7 @@ def hierarchy() -> None:
     g.rect(580, 182, 160, 82, "white", DEC, r=12)
     g.text(592, 203, "Next event " + sub("e", "4"), size=11.5, weight=600)
     x, y = 590.0, 214.0
-    for t in ["[EVT]", "name=trx_7", "dt=12", "sub=…"]:
+    for t in ["[EVT]", "name=trx_7", "dt=12", "sub=3"]:
         w = len(t) * 6.0 + 12
         if x + w > 732:
             x, y = 590.0, y + 25
@@ -210,8 +210,8 @@ def decoder() -> None:
     start = len(g.items)
     cards = [
         (16, "Event 1", ["[EVT]", "name=trx_1", "dt=9", "sub=2"], TOK),
-        (262, "Event 2", ["[EVT]", "name=geo", "dt=74", "g4=…"], TOK),
-        (508, "Event 3 · being decoded", ["[EVT]", "name=trx_7", "dt=12"], DEC),
+        (262, "Event 2", ["[EVT]", "name=geo", "dt=74", "g4=318"], TOK),
+        (508, "Event 3: being decoded", ["[EVT]", "name=trx_7", "dt=12"], DEC),
     ]
     tops = []
     for x0, title, toks, fill in cards:
@@ -247,10 +247,10 @@ def decoder() -> None:
     g.text(692, 173, "reads " + sub("h", "2"), size=10, fill=MUTED, anchor="end")
     first = tops[2][0]
     g.items.append(
-        f'<path d="M{ghost:.1f},257 Q{(ghost + first) / 2:.1f},230 {first + 4:.1f},257" '
+        f'<path d="M{ghost:.1f},257 Q{(ghost + first) / 2:.1f},246 {first + 4:.1f},257" '
         f'fill="none" stroke="{INK}" stroke-width="1.2" marker-end="url(#head)"/>'
     )
-    g.text((ghost + first) / 2, 243, "its own earlier tokens", size=9.5, fill=MUTED, anchor="middle")
+    g.text((ghost + first) / 2, 240, "its own earlier tokens", size=9.5, fill=MUTED, anchor="middle")
     # no path to the tokens of earlier events
     g.items.append(f'<line x1="600" y1="324" x2="400" y2="324" stroke="{MUTED}" stroke-width="1.2" stroke-dasharray="4 3"/>')
     g.text(500, 328.5, "✕", size=13, fill=MUTED, anchor="middle")
@@ -270,12 +270,12 @@ def timeline() -> None:
         2023: [],
         2024: [("MBD", "public dataset", "white")],
         2025: [
-            ("nuFormer", "Nubank · causal", DEC),
+            ("nuFormer", "Nubank, causal", DEC),
             ("LATTE", "contrastive, with an LLM", ENC),
-            ("TransactionGPT", "Visa · generative", DEC),
+            ("TransactionGPT", "Visa, generative", DEC),
             ("Open Banking FM", "masked, with text", HID),
         ],
-        2026: [("PRAGMA", "Revolut · masked", HID), ("EventGPT", "causal · open weights", EMB)],
+        2026: [("PRAGMA", "Revolut, masked", HID), ("EventGPT", "causal, open weights", EMB)],
     }
     line_y, top, step, w, h = 62, 98, 58, 118, 48
     g.items.append(f'<line x1="20" y1="{line_y}" x2="760" y2="{line_y}" stroke="{INK}" stroke-width="1.4"/>')
@@ -379,7 +379,7 @@ def time_positions() -> None:
     g.text(
         20,
         207,
-        "position = 64 · ln(1 + minutes since the first event): a minute to an hour is as far as a day to a month",
+        "position = 64 ln(1 + minutes since the first event): a minute to an hour is as far as a day to a month",
         size=10.5,
         fill=MUTED,
     )
@@ -401,7 +401,7 @@ def time_positions() -> None:
 
 
 def delta() -> None:
-    """Which clients a daily job rescores: a new event, or a now token whose dt bucket moved since yesterday."""
+    """Which clients delta scoring rescores: a new event, or a now token whose dt bucket moved since yesterday."""
     g = Svg(760, 262)
     g.legend([(TOK, "Event"), (DEC, "Now event at the as-of date"), (HID_BAND, "Rescored today")])
     x_prev, x_now, x_end = 440, 550, 590

@@ -90,7 +90,7 @@ vectors as point-in-time features beside the label table. Section 4 of the paper
 under which a stored embedding holds nothing after its cut. The paper's probe embedded the 242,604
 client-months of the test fold, with histories of up to 2,048 tokens, in about 20 minutes on one NVIDIA L4.
 
-A daily job can rescore only the clients whose input changed: those with a new event since the last run,
+Delta scoring lets a daily job rescore only the clients whose input changed: those with a new event since the last run,
 and those whose now event moved to a new time-gap bucket as their silence grew. Everyone else keeps
 yesterday's scores, and the result equals a full pass. On MBD-mini that is 90% of clients on an average
 day (79% on transactions alone), since most clients act every few days; the saving grows on books where
