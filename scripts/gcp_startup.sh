@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Startup script of a training VM, run as root on first boot by scripts/gcp.sh up.
+# Startup script of a training VM, run as root on first boot by `scripts/gcp.py up`.
 # Pulls the code and data from the bucket, trains, uploads the checkpoint and log, then deletes the VM.
 # The VM is deleted on failure too: the EXIT trap runs whatever happens after the guard below.
 

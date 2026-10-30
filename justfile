@@ -81,50 +81,49 @@ baseline *args:
     uv run python -m eventgpt.baseline {{ args }}
 
 # -------------------------------------------------------------------------------
-# Google Cloud (one L4, deleted when its run ends; see scripts/gcp.sh)
+# Google Cloud (one L4, deleted when its run ends; see scripts/gcp.py)
 # -------------------------------------------------------------------------------
 
 # Service account, bucket and data upload, once
 [group('gcp')]
 gcp-init:
-    scripts/gcp.sh init
+    uv run --group gcp scripts/gcp.py init
 
 # Train on an L4 that deletes itself afterwards; spot="1" for spot capacity, hours caps the VM's lifetime
 [confirm("start a GPU VM on Google Cloud?")]
 [group('gcp')]
 gcp-up run spot="0" hours="6" *args:
-    SPOT={{ spot }} MAX_HOURS={{ hours }} scripts/gcp.sh up {{ run }} {{ args }}
+    SPOT={{ spot }} MAX_HOURS={{ hours }} uv run --group gcp scripts/gcp.py up {{ run }} {{ args }}
 
 # Training log of a run, mirrored to the bucket every minute
 [group('gcp')]
 gcp-logs run:
-    scripts/gcp.sh logs {{ run }}
+    uv run --group gcp scripts/gcp.py logs {{ run }}
 
 # Startup progress from the VM's serial console, before the training log exists
 [group('gcp')]
 gcp-boot run:
-    gcloud compute instances get-serial-port-output egpt-{{ run }} --zone="$(gcloud compute instances list --filter='name=egpt-{{ run }}' --format='value(zone.basename())')" | grep startup-script | tail -30
+    uv run --group gcp scripts/gcp.py boot {{ run }}
 
 # VMs carrying the event-gpt label
 [group('gcp')]
 gcp-status:
-    scripts/gcp.sh status
+    uv run --group gcp scripts/gcp.py status
 
 # Pull a run's checkpoint and log from the bucket into data/runs/<run>
 [group('gcp')]
 gcp-pull run:
-    mkdir -p data/runs/{{ run }}
-    gcloud storage rsync --recursive "gs://event-gpt-$(gcloud config get-value project 2>/dev/null)/runs/{{ run }}" data/runs/{{ run }}
+    uv run --group gcp scripts/gcp.py pull {{ run }}
 
 # Delete every event-gpt VM and the NAT gateways
 [group('gcp')]
 gcp-down:
-    scripts/gcp.sh down
+    uv run --group gcp scripts/gcp.py down
 
 # Delete everything in the cloud, bucket and checkpoints included
 [group('gcp')]
 gcp-nuke:
-    scripts/gcp.sh nuke
+    uv run --group gcp scripts/gcp.py nuke
 
 # -------------------------------------------------------------------------------
 # Paper

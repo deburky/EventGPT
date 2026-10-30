@@ -104,7 +104,8 @@ egpt catboost                                               # hand-built aggrega
 egpt token-counts --probe-dir data/runs/hier-alq-s42/probe  # token-count baseline
 ```
 
-`scripts/gcp.sh` runs training and the probe on a Google Cloud L4 that deletes itself when done.
+`scripts/gcp.py` runs training and the probe on a Google Cloud L4 that deletes itself when done
+(`uv run --group gcp scripts/gcp.py up <run> [train args]`, with Application Default Credentials).
 
 ## Your own events
 
