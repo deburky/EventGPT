@@ -400,6 +400,41 @@ def time_positions() -> None:
     g.save("time_positions")
 
 
+def delta() -> None:
+    """Which clients a daily job rescores: a new event, or a now token whose dt bucket moved since yesterday."""
+    g = Svg(760, 262)
+    g.legend([(TOK, "Event"), (DEC, "Now event at the as-of date"), (HID_BAND, "Rescored today")])
+    x_prev, x_now, x_end = 440, 550, 590
+    # (client, outcome, rescored, event positions, gap from the last event to yesterday's run, dt yesterday, dt today)
+    rows = [
+        ("Client A", "new event", True, [180, 250, 360, 500], "1 day", "dt=74", "dt=63"),
+        ("Client B", "bucket moved", True, [200, 270, 330], "3 days", "dt=83", "dt=85"),
+        ("Client C", "unchanged", False, [170, 230], "45 days", "dt=104", "dt=104"),
+    ]
+    ys = [70 + k * 60 for k in range(len(rows))]
+    for y, row in zip(ys, rows, strict=True):
+        if row[2]:
+            g.rect(14, y - 6, 732, 50, HID_BAND, r=8)
+    for x, s in ((x_prev, "yesterday's run"), (x_now, "today's run")):
+        g.text(x, 50, s, size=10.5, weight=600, anchor="middle")
+        g.items.append(f'<line x1="{x}" y1="57" x2="{x}" y2="240" stroke="{MUTED}" stroke-width="1" stroke-dasharray="3 3"/>')
+    for y, (name, outcome, rescored, events, gap, dt_prev, dt_now) in zip(ys, rows, strict=True):
+        g.text(24, y + 16, name, size=11.5, weight=600)
+        g.text(24, y + 32, outcome, size=10, fill=MUTED)
+        g.items.append(f'<line x1="140" y1="{y + 19}" x2="{x_end}" y2="{y + 19}" stroke="{LINE}" stroke-width="1.4"/>')
+        for x in events:
+            g.rect(x - 7, y + 12, 14, 14, TOK, r=3)
+        last = max(x for x in events if x < x_prev)
+        g.text((last + x_prev - 30) / 2, y + 40, gap, size=9.5, fill=MUTED, anchor="middle")
+        for x, s in ((x_prev, dt_prev), (x_now, dt_now)):
+            w = len(s) * 6.0 + 12
+            g.rect(x - w / 2, y + 9, w, 19, DEC, r=6)
+            g.text(x, y + 22.2, s, size=10, anchor="middle", mono=True)
+        verdict = "rescore" if rescored else "keep yesterday's score"
+        g.text(x_end + 14, y + 23, verdict, size=10.5, weight=600 if rescored else 400, fill=INK if rescored else MUTED)
+    g.save("delta")
+
+
 # -------------------------------------------------------------------------------
 # Plots, drawn with the same primitives as the diagrams
 # -------------------------------------------------------------------------------
@@ -471,6 +506,6 @@ def labels() -> None:
 if __name__ == "__main__":
     import sys
 
-    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "windows", "time_positions", "labels"]
+    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "windows", "time_positions", "delta", "labels"]
     for name in names:
         globals()[name]()
