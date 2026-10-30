@@ -14,17 +14,20 @@ Paper: *EventGPT: Next-Event Pretraining on Banking Customer Histories* (Burakov
 
 ## Results
 
-ROC-AUC on the MBD-mini test fold, mean of two pretraining seeds unless noted.
+ROC-AUC on MBD-mini. The product targets are averaged over five test folds and two pretraining seeds;
+the event targets are on test fold 0.
 
 | | EventGPT | CatBoost, hand-built features |
 |---|---|---|
 | Five "first transaction of a kind next month" targets, no labels | 0.79 to 0.92 | needs 10,000 to more than 300,000 labeled rows to pass |
-| Four product targets, logistic head on the frozen embedding | 0.787 | 0.816 |
-| The same, with profile fields and full-history token counts beside the embedding | 0.810 and 0.807 (seeds 42, 43) | 0.816 |
-| Rank average of the two models | 0.830 | |
+| Four product targets, logistic head on the frozen embedding | 0.787 | 0.808 |
+| The same, with profile fields and full-history token counts beside the embedding | 0.804 | 0.808 |
+| Rank average of the two models | 0.824 | |
 
-On transactions alone the embedding reaches 0.793, level with token counts over the full transaction
-history. The paper has the comparisons, standard errors and ablations.
+The rank average scores 0.014 to 0.018 above the hand-built features on every fold and seed. On
+transactions alone the embedding reaches 0.793, level with token counts over the full transaction
+history, and pretraining only on transactions before the label period lowers it by 0.004. The paper has
+the comparisons, standard errors and ablations.
 
 ## Install
 
@@ -86,6 +89,12 @@ The intended use is a batch job: once a month, embed every customer at the month
 vectors as point-in-time features beside the label table. Section 4 of the paper gives the conditions
 under which a stored embedding holds nothing after its cut. The paper's probe embedded the 242,604
 client-months of the test fold, with histories of up to 2,048 tokens, in about 20 minutes on one NVIDIA L4.
+
+A daily job can rescore only the clients whose input changed: those with a new event since the last run,
+and those whose now event moved to a new time-gap bucket as their silence grew. Everyone else keeps
+yesterday's scores, and the result equals a full pass. On MBD-mini that is 90% of clients on an average
+day (79% on transactions alone), since most clients act every few days; the saving grows on books where
+clients stay silent for weeks. Section 4 of the paper has the rule.
 
 ## Reproducing the paper
 
