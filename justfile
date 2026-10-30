@@ -81,6 +81,20 @@ baseline *args:
     uv run python -m eventgpt.baseline {{ args }}
 
 # -------------------------------------------------------------------------------
+# MLflow (local store in data/mlflow.db; see scripts/mlflow_sync.py)
+# -------------------------------------------------------------------------------
+
+# Log new runs and probes under data/runs into the MLflow store; rebuild="1" logs everything again
+[group('mlflow')]
+mlflow-sync rebuild="0":
+    MLFLOW_DISABLE_AGENT_HINT=1 uv run --group mlflow scripts/mlflow_sync.py {{ if rebuild == "1" { "--rebuild" } else { "" } }}
+
+# Browse and compare the runs at http://127.0.0.1:5000
+[group('mlflow')]
+mlflow-ui:
+    MLFLOW_DISABLE_AGENT_HINT=1 uv run --group mlflow mlflow ui --backend-store-uri sqlite:///data/mlflow.db
+
+# -------------------------------------------------------------------------------
 # Google Cloud (one L4, deleted when its run ends; see scripts/gcp.py)
 # -------------------------------------------------------------------------------
 

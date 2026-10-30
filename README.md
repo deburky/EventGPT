@@ -116,6 +116,9 @@ egpt token-counts --probe-dir data/runs/hier-alq-s42/probe  # token-count baseli
 `scripts/gcp.py` runs training and the probe on a Google Cloud L4 that deletes itself when done
 (`uv run --group gcp scripts/gcp.py up <run> [train args]`, with Application Default Credentials).
 
+`just mlflow-sync` logs every run and probe under `data/runs` into a local MLflow store (training curves,
+checkpoint configs, ROC-AUC and PR-AUC per readout and label), and `just mlflow-ui` compares them in the browser.
+
 ## Your own events
 
 The released weights read MBD's event schema. Events from another institution need their own vocabulary
