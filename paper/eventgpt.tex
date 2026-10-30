@@ -620,6 +620,8 @@ We remove the loss on gaps, amount bins and geohash cells, the tokens a product 
 
 We replace temporal RoPE with learned ordinal positions in the history decoder. At the learning rate of the other rows, $6\times10^{-4}$, the ordinal model diverges after 3,000 to 5,000 steps in both seeds. At $3\times10^{-4}$ both train stably. Temporal RoPE scores 0.781 and ordinal positions 0.778. Temporal RoPE scores higher on both seeds, but the mean difference, 0.003, is smaller than the difference between two seeds of either model (0.009 and 0.005). The ordinal model also adds learned positions within each event, which the RoPE model leaves out, so the comparison does not isolate the position scheme.
 
+We also read the history decoder's attention as weights over a client's events. We average the heads and roll the attention out through the six layers \cite{rollout}, with the residual path weighted one half. Each client's history holds a different number of events, so each client has an attention matrix of its own size, and its columns are that client's own events. The weights therefore give no features or kernel shared across clients, as attention from query rows onto shared context rows does in tabular in-context models. A classification head needs a vector of fixed width, which the hidden states give.
+
 We test query-key normalization and one feed-forward network per event kind in the event encoder (transactions, geolocation and the rest, routed by the event name). Each adds 0.005 on seed 42. Two seeds of the same configuration differ by up to 0.018 for the flat decoder and up to 0.022 for EventGPT across the five test folds, so a difference of 0.005 on one seed is not established.
 
 We test width 512 (16 heads of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) on aligned windows with query-key normalization (seed 42). Both lower the validation loss, to 0.997 at width 1024 from 1.020, and raise the official mean from 0.786 to 0.791. With late fusion of the profile fields the gain disappears. At width 1024 late fusion lowers the official mean, while it raises it at the smaller widths. The four field embeddings add 4,096 columns to a head regularized as at width 384, which may explain this.
@@ -675,6 +677,8 @@ The split is by client, as in MBD. Pretraining reads the pretraining clients' ev
 The code (tokenization, model, training, evaluation and baselines) is at \url{https://github.com/deburky/EventGPT}, and the pretrained checkpoints are on the Hugging Face Hub as \tok{deburky/EventGPT}. MBD-mini is available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
 
 \begin{thebibliography}{99}
+
+\bibitem{rollout} Abnar, S., and Zuidema, W. (2020). Quantifying attention flow in transformers. In \emph{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics (ACL)}, 4190--4197.
 
 \bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A. (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the 2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
 
