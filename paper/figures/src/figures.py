@@ -764,13 +764,13 @@ def inference() -> None:
         g.items.append(f'<circle cx="{x}" cy="{axis}" r="6" fill="{TOK}" stroke="{INK}" stroke-width="0.8"/>')
         g.text(x, axis - 14 if k % 2 == 0 else axis + 24, t, size=9.5, fill=MUTED, anchor="middle", mono=True)
     # the as-of date and the state there
-    g.items.append(f'<line x1="{now}" y1="34" x2="{now}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
+    g.items.append(f'<line x1="{now}" y1="34" x2="{now}" y2="228" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
     g.text(now, 26, "as-of date", size=10.5, weight=600, anchor="middle")
     # the next event: one branch per type, as wide as its probability for the client of Figure~futures, all the way
     # to the horizon; the dots are the later events of a future sampled down that branch
     d = json.loads((RUN.parent / "futures.json").read_text())
     p_of = {c["name"].removeprefix("trx_"): c["p"] for c in d["candidates"]}
-    branches = [(58.0, "40/52", p_of["40"]), (100.0, "1/12", p_of["1"]), (160.0, "geo", p_of["geo"]), (202.0, "50/19", d["next_p"])]
+    branches = [(58.0, "40/52", p_of["40"]), (98.0, "1/12", p_of["1"]), (138.0, "geo", p_of["geo"]), (212.0, "50/19", d["next_p"])]
     for y, t, p in branches:
         w = max(1.0, p * 32)
         g.items.append(
@@ -785,13 +785,20 @@ def inference() -> None:
         g.text(now + 88 + pw / 2, y - 14, f"{p:.0%}" if p >= 0.05 else f"{p:.1%}", size=10, weight=600, anchor="middle")
         for dx in (0.3, 0.55, 0.85) if t != "50/19" else (0.6,):
             g.items.append(f'<circle cx="{x0 + dx * (end - x0):.1f}" cy="{y}" r="4" fill="{DEC}" stroke="{violet}" stroke-width="0.8"/>')
+    # the other types: thin unlabeled branches, between geo and the target in rank
+    for y in (160.0, 168.0, 176.0, 184.0):
+        g.items.append(
+            f'<path d="M{now},{axis} C{now + 40},{axis} {now + 40},{y} {now + 84},{y}" fill="none" stroke="{violet}" '
+            f'stroke-width="0.8" opacity="0.6"/>'
+        )
+    g.text(now + 92, 176, f"{d['names'] - len(branches)} other types", size=9.5, fill=MUTED)
     g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
     g.text(now, axis + 4, "h", size=11, weight=600, fill="white", anchor="middle")
-    g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
+    g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="228" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
     g.text(end, 26, "horizon", size=10.5, weight=600, anchor="middle")
     # what each part is read as
     for x, head, note in [
-        (200, "History", "real events"),
+        (200, "Event history", "real events"),
         (now, "Embedding", "h at the as-of date"),
         (now + 118, "Next event", "width shows probability"),
         (end - 66, "Sampled futures", "up to the horizon"),
