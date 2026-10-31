@@ -26,7 +26,7 @@ the event targets are on test fold 0.
 
 The rank average scores 0.014 to 0.018 above the hand-built features on every fold and seed. On
 transactions alone the embedding reaches 0.793, level with token counts over the full transaction
-history, and pretraining only on transactions before the label period lowers it by 0.004. The paper has
+history, and pretraining only on transactions before the label period lowers it by 0.004 to 0.006. The paper has
 the comparisons, standard errors and ablations.
 
 ## Install
