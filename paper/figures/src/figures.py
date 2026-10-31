@@ -97,8 +97,10 @@ class Svg:
 
 
 def sub(base: str, i: str) -> str:
-    """A symbol with a subscript, in Unicode subscript digits."""
-    return base + i.translate(str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉"))
+    """A symbol with a subscript: Unicode subscript digits, or a lowered smaller letter, which has no Unicode form in Inter."""
+    if i.isdigit():
+        return base + i.translate(str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉"))
+    return f'{base}<tspan baseline-shift="sub" font-size="75%">{i}</tspan>'
 
 
 # -------------------------------------------------------------------------------
@@ -645,6 +647,107 @@ def futures_compare(cases: tuple[int, ...] = (3, 1)) -> None:
         for day in (7, 14, 21, 28):
             g.text(x_of(day), yb + 2, f"+{day} d", size=9.5, fill=MUTED, anchor="middle")
     g.save("futures_compare")
+
+
+def blocks() -> None:
+    """Inside the three stages: pre-norm transformer blocks, what each attends over, and what goes in and out."""
+    g = Svg(760, 512)
+    g.legend([(TOK, "Tokens"), (ENC, "Event vectors"), (HID, "Hidden states"), (DEC, "Next-event decoder")])
+    width, gap = 220.0, 30.0
+    stages = [
+        (
+            "Event encoder",
+            "2 layers, within each event",
+            ENC_BAND,
+            ENC,
+            "2",
+            ("Self-attention", "bidirectional, within the event"),
+            ("LayerNorm, mean pool", ""),
+            sub("e", "i"),
+            ("Token embeddings", "of one event, no positions"),
+            TOK,
+        ),
+        (
+            "History decoder",
+            "6 layers, over events",
+            HID_BAND,
+            HID,
+            "6",
+            ("Causal self-attention", "temporal RoPE on queries and keys"),
+            ("LayerNorm", ""),
+            sub("h", "i"),
+            (sub("e", "1") + " to " + sub("e", "i"), "one vector per event"),
+            ENC,
+        ),
+        (
+            "Token decoder",
+            "2 layers, within the next event",
+            DEC_BAND,
+            DEC,
+            "2",
+            ("Causal self-attention", "within the event"),
+            ("LayerNorm, tied linear head", ""),
+            "softmax over 12,828 tokens",
+            ("Token embeddings + " + sub("h", "i"), "and the position in the event"),
+            TOK,
+        ),
+    ]
+    for c, (title, subtitle, band, fill, n, attn, top, out, inp, inp_fill) in enumerate(stages):
+        x0 = 20 + c * (width + gap)
+        cx = x0 + width / 2
+        g.rect(x0, 40, width, 430, band, r=12)
+        g.text(cx, 62, title, size=12.5, weight=600, anchor="middle")
+        g.text(cx, 78, subtitle, size=10.5, fill=MUTED, anchor="middle")
+        # output, final norm
+        g.rect(cx - 80, 92, 160, 28, fill if c < 2 else DEC, r=8)
+        g.text(cx, 110.5, out, size=12 if c < 2 else 10.5, weight=600 if c < 2 else 500, anchor="middle")
+        g.arrow([(cx, 136), (cx, 122)])
+        g.rect(cx - 80, 136, 160, 24, "white", LINE, r=6)
+        g.text(cx, 152, top[0], size=10, anchor="middle")
+        # the repeated block
+        g.rect(x0 + 8, 174, width - 16, 212, "white", LINE, r=10, dash="4 3")
+        g.text(x0 + width - 16, 192, f"× {n}", size=12, weight=600, fill=MUTED, anchor="end")
+        boxes = [(208, 24, "MLP, GELU", ""), (244, 20, "LayerNorm", ""), (302, 36, attn[0], attn[1]), (350, 22, "LayerNorm", "")]
+        for y, h, a, b in boxes:
+            g.rect(cx - 75, y, 150, h, "white", INK if a != "LayerNorm" else LINE, r=6)
+            if b:
+                g.text(cx, y + 15, a, size=10, weight=600, anchor="middle")
+                g.text(cx, y + 29, b, size=8.8, fill=MUTED, anchor="middle")
+            else:
+                g.text(cx, y + h / 2 + 4, a, size=10, weight=600 if a != "LayerNorm" else 400, anchor="middle")
+        for cy in (194, 288):
+            g.items.append(f'<circle cx="{cx}" cy="{cy}" r="7" fill="white" stroke="{INK}" stroke-width="1.2"/>')
+            g.items.append(f'<line x1="{cx - 4}" y1="{cy}" x2="{cx + 4}" y2="{cy}" stroke="{INK}" stroke-width="1.2"/>')
+            g.items.append(f'<line x1="{cx}" y1="{cy - 4}" x2="{cx}" y2="{cy + 4}" stroke="{INK}" stroke-width="1.2"/>')
+        # main path, bottom to top
+        g.arrow([(cx, 350), (cx, 340)])
+        g.arrow([(cx, 302), (cx, 297)])
+        g.arrow([(cx, 281), (cx, 266)])
+        g.arrow([(cx, 244), (cx, 234)])
+        g.arrow([(cx, 208), (cx, 203)])
+        g.arrow([(cx, 187), (cx, 162)])
+        # residual paths around attention and around the MLP
+        rx = cx - 92
+        g.arrow([(cx, 380), (rx, 380), (rx, 288), (cx - 9, 288)])
+        g.arrow([(cx, 274), (rx + 6, 274), (rx + 6, 194), (cx - 9, 194)])
+        # input
+        g.arrow([(cx, 404), (cx, 374)])
+        g.rect(cx - 90, 404, 180, 36, inp_fill, r=8)
+        g.text(cx, 419, inp[0], size=10.5, weight=600, anchor="middle")
+        g.text(cx, 433, inp[1], size=9, fill=MUTED, anchor="middle")
+    for c in range(2):
+        x0 = 20 + c * (width + gap)
+        gx = x0 + width + gap / 2
+        g.arrow([(x0 + width / 2 + 80, 106), (gx, 106), (gx, 422), (gx + gap / 2 + 18, 422)])
+    g.text(
+        20,
+        494,
+        "Every block is pre-norm with residual adds; attention has 12 heads of width 32 with query-key RMSNorm, "
+        "and the MLP widens 384 to 1,536.",
+        size=10,
+        fill=MUTED,
+    )
+    g.save("blocks")
 
 
 if __name__ == "__main__":

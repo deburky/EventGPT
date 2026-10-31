@@ -122,13 +122,20 @@ transactions and fuses the embedding with a tabular network at fine-tuning time 
 % -------------------------------------------------------------------------------
 \section{Model}\label{sec:model}
 
-EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each event into one vector, a history decoder runs over these vectors for each client, and a token decoder predicts the tokens of the next event. Next-token cross-entropy trains the three together.
+EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each event into one vector, a history decoder runs over these vectors for each client, and a token decoder predicts the tokens of the next event. Next-token cross-entropy trains the three together. All three are stacks of pre-norm transformer blocks and differ in what each attention layer reads (Figure~\ref{fig:blocks}).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/hierarchy.pdf}
 \caption{The three stages of EventGPT on three MBD events. Token layers read each event on its own and mean-pool it into one vector; causal event layers with temporal RoPE model the event vectors; token layers decode the next event given the hidden state of the previous one. The event layers' states are the customer embedding; the token decoder trains them and gives the distribution of the next event.}
 \label{fig:arch}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/blocks.pdf}
+\caption{The layers inside each stage. The event encoder attends within one event, without positions, and mean-pools the event's tokens into $e_i$. The history decoder attends causally over the event vectors, with temporal RoPE on queries and keys, and gives the hidden state $h_i$. The token decoder adds $h_i$ to every token embedding of event $i+1$ and attends causally within that event; the output layer shares its weights with the token embedding.}
+\label{fig:blocks}
 \end{figure}
 
 \begin{figure}[htbp]
