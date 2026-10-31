@@ -1,6 +1,6 @@
 # EventGPT paper: build the PDF and package the arXiv upload.
 #
-#   make        compile the PDF (xelatex, run twice for cross-references)
+#   make        compile the PDF (pdflatex as on arXiv, run twice for cross-references)
 #   make zip    compile, then stage the source into tarball/ and create tarball/eventgpt-arxiv.tar.gz
 #   make clean  remove build artifacts and tarball/
 
@@ -8,7 +8,7 @@ TEX := eventgpt.tex
 PDF := eventgpt.pdf
 DIST := tarball
 TARBALL := $(DIST)/eventgpt-arxiv.tar.gz
-LATEX := xelatex -interaction=nonstopmode -halt-on-error
+LATEX := pdflatex -interaction=nonstopmode -halt-on-error
 
 .PHONY: all pdf zip clean
 

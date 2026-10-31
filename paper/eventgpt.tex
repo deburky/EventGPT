@@ -1,8 +1,14 @@
 % EventGPT paper
-% Compile with XeLaTeX (run twice for references): xelatex eventgpt.tex. On arXiv, choose the xelatex
-% processor; fonts come from TeX Live (Latin Modern) and are loaded by file name, as arXiv requires.
+% Compiles with pdfLaTeX (arXiv's default), XeLaTeX or LuaLaTeX; run twice for references.
+% All three set the text and math in Latin Modern.
 \documentclass[12pt]{article}
+\usepackage{iftex}
+\ifPDFTeX
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\else
 \usepackage{fontspec}
+\fi
 \usepackage[protrusion=true]{microtype}
 \setlength{\emergencystretch}{1.5em}
 \usepackage{geometry}
@@ -30,8 +36,10 @@
 \definecolor{capgreen}{HTML}{2E8B57}
 
 % --- math font: match the Latin Modern text (load last, after amsmath/fontspec) ---
+\ifPDFTeX\else
 \usepackage{unicode-math}
 \setmathfont{latinmodern-math.otf}
+\fi
 
 % No first-line indent; one consistent line of space between paragraphs
 \setlength{\parindent}{0pt}
