@@ -500,7 +500,7 @@ recall, top 1\% & 0.010 & 0.157 & 0.113 & 0.154 & 0.166 \\
 
 \begin{table}[htbp]
 \centering
-\caption{EventGPT and the flat decoder, both on windows at random offsets, per pretraining seed. Throughput on one NVIDIA L4; validation loss and top-1 accuracy of the next token at the end of pretraining; the official mean uses the last hidden state for EventGPT and the recency-weighted embedding for the flat decoder.}
+\caption{EventGPT and the flat decoder, both on windows at random offsets, per pretraining seed. Throughput on one NVIDIA L4; validation loss and top-1 accuracy of the next token at the end of pretraining; the official mean uses the last hidden state for EventGPT and the recency-weighted embedding for the flat decoder. The flat decoder attends to every earlier token, so it can copy fields of recent events, and most of its lower loss is on the geolocation cell; on the event name the two are level. Its official mean is 0.003 above EventGPT's, less than the 0.018 between its own two seeds.}
 \label{tab:flat}
 \begin{tabular}{lcccc}
 \toprule
