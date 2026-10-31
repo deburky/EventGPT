@@ -35,9 +35,8 @@ def main() -> None:
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--n-select", type=int, default=3_000, help="uniform rows per temperature on the selection half")
     p.add_argument("--n-report", type=int, default=10_000, help="uniform rows on the reporting half")
-    p.add_argument("rest", nargs=argparse.REMAINDER, help="arguments for the rollout, after --")
-    a = p.parse_args()
-    rest = [r for r in a.rest if r != "--"]
+    a, unknown = p.parse_known_args()  # everything not named above passes through to the rollout
+    rest = [r for r in unknown if r != "--"]
     a.out_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for t in TEMPERATURES:
