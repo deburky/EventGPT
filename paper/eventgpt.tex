@@ -365,6 +365,15 @@ first 50/19 & 770 & 0.906 (0.006) & 0.904 & 0.905 & 0.915 & 0.896 (0.006) & $+0.
 \end{tabular}
 \end{table}
 
+Figure~\ref{fig:futures} shows what the model expects for one client. Its single-step score for 50/19 ranks in the top 1.1\% of test rows, and months sampled from the model put a first 50/19 in the label month with probability 0.081, against a base rate of 0.003. The client's actual next event was a 50/19, the model's tenth most likely type at 1.7\%.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/futures.pdf}
+\caption{One test client at the as-of date 1 December 2022, drawn with a fixed seed among the 770 test rows positive for first 50/19. Top row: the client's last ten events and its label month. Below: three of 64 months sampled from EventGPT (aligned windows, seed 42) from the same history; geolocation events are ticks. Right: the model's distribution over the type of the next event, with the type that came next, and the probability of a first 50/19 in the month, from 64 sampled months and from one step, against the share of test rows that are positive.}
+\label{fig:futures}
+\end{figure}
+
 Without the rule for earlier occurrences the score on 50/19 falls from 0.91 to 0.72. The model predicts the kind for clients who already make it every month. On the rare kind 48/31 the rule makes no difference. The score is the probability of the kind as the next event, while the label covers the whole month. We have not tried sampling a month of events from the model, which would match the label's horizon.
 
 We measure how many labels the engineered features need to match the zero-shot score. We fit CatBoost on the engineered features of $n$ client-months drawn at random from the 699,380 rows of the pretraining folds and score the whole test fold (Table~\ref{tab:labels}). A draw without a positive scores 0.5. CatBoost's scores follow the same rule for earlier occurrences.

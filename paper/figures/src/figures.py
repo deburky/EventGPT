@@ -503,9 +503,75 @@ def labels() -> None:
     g.save("labels")
 
 
+def futures() -> None:
+    """One test client's real month beside three months sampled from EventGPT, and the scores read off the model."""
+    import json
+
+    d = json.loads((RUN.parent / "futures.json").read_text())
+    accent = "#DB6F44"
+    g = Svg(760, 282)
+    g.legend([(TOK, "Real event"), (DEC, "Sampled by EventGPT"), (accent, f"First {d['target']}, the target")])
+    h0, h1, m0, m1 = 132.0, 246.0, 268.0, 540.0  # history and label-month scales
+    lo = min(-56.0, min(float(e["day"]) for e in d["history"]))
+
+    def x_of(day: float) -> float:
+        if day < 0:
+            return h0 + (day - lo) / -lo * (h1 - h0)
+        return m0 + day / d["month_days"] * (m1 - m0)
+
+    rows = [("What happened", d["history"] + d["actual"], TOK)] + [
+        (f"Sampled month {k + 1}", path, DEC) for k, path in enumerate(d["paths"])
+    ]
+    ys = [74 + 46 * k for k in range(len(rows))]
+    top, bottom = ys[0] - 22, ys[-1] + 26
+    g.rect(m0 - 6, top, m1 - m0 + 12, bottom - top, HID_BAND, r=8)
+    g.text((m0 + m1) / 2, top - 6, "label month", size=10, fill=MUTED, anchor="middle")
+    g.text((h0 + h1) / 2, top - 6, "history", size=10, fill=MUTED, anchor="middle")
+    cut = (h1 + m0) / 2
+    g.items.append(f'<line x1="{cut}" y1="{top - 2}" x2="{cut}" y2="{bottom + 4}" stroke="{INK}" stroke-width="1.2"/>')
+    g.text(cut, bottom + 17, "as-of date", size=10, weight=600, anchor="middle")
+    for day, lab in ((-50, "-50 d"), (-25, "-25 d")):
+        g.text(x_of(day), bottom + 17, lab, size=9.5, fill=MUTED, anchor="middle")
+    for day in (7, 14, 21, 28):
+        g.text(x_of(day), bottom + 17, f"+{day} d", size=9.5, fill=MUTED, anchor="middle")
+    for y, (name, evs, fill) in zip(ys, rows, strict=True):
+        g.text(16, y + 4, name, size=11, weight=600 if fill == TOK else 400)
+        g.items.append(f'<line x1="{h0 if fill == TOK else m0}" y1="{y}" x2="{m1}" y2="{y}" stroke="{LINE}" stroke-width="1.2"/>')
+        if fill != TOK:
+            g.text((h0 + h1) / 2, y + 4, "same history", size=9.5, fill=MUTED, anchor="middle")
+        last_label = -1e9
+        for e in sorted(evs, key=lambda e: float(e["day"])):
+            x, kind = x_of(float(e["day"])), str(e["kind"])
+            if kind == "geo":
+                tick = f'x1="{x:.1f}" y1="{y - 6}" x2="{x:.1f}" y2="{y + 6}"'
+                g.items.append(f'<line {tick} stroke="{MUTED}" stroke-width="1" opacity="0.5"/>')
+                continue
+            hit = kind == d["target"]
+            g.rect(x - 5, y - 5, 10, 10, accent if hit else fill, r=2.5)
+            if hit or x - last_label >= 34:
+                g.text(x, y - 10, kind, size=8.5, fill=accent if hit else MUTED, anchor="middle", mono=True)
+                last_label = x
+    # the scores read off the model for this client
+    px = 568
+    g.text(px, 52, "Next event type, one step", size=11, weight=600)
+    bars = [(c["name"].replace("trx_", ""), c["p"], False) for c in d["candidates"]]
+    bars.append((f"{d['next_kind'].split('/')[0]}, actual (rank {d['next_rank']})", d["next_p"], True))
+    for k, (name, p, actual) in enumerate(bars):
+        y = 68 + 17 * k + (6 if actual else 0)
+        g.text(px, y + 8, name, size=9.5, fill=accent if actual else INK, mono=not actual and name != "geo")
+        g.rect(px + 112, y, max(2.0, p * 180), 10, accent if actual else DEC, r=2)
+        g.text(px + 116 + max(2.0, p * 180), y + 8.5, f"{p:.1%}", size=9, fill=MUTED)
+    g.text(px, 196, f"First {d['target']} in the month", size=11, weight=600)
+    for k, (lab, v) in enumerate([("rollout, 64 months", d["rollout"]), ("one step", d["single_step"]), ("base rate", d["prevalence"])]):
+        g.text(px, 214 + 16 * k, lab, size=10, fill=MUTED)
+        g.text(px + 170, 214 + 16 * k, f"{v:.1%}", size=10, weight=600 if k == 0 else 400, anchor="end")
+    g.text(px, 270, f"top {d['share_above']:.1%} of test rows", size=10, fill=INK)
+    g.save("futures")
+
+
 if __name__ == "__main__":
     import sys
 
-    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "windows", "time_positions", "delta", "labels"]
+    names = sys.argv[1:] or ["timeline", "hierarchy", "decoder", "attention", "windows", "time_positions", "delta", "labels", "futures"]
     for name in names:
         globals()[name]()

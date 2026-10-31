@@ -300,12 +300,21 @@ def tables(vocab: Vocab, dev: torch.device) -> Tables:
 
 @torch.no_grad()
 def sample_month(
-    model: EventGPT, st: State, tb: Tables, silence: torch.Tensor, month: torch.Tensor, max_events: int, gen: torch.Generator
+    model: EventGPT,
+    st: State,
+    tb: Tables,
+    silence: torch.Tensor,
+    month: torch.Tensor,
+    max_events: int,
+    gen: torch.Generator,
+    trace: list[dict[str, np.ndarray]] | None = None,
 ) -> dict[str, torch.Tensor]:
     """Sample every path's events to the end of its month and accumulate the per-path scores.
 
     silence: (n,) seconds from the last event to the as-of date; month: (n,) seconds from the as-of date to the end
     of the label month. Returns per-path tensors: comp, prod and hit (n, kinds), trx_comp, any_trx, n_trx and capped (n,).
+    With trace, each step appends the sampled events: time from the as-of date, name token, subtype and whether
+    the event falls inside the month, one entry per path.
     """
     n, dev = silence.size(0), silence.device
     k_kinds = len(FIRST_KINDS)
@@ -369,6 +378,9 @@ def sample_month(
             toks[:, j] = torch.where(open_, nxt, toks[:, j])
             filled[:, j] = open_
         sub = tb.sub_of_tok[toks[:, 3]]
+        if trace is not None:
+            step_events = {"t": t_new, "name": name_tok, "sub": sub, "inside": inside}
+            trace.append({key: v.cpu().numpy() for key, v in step_events.items()})
         # accumulate: kind terms up to and including a path's first sampled event of the kind
         count = active.unsqueeze(1) & ~hit
         comp += p_kind * count
