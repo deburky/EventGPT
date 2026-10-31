@@ -138,13 +138,6 @@ EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each e
 \label{fig:blocks}
 \end{figure}
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/attention.pdf}
-\caption{Attention at the two levels. Within an event every token attends to every other; across events attention is causal and confined to one customer. The tokens of an event reach earlier events only through the hidden state of the previous event.}
-\label{fig:masks}
-\end{figure}
-
 \subsection{Event encoder}
 
 An event is a short run of tokens that starts with \tok{[EVT]}, followed by its name, its time gap and its fields as \tok{key=value} tokens (Section~\ref{sec:data}). The fields of an event are a record, and reading \tok{amt\_bin} before \tok{sub} states the same fact as reading them in the other order. The event encoder is therefore bidirectional within an event, has no positions inside it, and cannot attend across an event boundary. Two layers produce token states that are mean-pooled into one vector per event.
@@ -169,17 +162,6 @@ ratio of their elapsed times.}
 \subsection{Token decoder and the training signal}
 
 Each token of event $i$ receives its embedding, a learned position within the event and $h_{i-1}$, the history decoder's hidden state after the previous event. The first event in a window receives zero in its place. Two causal layers within the event then predict the next token through an output layer tied to the input embedding (Figure~\ref{fig:decoder}). The token decoder sees $h_{i-1}$ and never the pooled vector of event $i$, so an event is read in both directions only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient comes from the tokens of the next event, through the hidden state, so it keeps the fields of an event that help predict what follows.
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/decoder.pdf}
-\caption{What the token decoder reads. Each token of event 3 attends to the earlier tokens of its own event and to $h_2$, the history decoder's hidden state after event 2. It has no path to the tokens inside earlier events, which reach it only through the event vectors and $h_2$.}
-\label{fig:decoder}
-\end{figure}
-
-\subsection{Block attention within events}\label{sec:packed}
-
-Neither the event encoder nor the token decoder attends across an event boundary (Figure~\ref{fig:masks}), but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the block and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Block attention makes windows of 8,192 tokens affordable (Section~\ref{sec:context}).
 
 \subsection{Customer embedding}\label{sec:embedding}
 
@@ -768,6 +750,24 @@ CatBoost, engineered features and embedding feature & 0.808 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\section{Block attention within events}\label{sec:packed}
+
+Neither the event encoder nor the token decoder attends across an event boundary (Figure~\ref{fig:masks}), but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the block and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Block attention makes windows of 8,192 tokens affordable (Section~\ref{sec:context}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/attention.pdf}
+\caption{Attention at the two levels. Within an event every token attends to every other; across events attention is causal and confined to one customer. The tokens of an event reach earlier events only through the hidden state of the previous event.}
+\label{fig:masks}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/decoder.pdf}
+\caption{What the token decoder reads. Each token of event 3 attends to the earlier tokens of its own event and to $h_2$, the history decoder's hidden state after event 2. It has no path to the tokens inside earlier events, which reach it only through the event vectors and $h_2$.}
+\label{fig:decoder}
+\end{figure}
 
 \begin{thebibliography}{99}
 \raggedright
