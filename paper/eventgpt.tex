@@ -65,13 +65,13 @@
 
 \begin{abstract}
 \noindent
-A model pretrained to predict a customer's next event can estimate the probability of future events without training on their labels and provide a reusable representation for supervised downstream tasks. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92. Gradient boosting on 114 engineered features reaches these scores after 10,000 to 300,000 randomly labeled client-months on four targets and stays below the zero-shot score on the fifth at 300,000. As a frozen embedding read by a classification head, EventGPT stays below gradient boosting on engineered features for MBD's four product targets (ROC-AUC 0.787 against 0.808, mean of five test folds). Most of the gap lies in the clients' static attributes and their older history, and adding the profile fields and token counts over the full history raises EventGPT to 0.804. A rank-averaged ensemble of the feature table and EventGPT with the profile fields and token counts scores 0.014 to 0.017 above the feature table on each of five test folds. Against a transactions-only model pretrained over the full period, pretraining only on transactions before the label period lowers the mean on the product targets by 0.004 to 0.006. The code and the pretrained weights are released.
+A model pretrained to predict a customer's next event can estimate the probability of future events without training on their labels and provide a reusable representation for supervised downstream tasks. We pretrain EventGPT, a hierarchical causal transformer, by next-token prediction on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, it scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92. Gradient boosting on 114 engineered features reaches these scores after 10,000 to 300,000 randomly sampled client-months on four targets and stays below the zero-shot score on the fifth at 300,000. As a frozen embedding read by a classification head, EventGPT stays below gradient boosting on engineered features for MBD's four product targets (ROC-AUC 0.787 against 0.808, mean of five test folds). Most of the gap lies in the clients' static attributes and their older history, and adding the profile fields and token counts over the full history raises EventGPT to 0.804. A rank-averaged ensemble of the feature table and EventGPT with the profile fields and token counts scores 0.014 to 0.017 above the feature table on each of five test folds. Against a transactions-only model pretrained over the full period, pretraining only on transactions before the label period lowers the mean on the product targets by 0.004 to 0.006. The code and the pretrained weights are released.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
 \section{Introduction}\label{sec:intro}
 
-A model pretrained to predict a customer's next event can be useful in two ways. It can answer questions about future events directly, from its own predictions and without labels, and it can give one representation per customer that supervised downstream tasks can reuse. EventGPT\footnote{It is unrelated to EventGPT for event-camera streams \cite{eventgptcam}.} is trained by predicting each next event token of a customer's event stream. This paper describes the architecture and measures both uses on a public banking benchmark.
+A model pretrained to predict a customer's next event can be useful in two ways. It can answer questions about future events directly, from its own predictions and without labels, and it can give one representation per customer that supervised downstream tasks can reuse. EventGPT\footnote{It is unrelated to EventGPT for event-camera streams \cite{eventgptcam} and to Event Stream GPT for medical records \cite{esgpt}.} is trained by predicting each next event token of a customer's event stream. This paper describes the architecture and measures both uses on a public banking benchmark.
 
 The usual starting point is a feature table including counts, sums and recencies computed per customer and window that is fed into a machine learning algorithm. Building the table requires business knowledge (which field is the amount, which event types matter, which windows), and that work is repeated for every new event source. Each new question also needs labels and a model of its own. When events of many kinds with different fields are combined, as in a lender's applications, repayments and account events, there is often no obvious table to build. A pretrained event model needs neither the table nor, for questions about events, the labels.
 
@@ -80,8 +80,7 @@ causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGM
 
 \paragraph{Contributions.}
 \begin{enumerate}
-\item \textbf{An open event foundation model}: to our knowledge, the first open-weights, generative
-foundation model for banking event sequences, trained on a public benchmark. The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are released (Section~\ref{app:code}). \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels; CatBoost on the engineered features reaches the same ROC-AUC after 10,000 to 300,000 randomly labeled client-months on four targets and stays below it on the fifth at 300,000 (Section~\ref{sec:zero-shot}). \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against engineered features and
+\item \textbf{An open reference model}: to our knowledge, the first open-weights generative model for banking event sequences, trained and evaluated on a public benchmark with reproducible baselines. The weights read MBD's schema, so another institution reruns the code on its own events (Section~\ref{sec:per-institution}). The tokenization of MBD-mini, the model, the training and evaluation code and the checkpoints are released (Section~\ref{app:code}). \item \textbf{Zero-shot scoring of event targets} from the token decoder's distribution over the next event, which scores five first-occurrence targets at ROC-AUC 0.79 to 0.92 with no labels; CatBoost on the engineered features reaches the same ROC-AUC after 10,000 to 300,000 randomly sampled client-months on four targets and stays below it on the fifth at 300,000 (Section~\ref{sec:zero-shot}). \item \textbf{An evaluation of frozen and fine-tuned embeddings on MBD} against engineered features and
 a schema-free token-count table, with paired standard errors clustered by client. The embedding is below both tables and exceeds token counts only inside its own window. We add the profile fields and full-history token counts to the embedding. The gap then falls to 0.004, averaged over five test folds, and is not statistically significant on any fold. Late fusion of the profile fields adds 0.013 to 0.019 to the ROC-AUC of the product targets and brings \tok{target\_4} level with the engineered features (Sections~\ref{sec:protocol}--\ref{sec:results}).
 \item \textbf{The embedding as a second ranker beside a feature table}: averaging its ranks with those of the engineered features adds 0.014 to 0.017 to their ROC-AUC on each of five test folds (intervals excluding zero, weights fixed in advance), while as features inside the table it leaves their ROC-AUC unchanged or lower (Section~\ref{sec:gap}).
 \item \textbf{Embeddings as point-in-time features}: an embedding for a date uses only events before
@@ -95,7 +94,7 @@ that date, so it can be stored and reused across tasks without leaking the futur
 \item[Event targets.] The customer makes a transaction of a given kind (type and subtype) for the first time during the month. Five such kinds are used.
 \item[Engineered features.] 114 features built by hand from the schema (counts, amounts, recencies and the profile fields), read by CatBoost.
 \item[Token counts.] Counts of the 200 most frequent tokens over time windows, read by CatBoost. They need no knowledge of the schema.
-\item[Hidden state.] The history decoder's output after an event. The last hidden state before the as-of date is the customer embedding.
+\item[Hidden state.] The history decoder's output after an event. The last hidden state, at the as-of date, is the customer embedding (Section~\ref{sec:embedding}).
 \item[Zero-shot score.] The model's probability that the next event is of a given kind, read with no labels and no classification head.
 \end{description}
 
@@ -111,12 +110,12 @@ that date, so it can be stored and reused across tasks without leaking the futur
 \end{figure}
 
 \paragraph{Event-sequence models in banking.} Most of the models cited here appeared in 2025 and 2026, with contrastive, masked and generative objectives (Figure~\ref{fig:timeline}). CoLES learns client embeddings by contrastive learning
-on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestream library implements it with other pretraining methods for event sequences \cite{lifestream}. LATTE aligns event embeddings with the embeddings a frozen language model gives to short text summaries of a client's behavior \cite{latte}. TabBERT and TabGPT treat each transaction as a row of fields, encode fields into a row embedding and model the rows with a masked or a causal transformer \cite{tabbert}; their code and a synthetic card-transaction dataset are public, without pretrained checkpoints. The MBD paper evaluates these methods, aggregate features and a supervised recurrent network on the same product-propensity task used here \cite{mbd}.
+on subsequences of a client's transactions \cite{coles}, and the pytorch-lifestream library implements it with other pretraining methods for event sequences \cite{lifestream}. Among them, a GPT-style objective predicts each field of the next transaction with a separate head on the sequence encoder's output. EventGPT instead decodes the next event token by token, which gives a joint distribution over its fields. Event Stream GPT, a library for generative transformers over continuous-time medical event streams, also models the dependencies between the fields of an event \cite{esgpt}. LATTE aligns event embeddings with the embeddings a frozen language model gives to short text summaries of a client's behavior \cite{latte}. TabBERT and TabGPT treat each transaction as a row of fields, encode fields into a row embedding and model the rows with a masked or a causal transformer \cite{tabbert}; their code and a synthetic card-transaction dataset are public, without pretrained checkpoints. The MBD paper evaluates these methods, aggregate features and a supervised recurrent network on the same product-propensity task used here \cite{mbd}.
 
 \paragraph{Industrial foundation models.} nuFormer pretrains a flat causal decoder on tokenized
 transactions and fuses the embedding with a tabular network at fine-tuning time \cite{nuformer}. PRAGMA reconstructs masked tokens with a profile-state encoder, a per-event encoder and a history encoder, and serves credit scoring, fraud and lifetime value from one backbone \cite{pragma}. TransactionGPT applies a three-dimensional transformer to payment-network transactions \cite{transactiongpt}. NVIDIA describes the same recipe, tokenizer to decoder to embedding to classifier, for card transactions \cite{nvidia}. A masked model of transactions with their text descriptions has been trained on data from thousands of North American institutions \cite{openbanking}. Their checkpoints are not publicly available.
 
-\paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a position \cite{rope}. The rotation does not require the position to be an integer, so EventGPT can feed elapsed time in its place. Qwen2.5-Omni uses rotary positions from time in the same way to align audio and video (TMRoPE) \cite{qwenomni}.
+\paragraph{Positions from time.} Rotary embeddings rotate queries and keys by an angle proportional to a position \cite{rope}. The rotation does not require the position to be an integer, so EventGPT can feed elapsed time in its place. Qwen2.5-Omni sets rotary positions from absolute time, one step per 40 milliseconds, to align audio and video (TMRoPE) \cite{qwenomni}. The Transformer Hawkes Process encodes the time stamps of events with sinusoids in place of positions \cite{thp}.
 
 \paragraph{Factorized attention.} TimeSformer divides the attention of a video transformer into attention within each frame and attention across frames \cite{timesformer}. EventGPT factorizes a customer's history the same way, with attention within each event and then across events.
 
@@ -145,11 +144,11 @@ An event is a short run of tokens that starts with \tok{[EVT]}, followed by its 
 
 \subsection{History decoder and temporal RoPE}\label{sec:time}
 
-The history decoder needs a position for each event vector, and EventGPT takes it from elapsed time. Six causal layers run over each client's event vectors. Event $i$ sees its history as the vectors of events $1, \dots, i-1$, one per event, instead of their tokens. Positions come from elapsed time, a temporal RoPE in the sense of the TMRoPE of Qwen2.5-Omni \cite{qwenomni}. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
+The history decoder needs a position for each event vector, and EventGPT takes it from elapsed time. Six causal layers run over each client's event vectors. The hidden state after event $i$ reads the vectors of events $1, \dots, i$, one per event, instead of their tokens. Positions come from elapsed time. TMRoPE is linear in time \cite{qwenomni}, and our temporal RoPE takes its logarithm. With $\Delta t_i$ the seconds from the client's first event in the window to event $i$, the rotary position is
 \begin{equation}\label{eq:pos}
 p_i = 64 \ln\!\left(1 + \frac{\Delta t_i}{60}\right).
 \end{equation}
-Rotary attention depends on the difference between two positions, and here that difference is $64\ln$ of a ratio of elapsed times. A gap from a minute to an hour is then as long as a gap from a day to a month, and two events a year apart stay far apart even when no event lies between them (Figure~\ref{fig:time}). The elapsed times come from the \tok{dt} tokens of the stream, each bucket mapped to its midpoint in seconds, so no timestamp enters the model besides the tokens.
+Rotary attention depends on the difference between two positions, and here that difference is $64\ln$ of a ratio of elapsed times. With the 60 seconds added, a gap from a minute to an hour (a ratio of 30.5) is then about as long as a gap from a day to a month (30), and two events a year apart stay far apart even when no event lies between them (Figure~\ref{fig:time}). The elapsed times come from the \tok{dt} tokens of the stream, each bucket mapped to its midpoint in seconds, so no timestamp enters the model besides the tokens. The same gap spans less rotation the later it falls in the window: one day is 44 units between the first and second day and 0.09 units between days 699 and 700.
 
 \begin{figure}[htbp]
 \centering
@@ -267,7 +266,7 @@ geolocation & \tok{[EVT] name=geo dt=<b> g4=<cell> g5=<cell>} \\
 
 \paragraph{Time and amounts.} The gap since the client's previous event becomes a token
 \tok{dt=}$\lfloor 8 \ln(1 + \Delta s/8) \rfloor$, capped at 140, so 141 buckets span seconds to
-decades. Amounts become one of 21 bins with quantile edges fitted on the pretraining folds.
+decades. Amounts become one of 21 bins with quantile edges fitted on the pretraining folds. A currency token \tok{cur} appears only when the currency is not the one shared by 99.9\% of transactions.
 
 \paragraph{Vocabulary.} Values seen in the pretraining folds become tokens. Values of the two counterparty-like fields seen fewer than 1,000 times, and geohash cells seen fewer than 100 (\tok{g4}) or 300 (\tok{g5}) times, fall into one \tok{other} token per key. The vocabulary has 12,828 tokens, and no token of the held-out fold is unknown. Dialogue embeddings are left out of this version.
 
@@ -359,7 +358,7 @@ We score the flat decoder the same way. It reaches 0.78 to 0.92, the same range 
 
 \begin{table}[htbp]
 \centering
-\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of two seeds, as is the aligned column. The supervised head is the logistic head on the seed-42 embedding (random windows), on the same rows. In brackets the standard error, clustered by client; the seed-43 and aligned columns have standard errors within 0.005 of seed 42. The difference column pairs the seed-42 zero-shot score with the head. Its $p$ comes from the standard error of the difference, which is smaller than either score's own because both scores rank the same clients (Section~\ref{sec:metrics}). The engineered-feature column is the full test fold, so it is comparable in expectation but not row for row.}
+\caption{ROC-AUC on the five event targets. Zero-shot scores use no labels and set the score of clients who already had the kind to zero (Section~\ref{sec:zs-protocol}); the flat decoder column is the mean of two seeds, as is the aligned column. The supervised head is the logistic head on the seed-42 embedding (random windows), on the same rows. In brackets the standard error, clustered by client; the seed-43 and aligned columns have standard errors within 0.005 of seed 42. The difference column pairs the seed-42 zero-shot score with the head. Its $p$ comes from the standard error of the difference, which is smaller than either score's own because both scores rank the same clients (Section~\ref{sec:metrics}). The engineered-feature column is the full test fold, so it is comparable in expectation but not row for row. The supervised head and the engineered features are scored without the rule for earlier occurrences.}
 \label{tab:zero-shot}
 \footnotesize
 \setlength{\tabcolsep}{2.5pt}
@@ -381,11 +380,11 @@ Without the rule for earlier occurrences the score on 50/19 falls from 0.91 to 0
 
 We measure how many labels the engineered features need to match the zero-shot score. We fit CatBoost on the engineered features of $n$ client-months drawn at random from the 699,380 rows of the pretraining folds and score the whole test fold (Table~\ref{tab:labels}). A draw without a positive scores 0.5. CatBoost's scores follow the same rule for earlier occurrences.
 
-The engineered features pass the zero-shot score after 10,000 to 30,000 labeled rows on 50/19, the most common kind, and after 30,000 to 300,000 on three others. On 23/49 they are still below it at 300,000 rows. This is between about 20 and 400 positives, and more than 260 on 23/49. Draws of 1,000 rows hold at most two positives and draws of 10,000 rows hold 2 to 34, so these row counts are rough thresholds.
+The engineered features pass the zero-shot score after 10,000 to 30,000 labeled rows on 50/19, the most common kind, and after 30,000 to 300,000 on three others. On 23/49 they are still below it at 300,000 rows and pass it with every positive of the pretraining folds (0.930). This is between about 20 and 400 positives, and more than 260 on 23/49. Draws of 1,000 rows hold at most two positives and draws of 10,000 rows hold 2 to 34, so these row counts are rough thresholds.
 
 \begin{table}[htbp]
 \centering
-\caption{Engineered features fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws (five up to 30,000 rows, three at 100,000, two at 300,000), with the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The last column is the engineered-feature baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the pretraining folds and 60,000 negatives.}
+\caption{Engineered features fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws (five up to 30,000 rows, three at 100,000, two at 300,000), with the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The last column is the engineered-feature baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the pretraining folds and 60,000 negatives, under the same rule.}
 \label{tab:labels}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -395,10 +394,10 @@ The engineered features pass the zero-shot score after 10,000 to 30,000 labeled 
 \cmidrule(lr){3-8}
 target & (no labels) & 1,000 & 3,000 & 10,000 & 30,000 & 100,000 & 300,000 & labels \\
 \midrule
-first 48/31 & 0.909 & 0.573 (0) & 0.650 (0) & 0.718 (2) & 0.871 (6) & 0.894 (19) & 0.912 (66) & 0.920 \\
-first 23/49 & 0.918 & 0.784 (2) & 0.809 (2) & 0.866 (7) & 0.856 (25) & 0.896 (81) & 0.902 (263) & 0.920 \\
-first 26/28 & 0.828 & 0.735 (2) & 0.739 (4) & 0.776 (11) & 0.817 (34) & 0.858 (128) & 0.849 (355) & 0.868 \\
-first 48/10 & 0.787 & 0.739 (2) & 0.668 (5) & 0.695 (11) & 0.763 (34) & 0.771 (134) & 0.826 (394) & 0.835 \\
+first 48/31 & 0.909 & 0.573 (0) & 0.650 (0) & 0.718 (2) & 0.871 (6) & 0.894 (19) & 0.912 (66) & 0.921 \\
+first 23/49 & 0.918 & 0.784 (2) & 0.809 (2) & 0.866 (7) & 0.856 (25) & 0.896 (81) & 0.902 (263) & 0.930 \\
+first 26/28 & 0.828 & 0.735 (2) & 0.739 (4) & 0.776 (11) & 0.817 (34) & 0.858 (128) & 0.849 (355) & 0.880 \\
+first 48/10 & 0.787 & 0.739 (2) & 0.668 (5) & 0.695 (11) & 0.763 (34) & 0.771 (134) & 0.826 (394) & 0.841 \\
 first 50/19 & 0.905 & 0.746 (2) & 0.821 (8) & 0.854 (34) & 0.921 (95) & 0.929 (342) & 0.932 (992) & 0.937 \\
 \bottomrule
 \end{tabular}
@@ -413,7 +412,7 @@ We fit a classification head on the frozen embedding for each label (Table~\ref{
 \small
 \setlength{\tabcolsep}{4pt}
 \caption{ROC-AUC on the test fold. Model columns are the mean of two seeds, with a logistic head on the frozen embedding; EventGPT is trained on windows at random offsets or on aligned windows
-(Section~\ref{sec:windows}). Token counts and engineered features are fitted with CatBoost. Churn leaves out January 2023 (Section~\ref{sec:protocol}). The engineered features are fitted on the training rows drawn once January 2023 had left the churn label, the other columns on rows drawn before, which also held the 20,000 January churn positives. PR-AUC for the official targets is in Table~\ref{tab:main-pr}.}
+(Section~\ref{sec:windows}). Token counts and engineered features are fitted with CatBoost. Churn leaves out January 2023 (Section~\ref{sec:protocol}). The engineered features are fitted on the training rows drawn once January 2023 had left the churn label, the other columns on rows drawn before, which also held the 20,000 January churn positives. Every column scores the event targets without the rule for earlier occurrences. PR-AUC for the official targets is in Table~\ref{tab:main-pr}.}
 \label{tab:main}
 \begin{tabular}{lccccccc}
 \toprule
@@ -489,7 +488,7 @@ Aligned windows raise the official mean from 0.774 to 0.787 on both seeds (Table
 
 \subsection{Fine-tuning and gradient boosting on the embedding}\label{sec:finetune}
 
-We fine-tune the aligned checkpoint of seed 42, trained without query-key normalization, end to end (Table~\ref{tab:boost}). We add one logistic output per label and train on the training rows of the classification heads. We train only the head for the first 2,000 steps and then every weight for one pass, at a peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head. We choose the step by the official mean on a tenth of the training clients. The official mean stays at 0.788, while every event target rises. On 48/31 and 23/49 the fine-tuned model scores above the engineered features (0.940 and 0.931 against 0.920). This run kept January 2023 in the churn label, so its churn score includes the last-month effect. The validation clients belong to the pretraining folds, and their official mean is 0.06 above the test mean.
+We fine-tune the aligned checkpoint of seed 42, trained without query-key normalization, end to end (Table~\ref{tab:boost}). We add one logistic output per label and train on the training rows of the classification heads. We train only the head for the first 2,000 steps and then every weight for one pass, at a peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head. We choose the step by the official mean on a tenth of the training clients. The official mean stays at 0.788. The five event targets rise in this run, which has one seed and one setting of the learning rates. On 48/31 and 23/49 the fine-tuned model scores above the engineered features (0.940 and 0.931 against 0.920). This run kept January 2023 in the churn label, so its churn score includes the last-month effect. The validation clients belong to the pretraining folds, and their official mean is 0.06 above the test mean.
 
 We test the embedding inside CatBoost, as 384 numeric columns or as one embedding feature. With an embedding feature CatBoost computes its own features, by default linear discriminant projections and counts of nearest training rows per class. The numeric columns score 0.775 and the embedding feature 0.700, against 0.788 for the logistic head (Table~\ref{tab:boost}). The embedding feature scores 0.501 on \tok{target\_4}. We also add the embedding feature to the engineered features. Their official mean falls from 0.815 to 0.808.
 
@@ -591,29 +590,29 @@ We change one element of the model or its data at a time (Table~\ref{tab:ablatio
 
 \begin{table}[htbp]
 \centering
-\caption{Mean ROC-AUC over the official targets, logistic head, mean of two seeds; rows marked
-$^\dagger$ are seed 42; the row marked $^\ddagger$ uses transactions only; the row marked $^\S$ trains at learning rate $3\times10^{-4}$. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization.}
+\caption{Mean ROC-AUC over the official targets, logistic head. Rows with two seeds give the mean and, in brackets, the two seeds' scores; the row marked $^\ddagger$ uses transactions only; the row marked $^\S$ trains at learning rate $3\times10^{-4}$. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization. The pretraining-period rows compare with transactions only over the full period (0.793), and every other row with the first.}
 \label{tab:ablations}
-\begin{tabular}{llc}
+\footnotesize
+\begin{tabular}{llcl}
 \toprule
-element & variant & mean ROC-AUC \\
+element & variant & seeds & mean ROC-AUC \\
 \midrule
-architecture & hierarchy (EventGPT), last state & 0.774 \\
- & flat decoder, last token & 0.714 \\
- & flat decoder, recency over tokens & 0.777 \\
-positions$^\S$ & temporal RoPE / ordinal & 0.781 / 0.778 \\
-modalities & transactions + geolocation & 0.774 \\
- & transactions only & 0.793 \\
-pretraining period$^\ddagger$ & full / before Feb.~2022, same steps & 0.793 / 0.789 \\
- & before Feb.~2022, same passes per token & 0.787 \\
-training loss & all tokens & 0.774 \\
- & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5}$^\dagger$ & 0.775 \\
-embedding & last / mean / recency & 0.774 / 0.755 / 0.765 \\
-training windows & random offsets & 0.774 \\
- & aligned, with QK normalization & 0.787 \\
-attention & QK normalization$^\dagger$ & 0.779 \\
-width & 384 / 512 / 1024, aligned$^\dagger$ & 0.786 / 0.791 / 0.791 \\
-event encoder & one feed-forward per event kind$^\dagger$ & 0.779 \\
+architecture & hierarchy (EventGPT), last state & 2 & 0.774 (0.774, 0.775) \\
+ & flat decoder, last token & 2 & 0.714 (0.713, 0.714) \\
+ & flat decoder, recency over tokens & 2 & 0.777 (0.768, 0.786) \\
+positions$^\S$ & temporal RoPE & 2 & 0.781 (0.777, 0.786) \\
+ & ordinal & 2 & 0.778 (0.775, 0.780) \\
+modalities & transactions + geolocation & 2 & 0.774 (0.774, 0.775) \\
+ & transactions only & 2 & 0.793 (0.791, 0.795) \\
+pretraining period$^\ddagger$ & before Feb.~2022, same steps & 2 & 0.789 (0.788, 0.790) \\
+ & before Feb.~2022, same passes per token & 2 & 0.787 (0.784, 0.791) \\
+training loss & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5} & 1 & 0.775 \\
+embedding & mean & 2 & 0.755 (0.752, 0.758) \\
+ & recency & 2 & 0.765 (0.761, 0.769) \\
+training windows & aligned, with QK normalization & 2 & 0.787 (0.786, 0.788) \\
+attention & QK normalization & 1 & 0.779 \\
+width & 384 / 512 / 1024, aligned & 1 & 0.786 / 0.791 / 0.791 \\
+event encoder & one feed-forward per event kind & 1 & 0.779 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -636,9 +635,9 @@ We test width 512 (16 heads of width 32, 38.4 million parameters) and width 1024
 
 \subsection{Length of history}\label{sec:context}
 
-We train EventGPT and the flat decoder on windows of 4,096 and 8,192 tokens (Table~\ref{tab:window}). MBD histories are long: the 90th percentile client has about 1,000 transactions and 300 days of geolocation, while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to 8,192 tokens. EventGPT stays level on random windows (0.774 to 0.772) and loses 0.008 on aligned windows (0.788 to 0.780). The flat decoder stays level at 4,096 tokens. Churn does not change with the window for any model. The extra history carries information for the product targets, and EventGPT's embedding does not take it up at this size.
+We train EventGPT and the flat decoder on windows of 4,096 and 8,192 tokens (Table~\ref{tab:window}). MBD histories are long: the 90th percentile client has about 1,000 transactions and 300 days of geolocation, while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to 8,192 tokens. EventGPT stays level on random windows (0.774 to 0.772) and loses 0.008 on aligned windows (0.788 to 0.780). The flat decoder stays level at 4,096 tokens. Churn does not change with the window for any model. The extra history carries information for the product targets, and EventGPT's embedding does not take it up at this size. Pooled readouts do not take it up either: at 8,192 tokens mean and recency pooling score 0.748 and 0.762 on random windows and 0.743 and 0.765 on aligned windows, below the last hidden state.
 
-EventGPT trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. Its history decoder attends over events, and with block attention its token stages grow linearly with the window. The flat decoder falls from 47,000 tokens per second at 2,048 tokens to about 30,000 at 4,096.
+EventGPT trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. Its history decoder attends over events, and with block attention its token stages grow linearly with the window. The flat decoder falls from 47,000 tokens per second at 2,048 tokens to about 30,000 at 4,096. We did not train it at 8,192 tokens: at 4,096 a run already takes about six hours on the L4, and its attention cost grows with the square of the window.
 
 \begin{table}[htbp]
 \centering
@@ -663,6 +662,8 @@ Each institution pretrains an event model on its own events. The architecture, t
 
 Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \tok{s21=18808} has no meaning outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on the pretraining folds of this one population, and a token id has its meaning only together with the vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint against a vocabulary it was not trained on. The time-gap tokens are the exception, since $\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
 
+A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
+
 Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
 
 \section{Discussion}\label{sec:discussion}
@@ -677,7 +678,7 @@ The results are on MBD-mini, for which no published numbers exist, so the compar
 
 The standard errors cover the sampling of test clients only. We repeat the main comparison on five test folds and every other result on fold 0 alone. On fold 0 the engineered features and the ensemble score 0.008 and 0.006 above their five-fold means. A head fitted on another draw of training rows moves \tok{target\_2}, with 132 test positives, by up to 0.07 and the official mean by up to 0.02. Differences of that size between models fitted on different draws are not established. We ran fine-tuning once, on one seed with one setting of the learning rates, and chose its step on clients from the pretraining folds. We ran widths beyond 384 with one seed, trained no model larger than 140 million parameters and did not tune the regularization of the head for the wider embeddings.
 
-The split is by client, as in MBD. Pretraining reads the pretraining clients' events from 2021 and 2022, which include the test clients' label months, although each test history ends before its label month. We separate the two with an out-of-time run: we pretrain on transactions before February 2022 only, with 54\% of the tokens. We compare it with a transactions-only model pretrained over the full period, which scores 0.793 (mean of two seeds). With the same 20,000 steps the out-of-time model scores 0.789, with the same churn (0.950 and 0.949). We use transactions alone because the geolocation stream starts in December 2021. With the same number of steps the run sees each token about 4.4 times instead of 2.4. At 11,000 steps the out-of-time run sees each token about 2.4 times, matching the exposure of the full-period run. Its official mean is 0.787 against 0.793 for full-period pretraining, with churn of 0.947 and 0.949.
+The split is by client, as in MBD. Pretraining reads the pretraining clients' events from 2021 and 2022, which include the test clients' label months, although each test history ends before its label month. We separate the two with an out-of-time run: we pretrain on transactions before February 2022 only, with 54\% of the tokens. We compare it with a transactions-only model pretrained over the full period, which scores 0.793 (mean of two seeds). With the same 20,000 steps the out-of-time model scores 0.789, with the same churn (0.950 and 0.949). We use transactions alone because the geolocation stream starts in December 2021. With the same number of steps the run sees each token about 4.4 times instead of 2.4. At 11,000 steps the out-of-time run sees each token about 2.4 times, matching the exposure of the full-period run. Its official mean is 0.787 against 0.793 for full-period pretraining, with churn of 0.947 and 0.949. Aligned windows also give the model each client's tenure through the gap token of the first event, and with tenure the calendar time of the as-of date; the last-month effect on churn (Section~\ref{sec:protocol}) is one consequence. In production the as-of dates lie past the pretraining period, where what the model learned about calendar time may not hold.
 
 % -------------------------------------------------------------------------------
 \section{Code and data availability}\label{app:code}
@@ -691,24 +692,26 @@ The code (tokenization, model, training, evaluation and baselines) is at \url{ht
 
 \bibitem{coles} Babaev, D., Ovsov, N., Kireev, I., Ivanova, M., Gusev, G., Nazarov, I., and Tuzhilin, A. (2022). CoLES: Contrastive learning for event sequences with self-supervision. In \emph{Proceedings of the 2022 International Conference on Management of Data (SIGMOD)}. doi:10.1145/3514221.3526129.
 
-\bibitem{latte} Fadeev, E., Mollaev, D., Shestov, A., Zoloev, O., Sakhno, A., Korolev, D., Kireev, I., Savchenko, A., and Makarenko, M. (2025). LATTE: Learning aligned transactions and textual embeddings for bank clients. arXiv:2508.10021.
+\bibitem{timesformer} Bertasius, G., Wang, H., and Torresani, L. (2021). Is space-time attention all you need for video understanding? In \emph{Proceedings of the 38th International Conference on Machine Learning (ICML)}. arXiv:2102.05095.
 
-\bibitem{eventgptcam} Liu, S., Li, J., Zhao, G., Zhang, Y., Meng, X., Yu, F.~R., Ji, X., and Li, M. (2025). EventGPT: Event stream understanding with multimodal large language models. In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}. doi:10.1109/CVPR52734.2025.02713.
+\bibitem{nuformer} Braithwaite, D.~T., Cavalcanti, M., McEver, R.~A., Udagawa, H., Silva, D., Ramanath, R., Meneses, F., Yoshida, A., Wingert, E., Ramos, M., Zanfelice, B., and Gupta, A. (2025). Your spending needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
 
 \bibitem{delong} DeLong, E.~R., DeLong, D.~M., and Clarke-Pearson, D.~L. (1988). Comparing the areas under two or more correlated receiver operating characteristic curves: a nonparametric approach. \emph{Biometrics} 44(3), 837--845.
 
+\bibitem{transactiongpt} Dou, Y., Jiang, Z., Zhang, T., Hu, M., Xu, Z., Jain, S., Saini, U.~S., et al. (2025). TransactionGPT. arXiv:2511.08939.
+
+\bibitem{latte} Fadeev, E., Mollaev, D., Shestov, A., Zoloev, O., Sakhno, A., Korolev, D., Kireev, I., Savchenko, A., and Makarenko, M. (2025). LATTE: Learning aligned transactions and textual embeddings for bank clients. arXiv:2508.10021.
+
 \bibitem{qknorm} Henry, A., Dachapally, P.~R., Pawar, S., and Chen, Y. (2020). Query-key normalization for transformers. In \emph{Findings of the Association for Computational Linguistics: EMNLP 2020}, 4246--4253.
 
-\bibitem{catboost} Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A.~V., and Gulin, A. (2018).
-CatBoost: unbiased boosting with categorical features. In \emph{Advances in Neural Information
-Processing Systems 31}.
-
-\bibitem{mbd} Mollaev, D., Kostin, A., Postnova, M., Karpukhin, I., Kireev, I., Gusev, G., and Savchenko, A. (2024). Multimodal Banking Dataset: Understanding client needs through event sequences. arXiv:2409.17587.
+\bibitem{eventgptcam} Liu, S., Li, J., Zhao, G., Zhang, Y., Meng, X., Yu, F.~R., Ji, X., and Li, M. (2025). EventGPT: Event stream understanding with multimodal large language models. In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}. doi:10.1109/CVPR52734.2025.02713.
 
 \bibitem{mbdmini} MBD-mini. Hugging Face dataset \tok{ai-lab/MBD-mini}, CC BY 4.0.
 \url{https://huggingface.co/datasets/ai-lab/MBD-mini}.
 
-\bibitem{nuformer} Braithwaite, D.~T., Cavalcanti, M., McEver, R.~A., Udagawa, H., Silva, D., Ramanath, R., Meneses, F., Yoshida, A., Wingert, E., Ramos, M., Zanfelice, B., and Gupta, A. (2025). Your spending needs attention: Modeling financial habits with transformers. arXiv:2507.23267.
+\bibitem{esgpt} McDermott, M., Nestor, B., Argaw, P., and Kohane, I. (2023). Event Stream GPT: A data pre-processing and modeling library for generative, pre-trained transformers over continuous-time sequences of complex events. In \emph{Advances in Neural Information Processing Systems 36, Datasets and Benchmarks Track}.
+
+\bibitem{mbd} Mollaev, D., Kostin, A., Postnova, M., Karpukhin, I., Kireev, I., Gusev, G., and Savchenko, A. (2024). Multimodal Banking Dataset: Understanding client needs through event sequences. arXiv:2409.17587.
 
 \bibitem{nvidia} NVIDIA. Build your own transaction foundation model for financial intelligence.
 \url{https://developer.nvidia.com/blog/build-your-own-transaction-foundation-model-for-financial-intelligence/}.
@@ -719,20 +722,22 @@ Processing Systems 31}.
 \bibitem{pragma} Ostroukhov, M., Mikhailov, R., Iashin, V., Sokolov, A., Akshonov, A., Protasov, V.,
 Goncharov, A., Beloborodov, D., Mullin, V., Enzmann, R.~Y., Kolovos, G., Renders, J., Nesterov, P., and Repushko, A. (2026). PRAGMA: Revolut foundation model. arXiv:2604.08649.
 
+\bibitem{tabbert} Padhi, I., Schiff, Y., Melnyk, I., Rigotti, M., Mroueh, Y., Dognin, P., Ross, J., Nair, R., and Altman, E. (2021). Tabular transformers for modeling multivariate time series. In \emph{ICASSP 2021}. arXiv:2011.01843.
+
 \bibitem{openbanking} Polleti, G., Santana, M., and Fontes, E. (2025). Open Banking foundational model: Learning language representations from few financial transactions. arXiv:2511.12154.
 
-\bibitem{lifestream} pytorch-lifestream. A library for self-supervised learning on event sequences.
-\url{https://github.com/dllllb/pytorch-lifestream}.
+\bibitem{catboost} Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A.~V., and Gulin, A. (2018).
+CatBoost: unbiased boosting with categorical features. In \emph{Advances in Neural Information
+Processing Systems 31}.
 
-\bibitem{qwenomni} Xu, J., Guo, Z., He, J., Hu, H., et al. (2025). Qwen2.5-Omni technical report. arXiv:2503.20215.
+\bibitem{lifestream} Sakhno, A., et al. (2025). PyTorch-Lifestream: Learning embeddings on discrete event sequences. In \emph{Proceedings of the 34th International Joint Conference on Artificial Intelligence (IJCAI), Demo Track}, 11104--11108. doi:10.24963/ijcai.2025/1272.
+\url{https://github.com/dllllb/pytorch-lifestream}.
 
 \bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced transformer with rotary position embedding. arXiv:2104.09864.
 
-\bibitem{tabbert} Padhi, I., Schiff, Y., Melnyk, I., Rigotti, M., Mroueh, Y., Dognin, P., Ross, J., Nair, R., and Altman, E. (2021). Tabular transformers for modeling multivariate time series. In \emph{ICASSP 2021}. arXiv:2011.01843.
+\bibitem{qwenomni} Xu, J., Guo, Z., He, J., Hu, H., et al. (2025). Qwen2.5-Omni technical report. arXiv:2503.20215.
 
-\bibitem{timesformer} Bertasius, G., Wang, H., and Torresani, L. (2021). Is space-time attention all you need for video understanding? In \emph{Proceedings of the 38th International Conference on Machine Learning (ICML)}. arXiv:2102.05095.
-
-\bibitem{transactiongpt} Dou, Y., Jiang, Z., Zhang, T., Hu, M., Xu, Z., Jain, S., Saini, U.~S., et al. (2025). TransactionGPT. arXiv:2511.08939.
+\bibitem{thp} Zuo, S., Jiang, H., Li, Z., Zhao, T., and Zha, H. (2020). Transformer Hawkes process. In \emph{Proceedings of the 37th International Conference on Machine Learning (ICML)}, PMLR 119, 11692--11702.
 
 \end{thebibliography}
 
