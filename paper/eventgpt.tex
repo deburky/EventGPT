@@ -211,16 +211,7 @@ This reuse is safe only if the embedding at an as-of date depends on events befo
 
 Because the history itself fixes its as-of date, an embedding can be stored in a feature store like any other dated feature. It is keyed by client, stamped with its as-of date instead of the time it was computed, and joined to labels by the store's point-in-time join, which returns for each label the latest embedding before it. The join decides which embedding a label sees, and since each history ends at its as-of date, that embedding depends only on earlier events. Embeddings from different checkpoints are not comparable, so each version of the backbone needs its own feature set, and a head is valid only on the version it was fitted on.
 
-\paragraph{Delta scoring.} The same property lets a daily job rescore only the clients whose input changed (Figure~\ref{fig:delta}). A client's embedding depends only on the tokens of its history, so a client with no new event keeps its embedding and its scores. The now event is the exception. Its \tok{dt} token measures the silence up to the as-of date and moves to the next bucket as the silence grows. A bucket spans about one eighth of the gap, so a client silent for $g$ days changes bucket on about $8/g$ of days once $g$ exceeds eight. The job therefore rescores every client with a new event and every client whose now token changed. It then reproduces a full pass exactly, provided the streams are built with the vocabulary of the checkpoint (Section~\ref{sec:per-institution}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/delta.pdf}
-\caption{Delta scoring with a now event. Client A has a new event since yesterday's run. Client B has none, but its silence grew from three to four days and its now token moved from \tok{dt=83} to \tok{dt=85}. Client C has been silent for 45 days, and one more day leaves its now token at \tok{dt=104}. The job rescores A and B and keeps C's scores from yesterday.}
-\label{fig:delta}
-\end{figure}
-
-We count both groups for each day of 2022 on MBD-mini. With geolocation, 57\% of clients have a new event on an average day and a further 32\% have a new now token, so the job rescores 90\% of clients. On transactions alone the shares are 31\% and 48\%, and the job rescores 79\%. The saving is small on MBD because most of its clients act every few days. It grows with the share of clients who stay silent for weeks.
+\paragraph{Delta scoring.} The same property lets a daily job rescore only the clients whose input changed and reproduce a full pass exactly (Appendix~\ref{app:delta}).
 
 The guarantee does not cover the population. Pretraining reads the pretraining clients' events from 2021 and 2022, which include the test clients' label months. An out-of-time run measures the effect (Section~\ref{sec:limits}).
 
@@ -484,30 +475,6 @@ official mean ROC-AUC & 0.774 & 0.775 & 0.786 & 0.768 \\
 
 Aligned windows raise the official mean from 0.774 to 0.787 on both seeds (Table~\ref{tab:main}). They also raise the classification head on every event target and leave the zero-shot scores unchanged (Table~\ref{tab:zero-shot}). Without query-key normalization aligned windows score 0.788 (seed 42, Table~\ref{tab:window}), so the gain comes from the windows. Churn does not change. The large churn gain that aligned windows first seemed to give came from recognizing the last month (Section~\ref{sec:protocol}). Without January 2023 the gain on the product targets holds (0.787 against 0.774). The mismatch between random training windows and evaluation histories costs the product targets about 0.01.
 
-\subsection{Fine-tuning and gradient boosting on the embedding}\label{sec:finetune}
-
-We fine-tune the aligned checkpoint of seed 42, trained without query-key normalization, end to end (Table~\ref{tab:boost}). We add one logistic output per label and train on the training rows of the classification heads. We train only the head for the first 2,000 steps and then every weight for one pass, at a peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head. We choose the step by the official mean on a tenth of the training clients. The official mean stays at 0.788. The five event targets rise in this run, which has one seed and one setting of the learning rates. On 48/31 and 23/49 the fine-tuned model scores above the engineered features (0.940 and 0.931 against 0.920). This run kept January 2023 in the churn label, so its churn score includes the last-month effect. The validation clients belong to the pretraining folds, and their official mean is 0.06 above the test mean.
-
-We test the embedding inside CatBoost, as 384 numeric columns or as one embedding feature. With an embedding feature CatBoost computes its own features, by default linear discriminant projections and counts of nearest training rows per class. The numeric columns score 0.775 and the embedding feature 0.700, against 0.788 for the logistic head (Table~\ref{tab:boost}). The embedding feature scores 0.501 on \tok{target\_4}. We also add the embedding feature to the engineered features. Their official mean falls from 0.815 to 0.808.
-
-\begin{table}[htbp]
-\centering
-\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42, trained without query-key normalization. ROC-AUC on the test fold; the CatBoost rows use the same labels and early stopping as the engineered features, on the training rows of the classification heads, drawn before January 2023 left the churn label, so the engineered features reach 0.815 here against 0.816 in Table~\ref{tab:main}.}
-\label{tab:boost}
-\begin{tabular}{lc}
-\toprule
-model & official mean \\
-\midrule
-logistic head, frozen & 0.788 \\
-fine-tuned & 0.788 \\
-CatBoost, embedding as numeric columns & 0.775 \\
-CatBoost, embedding feature & 0.700 \\
-CatBoost, engineered features & 0.815 \\
-CatBoost, engineered features and embedding feature & 0.808 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \subsection{Where the gap to engineered features comes from}\label{sec:gap}
 
 We score every model on the same test rows as the engineered features, and fit the heads of both seeds on the same training rows (Table~\ref{tab:gap}). The hidden state scores 0.030 and 0.028 below the engineered features. Late fusion of the profile fields brings it to 0.016 and 0.015 below. With early fusion and full-history token counts the gap falls to 0.006 and 0.009 ($p = 0.16$ and 0.057).
@@ -550,7 +517,7 @@ ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.
 
 \paragraph{Amount resolution.} EventGPT sees each amount as one of 21 quantile bins. We replace each amount in the engineered features by the mean of its bin. The official mean falls by 0.005 with 21 bins and does not change with 256 bins. Most of the loss is on \tok{target\_2}, the noisiest target.
 
-\paragraph{Combining the two.} We test the embedding inside the engineered features, as 32 principal components or as a CatBoost embedding feature. The official mean stays the same or falls (Section~\ref{sec:finetune}). We then average the ranks of EventGPT with the profile fields and token counts and of the engineered features, with equal weights. The ensemble reaches 0.830 on both seeds, 0.014 above the engineered features, with intervals that exclude zero (Table~\ref{tab:gap}). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets. Churn does not change. An ensemble with full-history token counts in place of the engineered features reaches 0.816, the level of the engineered features, with no knowledge of the schema.
+\paragraph{Combining the two.} We test the embedding inside the engineered features, as 32 principal components or as a CatBoost embedding feature. The official mean stays the same or falls (Appendix~\ref{sec:finetune}). We then average the ranks of EventGPT with the profile fields and token counts and of the engineered features, with equal weights. The ensemble reaches 0.830 on both seeds, 0.014 above the engineered features, with intervals that exclude zero (Table~\ref{tab:gap}). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets. Churn does not change. An ensemble with full-history token counts in place of the engineered features reaches 0.816, the level of the engineered features, with no knowledge of the schema.
 
 We fix the weights in advance. With any weight on EventGPT from 0.3 to 0.6 the official mean stays within 0.002 of its peak on both seeds. We score the ensemble and the engineered features on the same test rows with the same fit of the engineered features, so the variation between fits does not enter the 0.014. That variation moves full-history token counts from 0.803 to 0.783 between two draws of training rows. A second draw of the training rows of EventGPT's classification head (seed 42) gives 0.808 against 0.810 and the same ensemble score, 0.830.
 
@@ -691,6 +658,43 @@ The code (tokenization, model, training, evaluation and baselines) is at \url{ht
 We test each zero-shot score against the supervised head of the same model and seed. The head scores 0.045 to 0.061 higher on 26/28 and 48/10 for both seeds of both models ($p < 0.001$). On 23/49 the head scores 0.008 and 0.011 higher with random windows ($p = 0.33$ and 0.16) and 0.025 and 0.034 higher with aligned windows ($p = 0.003$ and $< 0.001$). On 48/31 the zero-shot score is 0.029 higher with aligned windows and seed 43 ($p = 0.008$). On 50/19 it is 0.012 higher with random windows and seed 43 ($p = 0.04$). The other six runs on these two targets show no significant difference ($p \ge 0.07$). We run 20 paired tests: five targets for both seeds of both models. At a Bonferroni threshold of 0.0025 the head stays significantly higher on 26/28 and 48/10 in every run and on 23/49 with aligned windows and seed 43. Neither zero-shot win passes this threshold. Training on aligned windows leaves the zero-shot scores unchanged.
 
 We also multiply the score by one plus the client's transactions in the 30 days before the as-of date, a form we chose after the scores of Table~\ref{tab:zero-shot} were known (Section~\ref{sec:ablations}). We test the scaled score against the head for the same five targets and four runs. It scores 0.013 to 0.043 higher on 48/31 and 0.012 to 0.029 lower on 26/28 and 48/10. On 23/49 and 50/19 the two differ by at most 0.014 ($p \ge 0.027$). These 20 tests and the 20 above make 40, for a Bonferroni threshold of 0.00125. The head's results above still pass it. Of the new tests only the head on 26/28 with aligned windows and seed 42 passes ($p < 0.001$). The scaled score on 48/31 with aligned windows and seed 43 comes closest ($p = 0.0014$).
+
+\section{Delta scoring}\label{app:delta}
+
+A client's history ending at its as-of date lets a daily job rescore only the clients whose input changed (Figure~\ref{fig:delta}). A client's embedding depends only on the tokens of its history, so a client with no new event keeps its embedding and its scores. The now event is the exception. Its \tok{dt} token measures the silence up to the as-of date and moves to the next bucket as the silence grows. A bucket spans about one eighth of the gap, so a client silent for $g$ days changes bucket on about $8/g$ of days once $g$ exceeds eight. The job therefore rescores every client with a new event and every client whose now token changed. It then reproduces a full pass exactly, provided the streams are built with the vocabulary of the checkpoint (Section~\ref{sec:per-institution}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/delta.pdf}
+\caption{Delta scoring with a now event. Client A has a new event since yesterday's run. Client B has none, but its silence grew from three to four days and its now token moved from \tok{dt=83} to \tok{dt=85}. Client C has been silent for 45 days, and one more day leaves its now token at \tok{dt=104}. The job rescores A and B and keeps C's scores from yesterday.}
+\label{fig:delta}
+\end{figure}
+
+We count both groups for each day of 2022 on MBD-mini. With geolocation, 57\% of clients have a new event on an average day and a further 32\% have a new now token, so the job rescores 90\% of clients. On transactions alone the shares are 31\% and 48\%, and the job rescores 79\%. The saving is small on MBD because most of its clients act every few days. It grows with the share of clients who stay silent for weeks.
+
+\section{Fine-tuning and gradient boosting on the embedding}\label{sec:finetune}
+
+We fine-tune the aligned checkpoint of seed 42, trained without query-key normalization, end to end (Table~\ref{tab:boost}). We add one logistic output per label and train on the training rows of the classification heads. We train only the head for the first 2,000 steps and then every weight for one pass, at a peak learning rate of $3 \times 10^{-5}$ for the pretrained weights and $10^{-3}$ for the head. We choose the step by the official mean on a tenth of the training clients. The official mean stays at 0.788. The five event targets rise in this run, which has one seed and one setting of the learning rates. On 48/31 and 23/49 the fine-tuned model scores above the engineered features (0.940 and 0.931 against 0.920). This run kept January 2023 in the churn label, so its churn score includes the last-month effect. The validation clients belong to the pretraining folds, and their official mean is 0.06 above the test mean.
+
+We test the embedding inside CatBoost, as 384 numeric columns or as one embedding feature. With an embedding feature CatBoost computes its own features, by default linear discriminant projections and counts of nearest training rows per class. The numeric columns score 0.775 and the embedding feature 0.700, against 0.788 for the logistic head (Table~\ref{tab:boost}). The embedding feature scores 0.501 on \tok{target\_4}. We also add the embedding feature to the engineered features. Their official mean falls from 0.815 to 0.808.
+
+\begin{table}[htbp]
+\centering
+\caption{Fine-tuning and gradient boosting on the aligned embedding of seed 42, trained without query-key normalization. ROC-AUC on the test fold; the CatBoost rows use the same labels and early stopping as the engineered features, on the training rows of the classification heads, drawn before January 2023 left the churn label, so the engineered features reach 0.815 here against 0.816 in Table~\ref{tab:main}.}
+\label{tab:boost}
+\begin{tabular}{lc}
+\toprule
+model & official mean \\
+\midrule
+logistic head, frozen & 0.788 \\
+fine-tuned & 0.788 \\
+CatBoost, embedding as numeric columns & 0.775 \\
+CatBoost, embedding feature & 0.700 \\
+CatBoost, engineered features & 0.815 \\
+CatBoost, engineered features and embedding feature & 0.808 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{thebibliography}{99}
 \raggedright

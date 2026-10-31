@@ -94,7 +94,7 @@ Delta scoring lets a daily job rescore only the clients whose input changed: tho
 and those whose now event moved to a new time-gap bucket as their silence grew. Everyone else keeps
 yesterday's scores, and the result equals a full pass. On MBD-mini that is 90% of clients on an average
 day (79% on transactions alone), since most clients act every few days; the saving grows on books where
-clients stay silent for weeks. Section 4 of the paper has the rule.
+clients stay silent for weeks. Appendix B of the paper has the rule.
 
 ## Reproducing the paper
 
