@@ -499,88 +499,11 @@ mean & 0.808 (0.007) & 0.787 (0.006) & 0.804 (0.005) & 0.824 (0.007) & $+0.016$ 
 \end{table}
 
 
-\subsection{Ablations}\label{sec:ablations}
+\subsection{Ablations and length of history}
 
-We change one element of the model or its data at a time (Table~\ref{tab:ablations}). We run two seeds except where marked.
-
-\begin{table}[htbp]
-\centering
-\caption{Mean ROC-AUC over the official targets, logistic head. Rows with two seeds give the mean and, in brackets, the two seeds' scores; the row marked $^\ddagger$ uses transactions only; the row marked $^\S$ trains at learning rate $3\times10^{-4}$. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization. The pretraining-period rows compare with transactions only over the full period (0.793), and every other row with the first.}
-\label{tab:ablations}
-\footnotesize
-\begin{tabular}{llcl}
-\toprule
-element & variant & seeds & mean ROC-AUC \\
-\midrule
-architecture & hierarchy (EventGPT), last state & 2 & 0.774 (0.774, 0.775) \\
- & flat decoder, last token & 2 & 0.714 (0.713, 0.714) \\
- & flat decoder, recency over tokens & 2 & 0.777 (0.768, 0.786) \\
-positions$^\S$ & temporal RoPE & 2 & 0.781 (0.777, 0.786) \\
- & ordinal & 2 & 0.778 (0.775, 0.780) \\
-modalities & transactions + geolocation & 2 & 0.774 (0.774, 0.775) \\
- & transactions only & 2 & 0.793 (0.791, 0.795) \\
-pretraining period$^\ddagger$ & before Feb.~2022, same steps & 2 & 0.789 (0.788, 0.790) \\
- & before Feb.~2022, same passes per token & 2 & 0.787 (0.784, 0.791) \\
-training loss & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5} & 1 & 0.775 \\
-embedding & mean & 2 & 0.755 (0.752, 0.758) \\
- & recency & 2 & 0.765 (0.761, 0.769) \\
-training windows & aligned, with QK normalization & 2 & 0.787 (0.786, 0.788) \\
-attention & QK normalization & 1 & 0.779 \\
-width & 384 / 512 / 1024, aligned & 1 & 0.786 / 0.791 / 0.791 \\
-event encoder & one feed-forward per event kind & 1 & 0.779 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-We pretrain and evaluate on transactions alone. The official mean rises from 0.774 to 0.793 and churn from 0.934 to 0.950 on both seeds, and the classification head rises on all five event targets. Without geolocation the engineered features lose 0.001 while EventGPT gains 0.019. Without daily geolocation events the 2,048-token window holds more transactions. Token counts show the same effect: their loss to the window shrinks from 0.026 to 0.008. Within the transactions-only window EventGPT scores above token counts and level with token counts over the full transaction history. Every other result here uses geolocation, as MBD does.
-
-Without geolocation the zero-shot scores fall to 0.72 to 0.89, from 0.79 to 0.92. The score is the probability that the next event is of the kind. The label asks whether the kind occurs within the month, which also depends on how many events the month holds. With a geolocation event on most days, a client who transacts rarely has a lower score for every transaction kind. The score then carries the client's activity, which the monthly label rewards. We correlate the log score with the log of the client's recent transactions: 0.39 to 0.49 with geolocation and $-0.15$ to 0.20 without (seed 42, as in the next paragraph).
-
-We multiply the score by one plus the client's transactions in the 30 days before the as-of date. This uses no labels. The scaled score reaches 0.79 to 0.93 on transactions alone and 0.82 to 0.93 with geolocation, above the count alone. We first tried this scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, beside a second form based on transactions per day over the whole history. We then compared the two on training fold 1. The 30-day count scores above the daily rate for every model and target and raises every unscaled score. Table~\ref{tab:zero-shot} keeps the unscaled scores, which use only the model.
-
-We remove the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to need. We keep these tokens in the input and drop only their prediction. The official mean does not change (0.775 against 0.774). Churn rises slightly (seed 42), and the zero-shot scores change by at most 0.023.
-
-We replace temporal RoPE with learned ordinal positions in the history decoder. At the learning rate of the other rows, $6\times10^{-4}$, the ordinal model diverges after 3,000 to 5,000 steps in both seeds. At $3\times10^{-4}$ both train stably. Temporal RoPE scores 0.781 and ordinal positions 0.778. Temporal RoPE scores higher on both seeds, but the mean difference, 0.003, is smaller than the difference between two seeds of either model (0.009 and 0.005). The ordinal model also adds learned positions within each event, which the RoPE model leaves out, so the comparison does not isolate the position scheme.
-
-We also read the history decoder's attention as weights over a client's events. We average the heads and roll the attention out through the six layers \cite{rollout}, with the residual path weighted one half. Each client's history holds a different number of events, so each client has an attention matrix of its own size, and its columns are that client's own events. The weights therefore give no features or kernel shared across clients, as attention from query rows onto shared context rows does in tabular in-context models. A classification head needs a vector of fixed width, which the hidden states give. We pool the hidden states with the last event's rolled-out weights. On 2,000 test histories the weights spread over a median of 102 of 219 events (the exponential of their entropy) and put 2.4\% on the last event, so the pooled vector is close to the mean. Averaged over two seeds it scores 0.760 (0.757 and 0.763), between mean pooling (0.757) and recency pooling (0.765) and 0.015 below the last hidden state (0.774).
-
-We test query-key normalization and one feed-forward network per event kind in the event encoder (transactions, geolocation and the rest, routed by the event name). Each adds 0.005 on seed 42. Two seeds of the same configuration differ by up to 0.018 for the flat decoder and up to 0.022 for EventGPT across the five test folds, so a difference of 0.005 on one seed is not established.
-
-We test width 512 (16 heads of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) on aligned windows with query-key normalization (seed 42). Both lower the validation loss, to 0.997 at width 1024 from 1.020, and raise the official mean from 0.786 to 0.791. With late fusion of the profile fields the gain disappears. At width 1024 late fusion lowers the official mean, while it raises it at the smaller widths. The four field embeddings add 4,096 columns to a head regularized as at width 384, which may explain this.
-
-\subsection{Length of history}\label{sec:context}
-
-We train EventGPT and the flat decoder on windows of 4,096 and 8,192 tokens (Table~\ref{tab:window}). MBD histories are long: the 90th percentile client has about 1,000 transactions and 300 days of geolocation, while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to 8,192 tokens. EventGPT stays level on random windows (0.774 to 0.772) and loses 0.008 on aligned windows (0.788 to 0.780). The flat decoder stays level at 4,096 tokens. Churn does not change with the window for any model. The extra history carries information for the product targets, and EventGPT's embedding does not take it up at this size. Pooled readouts do not take it up either: at 8,192 tokens mean and recency pooling score 0.748 and 0.762 on random windows and 0.743 and 0.765 on aligned windows, below the last hidden state.
-
-EventGPT trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. Its history decoder attends over events, and with block attention its token stages grow linearly with the window. The flat decoder falls from 47,000 tokens per second at 2,048 tokens to about 30,000 at 4,096. We did not train it at 8,192 tokens: at 4,096 a run already takes about six hours on the L4, and its attention cost grows with the square of the window.
-
-\begin{table}[htbp]
-\centering
-\caption{Mean ROC-AUC over the official targets (churn without January 2023 in parentheses) against the window, seed 42 for the models. The aligned column is trained without query-key normalization (0.786 with it at 2,048 tokens). Token counts at full history reach 0.803.}
-\label{tab:window}
-\begin{tabular}{lcccc}
-\toprule
- & token counts & \multicolumn{2}{c}{EventGPT} & flat decoder \\
-window & (CatBoost) & random & aligned & recency \\
-\midrule
-2,048 & 0.777 & 0.774 (0.934) & 0.788 (0.933) & 0.786 (0.900) \\
-4,096 & 0.782 & 0.772 (0.936) & & 0.785 (0.896) \\
-8,192 & 0.801 & 0.772 (0.935) & 0.780 (0.935) & \\
-\bottomrule
-\end{tabular}
-\end{table}
+We change one element of the model or its data at a time (Appendix~\ref{sec:ablations}). Pretraining on transactions alone raises the official mean from 0.774 to 0.793. Temporal RoPE scores 0.781 against 0.778 for learned ordinal positions, a difference smaller than the one between seeds. Dropping the loss on gaps, amount bins and geohash cells leaves the official mean unchanged (0.775 against 0.774). Windows of 4,096 and 8,192 tokens do not raise EventGPT's official mean, while token counts gain 0.024 from 2,048 to 8,192 tokens (Appendix~\ref{sec:context}).
 
 % -------------------------------------------------------------------------------
-\section{Pretraining per institution}\label{sec:per-institution}
-
-Each institution pretrains an event model on its own events. The architecture, the rules that turn an event into tokens and the training procedure carry over to another institution. The weights do not transfer the way a language model's do. A language model reads text through a vocabulary that all its users share, so one checkpoint serves any text in its languages. An event model's vocabulary is the issuer's event schema: its tokens name the event types, field codes and categories of one bank's systems, and its amount bins are quantiles of that bank's amounts.
-
-Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \tok{s21=18808} has no meaning outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on the pretraining folds of this one population, and a token id has its meaning only together with the vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint against a vocabulary it was not trained on. The time-gap tokens are the exception, since $\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
-
-A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
-
-Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
-
 \section{Discussion}\label{sec:discussion}
 
 On MBD, next-event pretraining scores five event targets with no labels at ROC-AUCs that CatBoost on the engineered features reaches only with labels. On four targets CatBoost needs 10,000 to 300,000 randomly sampled client-months, and on the fifth it stays below the zero-shot score at 300,000. Event statistics without a model, a Markov chain over event kinds scaled by recent activity, come within two standard errors of EventGPT on three of the five targets but fall below it on 48 of 74 kinds, with a median gap of 0.042. Product purchases need a classification head, and the frozen embedding then scores 0.021 below the engineered features, averaged over five test folds. The profile fields and full-history token counts bring the gap to 0.004. As a second model beside the engineered features it adds 0.014 to 0.017 on each of the five folds, with a mean gain of 0.016, of which 0.012 remains against the same ensemble built from the profile fields and token counts without EventGPT. In the top 1\% of test rows the ensemble and the engineered features recall the same share of positives (0.150). In the top 0.5\% and 5\% the ensemble recalls slightly more on average (0.103 against 0.100 and 0.362 against 0.358), and the effect varies by target. Precision is the same at all three cuts. The results suggest that next-event pretraining captures behavior useful both for scoring events directly and for ranking beside a feature table, and that the clients' static attributes and the history before the window still need the engineered features.
@@ -784,6 +707,87 @@ official mean ROC-AUC & 0.774 & 0.775 & 0.786 & 0.768 \\
 \paragraph{Schema knowledge.} The engineered features score 0.816 and full-history token counts 0.803, so knowledge of the schema adds 0.013.
 
 \paragraph{Amount resolution.} EventGPT sees each amount as one of 21 quantile bins. We replace each amount in the engineered features by the mean of its bin. The official mean falls by 0.005 with 21 bins and does not change with 256 bins. Most of the loss is on \tok{target\_2}, the noisiest target.
+
+\section{Ablations}\label{sec:ablations}
+
+We change one element of the model or its data at a time (Table~\ref{tab:ablations}). We run two seeds except where marked.
+
+\begin{table}[htbp]
+\centering
+\caption{Mean ROC-AUC over the official targets, logistic head. Rows with two seeds give the mean and, in brackets, the two seeds' scores; the row marked $^\ddagger$ uses transactions only; the row marked $^\S$ trains at learning rate $3\times10^{-4}$. Every row but the windows and width rows uses windows at random offsets; the width rows add QK normalization. The pretraining-period rows compare with transactions only over the full period (0.793), and every other row with the first.}
+\label{tab:ablations}
+\footnotesize
+\begin{tabular}{llcl}
+\toprule
+element & variant & seeds & mean ROC-AUC \\
+\midrule
+architecture & hierarchy (EventGPT), last state & 2 & 0.774 (0.774, 0.775) \\
+ & flat decoder, last token & 2 & 0.714 (0.713, 0.714) \\
+ & flat decoder, recency over tokens & 2 & 0.777 (0.768, 0.786) \\
+positions$^\S$ & temporal RoPE & 2 & 0.781 (0.777, 0.786) \\
+ & ordinal & 2 & 0.778 (0.775, 0.780) \\
+modalities & transactions + geolocation & 2 & 0.774 (0.774, 0.775) \\
+ & transactions only & 2 & 0.793 (0.791, 0.795) \\
+pretraining period$^\ddagger$ & before Feb.~2022, same steps & 2 & 0.789 (0.788, 0.790) \\
+ & before Feb.~2022, same passes per token & 2 & 0.787 (0.784, 0.791) \\
+training loss & without \tok{dt}, \tok{amt\_bin}, \tok{g4}, \tok{g5} & 1 & 0.775 \\
+embedding & mean & 2 & 0.755 (0.752, 0.758) \\
+ & recency & 2 & 0.765 (0.761, 0.769) \\
+training windows & aligned, with QK normalization & 2 & 0.787 (0.786, 0.788) \\
+attention & QK normalization & 1 & 0.779 \\
+width & 384 / 512 / 1024, aligned & 1 & 0.786 / 0.791 / 0.791 \\
+event encoder & one feed-forward per event kind & 1 & 0.779 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We pretrain and evaluate on transactions alone. The official mean rises from 0.774 to 0.793 and churn from 0.934 to 0.950 on both seeds, and the classification head rises on all five event targets. Without geolocation the engineered features lose 0.001 while EventGPT gains 0.019. Without daily geolocation events the 2,048-token window holds more transactions. Token counts show the same effect: their loss to the window shrinks from 0.026 to 0.008. Within the transactions-only window EventGPT scores above token counts and level with token counts over the full transaction history. Every other result here uses geolocation, as MBD does.
+
+Without geolocation the zero-shot scores fall to 0.72 to 0.89, from 0.79 to 0.92. The score is the probability that the next event is of the kind. The label asks whether the kind occurs within the month, which also depends on how many events the month holds. With a geolocation event on most days, a client who transacts rarely has a lower score for every transaction kind. The score then carries the client's activity, which the monthly label rewards. We correlate the log score with the log of the client's recent transactions: 0.39 to 0.49 with geolocation and $-0.15$ to 0.20 without (seed 42, as in the next paragraph).
+
+We multiply the score by one plus the client's transactions in the 30 days before the as-of date. This uses no labels. The scaled score reaches 0.79 to 0.93 on transactions alone and 0.82 to 0.93 with geolocation, above the count alone. We first tried this scaling on the test fold, after the scores of Table~\ref{tab:zero-shot} were known, beside a second form based on transactions per day over the whole history. We then compared the two on training fold 1. The 30-day count scores above the daily rate for every model and target and raises every unscaled score. Table~\ref{tab:zero-shot} keeps the unscaled scores, which use only the model.
+
+We remove the loss on gaps, amount bins and geohash cells, the tokens a product target is least likely to need. We keep these tokens in the input and drop only their prediction. The official mean does not change (0.775 against 0.774). Churn rises slightly (seed 42), and the zero-shot scores change by at most 0.023.
+
+We replace temporal RoPE with learned ordinal positions in the history decoder. At the learning rate of the other rows, $6\times10^{-4}$, the ordinal model diverges after 3,000 to 5,000 steps in both seeds. At $3\times10^{-4}$ both train stably. Temporal RoPE scores 0.781 and ordinal positions 0.778. Temporal RoPE scores higher on both seeds, but the mean difference, 0.003, is smaller than the difference between two seeds of either model (0.009 and 0.005). The ordinal model also adds learned positions within each event, which the RoPE model leaves out, so the comparison does not isolate the position scheme.
+
+We also read the history decoder's attention as weights over a client's events. We average the heads and roll the attention out through the six layers \cite{rollout}, with the residual path weighted one half. Each client's history holds a different number of events, so each client has an attention matrix of its own size, and its columns are that client's own events. The weights therefore give no features or kernel shared across clients, as attention from query rows onto shared context rows does in tabular in-context models. A classification head needs a vector of fixed width, which the hidden states give. We pool the hidden states with the last event's rolled-out weights. On 2,000 test histories the weights spread over a median of 102 of 219 events (the exponential of their entropy) and put 2.4\% on the last event, so the pooled vector is close to the mean. Averaged over two seeds it scores 0.760 (0.757 and 0.763), between mean pooling (0.757) and recency pooling (0.765) and 0.015 below the last hidden state (0.774).
+
+We test query-key normalization and one feed-forward network per event kind in the event encoder (transactions, geolocation and the rest, routed by the event name). Each adds 0.005 on seed 42. Two seeds of the same configuration differ by up to 0.018 for the flat decoder and up to 0.022 for EventGPT across the five test folds, so a difference of 0.005 on one seed is not established.
+
+We test width 512 (16 heads of width 32, 38.4 million parameters) and width 1024 (16 heads of width 64, 139.7 million) on aligned windows with query-key normalization (seed 42). Both lower the validation loss, to 0.997 at width 1024 from 1.020, and raise the official mean from 0.786 to 0.791. With late fusion of the profile fields the gain disappears. At width 1024 late fusion lowers the official mean, while it raises it at the smaller widths. The four field embeddings add 4,096 columns to a head regularized as at width 384, which may explain this.
+
+\section{Length of history}\label{sec:context}
+
+We train EventGPT and the flat decoder on windows of 4,096 and 8,192 tokens (Table~\ref{tab:window}). MBD histories are long: the 90th percentile client has about 1,000 transactions and 300 days of geolocation, while a 2,048-token window holds about 250 events. Token counts gain 0.024 from 2,048 to 8,192 tokens. EventGPT stays level on random windows (0.774 to 0.772) and loses 0.008 on aligned windows (0.788 to 0.780). The flat decoder stays level at 4,096 tokens. Churn does not change with the window for any model. The extra history carries information for the product targets, and EventGPT's embedding does not take it up at this size. Pooled readouts do not take it up either: at 8,192 tokens mean and recency pooling score 0.748 and 0.762 on random windows and 0.743 and 0.765 on aligned windows, below the last hidden state.
+
+EventGPT trains at about 126,000 tokens per second at 8,192 tokens against 118,000 at 2,048. Its history decoder attends over events, and with block attention its token stages grow linearly with the window. The flat decoder falls from 47,000 tokens per second at 2,048 tokens to about 30,000 at 4,096. We did not train it at 8,192 tokens: at 4,096 a run already takes about six hours on the L4, and its attention cost grows with the square of the window.
+
+\begin{table}[htbp]
+\centering
+\caption{Mean ROC-AUC over the official targets (churn without January 2023 in parentheses) against the window, seed 42 for the models. The aligned column is trained without query-key normalization (0.786 with it at 2,048 tokens). Token counts at full history reach 0.803.}
+\label{tab:window}
+\begin{tabular}{lcccc}
+\toprule
+ & token counts & \multicolumn{2}{c}{EventGPT} & flat decoder \\
+window & (CatBoost) & random & aligned & recency \\
+\midrule
+2,048 & 0.777 & 0.774 (0.934) & 0.788 (0.933) & 0.786 (0.900) \\
+4,096 & 0.782 & 0.772 (0.936) & & 0.785 (0.896) \\
+8,192 & 0.801 & 0.772 (0.935) & 0.780 (0.935) & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Pretraining per institution}\label{sec:per-institution}
+
+Each institution pretrains an event model on its own events. The architecture, the rules that turn an event into tokens and the training procedure carry over to another institution. The weights do not transfer the way a language model's do. A language model reads text through a vocabulary that all its users share, so one checkpoint serves any text in its languages. An event model's vocabulary is the issuer's event schema: its tokens name the event types, field codes and categories of one bank's systems, and its amount bins are quantiles of that bank's amounts.
+
+Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \tok{s21=18808} has no meaning outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on the pretraining folds of this one population, and a token id has its meaning only together with the vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint against a vocabulary it was not trained on. The time-gap tokens are the exception, since $\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
+
+A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
+
+Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
 
 \begin{thebibliography}{99}
 \raggedright
