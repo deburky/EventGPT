@@ -30,6 +30,9 @@ The history is the probe's window (as in zero_shot); the sampled events extend i
 window runs past the 2,048 tokens the model was trained on. `--check` compares the cached computation with
 `model.history` on real events and prints the largest difference.
 
+`--sequences` also compares each uniformly sampled row's sampled months of transactions with the month that
+followed, beside two baselines that write the month without the model (eventgpt.evaluation.sequences).
+
 Example with R=data/runs/hier-alq-s42: `uv run python -m eventgpt.evaluation.rollout $R/hier-alq-s42.pt --probe-dir $R/probe-now-2k`
 """
 
@@ -51,6 +54,7 @@ import torch.nn.functional as F
 from eventgpt.data.mbd import OUT
 from eventgpt.data.vocab import MAX_TIME_BUCKET, Vocab
 from eventgpt.evaluation.probe import FIRST_KINDS, UNDEFINED, Fold, history_tokens, mark_undefined, score
+from eventgpt.evaluation.sequences import METRICS, clustered_mean, mean_compare, poisson_months, repeat_month
 from eventgpt.evaluation.zero_shot import FIRST, next_event_scores, seen_before
 from eventgpt.models.flat import Block, load_checkpoint, rotary
 from eventgpt.models.hierarchy import EventGPT
@@ -246,15 +250,15 @@ def history_step(model: EventGPT, st: State, toks: torch.Tensor, filled: torch.T
 
 
 @torch.no_grad()
-def decode(model: EventGPT, toks: torch.Tensor, h: torch.Tensor, at: int) -> torch.Tensor:
-    """Token decoder log-probabilities (n, vocab) of the token after prefix position `at`, given h (n, d)."""
+def decode(model: EventGPT, toks: torch.Tensor, h: torch.Tensor, at: int, temperature: float = 1.0) -> torch.Tensor:
+    """Token decoder log-probabilities (n, vocab) of the token after prefix position `at`, given h (n, d), logits divided by temperature."""
     t = toks.size(1)
     slot = torch.arange(t, device=toks.device).clamp(max=63)
     y = model.tok_emb(toks) + model.pos_in_event(slot).unsqueeze(0) + h.unsqueeze(1)
     mask = torch.tril(torch.ones(t, t, dtype=torch.bool, device=toks.device))[None, None]
     for blk in model.tok_blocks:
         y = blk(y, mask)
-    return torch.log_softmax(model.head(model.ln_f(y[:, at])).float(), -1)
+    return torch.log_softmax(model.head(model.ln_f(y[:, at])).float() / temperature, -1)
 
 
 # -------------------------------------------------------------------------------
@@ -308,13 +312,15 @@ def sample_month(
     max_events: int,
     gen: torch.Generator,
     trace: list[dict[str, np.ndarray]] | None = None,
+    temperature: float = 1.0,
 ) -> dict[str, torch.Tensor]:
     """Sample every path's events to the end of its month and accumulate the per-path scores.
 
     silence: (n,) seconds from the last event to the as-of date; month: (n,) seconds from the as-of date to the end
     of the label month. Returns per-path tensors: comp, prod and hit (n, kinds), trx_comp, any_trx, n_trx and capped (n,).
     With trace, each step appends the sampled events: time from the as-of date, name token, subtype and whether
-    the event falls inside the month, one entry per path.
+    the event falls inside the month, one entry per path. A temperature other than 1 divides every logit of the
+    token decoder, so the paths and the scores both come from the tempered model.
     """
     n, dev = silence.size(0), silence.device
     k_kinds = len(FIRST_KINDS)
@@ -334,9 +340,9 @@ def sample_month(
             break
         h = st.h
         # P(name) at [EVT], and P(gap bucket | name) at the name token for every name
-        p_name = decode(model, evt, h, 0).exp()[:, tb.names]
+        p_name = decode(model, evt, h, 0, temperature).exp()[:, tb.names]
         pair = torch.stack([evt.expand(-1, n_names), tb.names.unsqueeze(0).expand(n, -1)], -1).view(n * n_names, 2)
-        p_gap = decode(model, pair, h.repeat_interleave(n_names, 0), 1).exp()[:, tb.dt].view(n, n_names, N_BUCKETS)
+        p_gap = decode(model, pair, h.repeat_interleave(n_names, 0), 1, temperature).exp()[:, tb.dt].view(n, n_names, N_BUCKETS)
         p_gap = p_gap / p_gap.sum(-1, keepdim=True).clamp(min=1e-12)
         # the first event comes after the silence; every event's gap is counted from the previous event
         start = silence if step == 0 else torch.zeros(n, device=dev)
@@ -359,7 +365,7 @@ def sample_month(
         kind_toks = torch.stack(
             [evt.expand(-1, k_kinds), tb.names[tb.kind_name].unsqueeze(0).expand(n, -1), dt_tok.unsqueeze(1).expand(-1, k_kinds)], -1
         ).view(n * k_kinds, 3)
-        p_sub = decode(model, kind_toks, h.repeat_interleave(k_kinds, 0), 2).exp().view(n, k_kinds, -1)
+        p_sub = decode(model, kind_toks, h.repeat_interleave(k_kinds, 0), 2, temperature).exp().view(n, k_kinds, -1)
         p_sub = torch.gather(p_sub, 2, tb.kind_sub.view(1, -1, 1).expand(n, -1, 1)).squeeze(2)
         p_kind = p_in[:, tb.kind_name] * p_sub
         q_trx = (p_in * tb.is_trx.unsqueeze(0)).sum(1)
@@ -372,7 +378,7 @@ def sample_month(
         for j in range(3, MAX_EVENT_TOKENS):
             if not open_.any():
                 break
-            logp = decode(model, toks[:, :j], h, j - 1)
+            logp = decode(model, toks[:, :j], h, j - 1, temperature)
             nxt = torch.multinomial(logp.exp(), 1, generator=gen).squeeze(1)
             open_ = open_ & ~torch.isin(nxt, tb.stop)
             toks[:, j] = torch.where(open_, nxt, toks[:, j])
@@ -448,6 +454,50 @@ def check(model: EventGPT, fold: Fold, rows: pd.DataFrame, dev: torch.device, n_
     return worst
 
 
+def month_events(fold: Fold, start: int, stop: int, cut: float) -> tuple[np.ndarray, np.ndarray]:
+    """Transactions start..stop of the fold as (days from the cut, kind = etype * 1000 + subtype)."""
+    e = np.arange(start, stop)
+    e = e[fold.is_trx[e]]
+    return (fold.event_time[e] - cut) / 86_400.0, fold.etype[e].astype(np.int64) * 1000 + fold.esub[e]
+
+
+def sequence_rows(
+    trace: list[dict[str, np.ndarray]],
+    sel: np.ndarray,
+    k: int,
+    rows: pd.DataFrame,
+    fold: Fold,
+    first: np.ndarray,
+    n_hist: np.ndarray,
+    month: np.ndarray,
+    in_rand: np.ndarray,
+    etype_of_tok: dict[int, int],
+    rng: np.random.Generator,
+    out: dict[str, list[dict[str, float]]],
+    index: list[int],
+) -> None:
+    """Sequence metrics of the batch's uniformly sampled rows, for the model's months and the two baselines."""
+    t = np.stack([s["t"] for s in trace], 1) / 86_400.0
+    inside = np.stack([s["inside"] for s in trace], 1)
+    sub = np.stack([s["sub"] for s in trace], 1)
+    etype = np.vectorize(lambda tok: etype_of_tok.get(int(tok), -1))(np.stack([s["name"] for s in trace], 1))
+    keep = inside & (etype >= 0)
+    kinds = etype.astype(np.int64) * 1000 + sub
+    cuts, ends = rows["cut"].to_numpy(), rows["n_month"].to_numpy()
+    for b, j in enumerate(sel):
+        if not in_rand[j]:
+            continue
+        a, h = int(first[j]), int(n_hist[j])
+        real = month_events(fold, a + h, a + int(ends[j]), float(cuts[j]))
+        past = month_events(fold, a, a + h, float(cuts[j]))
+        paths = [(t[p][keep[p]], kinds[p][keep[p]]) for p in range(b * k, (b + 1) * k)]
+        days = float(month[j]) / 86_400.0
+        out["model"].append(mean_compare(paths, real))
+        out["repeat"].append(mean_compare([repeat_month(*past, days)], real))
+        out["poisson"].append(mean_compare(poisson_months(*past, days, k, rng), real))
+        index.append(int(j))
+
+
 def main() -> None:
     """Rollout scores, the single-step zero-shot score on the same rows, churn and count calibration."""
     p = argparse.ArgumentParser()
@@ -465,6 +515,10 @@ def main() -> None:
     p.add_argument("--out", type=Path, default=None, help="csv path; default <ckpt dir>/rollout.csv")
     p.add_argument("--save-scores", action="store_true", help="also write each row's scores to rollout_scores.parquet")
     p.add_argument("--check", action="store_true", help="compare cached history states with model.history and stop")
+    p.add_argument("--temperature", type=float, default=1.0, help="divide the token decoder's logits by this when sampling and scoring")
+    p.add_argument("--clients", choices=["all", "select", "report"], default="all", help="all test clients, or one half of them")
+    p.add_argument("--uniform-only", action="store_true", help="skip the positives outside the uniform sample")
+    p.add_argument("--sequences", action="store_true", help="also compare sampled months with the real month and two baselines")
     a = p.parse_args()
 
     t0 = time.time()
@@ -475,12 +529,16 @@ def main() -> None:
         raise SystemExit("rollouts need an EventGPT checkpoint")
     block = a.block or int(json.loads((a.probe_dir / "results.json").read_text())["block"])
     te = mark_undefined(pd.read_parquet(a.probe_dir / "test_rows.parquet"))
+    if a.clients != "all":
+        # client ids are hex hashes: the last digit splits test clients into a half for choosing settings and a half for reporting
+        odd = te["client_id"].str[-1].map(lambda c: int(c, 16) % 2 == 1)
+        te = te[odd == (a.clients == "select")].reset_index(drop=True)
     fold = Fold(int(te["fold"].iloc[0]), vocab)
     if a.check:
         print(f"max |cached - full| history state: {check(model, fold, te, dev):.2e}")
         return
     rand = np.random.default_rng(a.seed).choice(len(te), a.n_random, replace=False)
-    pick = np.union1d(np.flatnonzero(te[FIRST].to_numpy().any(1)), rand)
+    pick = rand if a.uniform_only else np.union1d(np.flatnonzero(te[FIRST].to_numpy().any(1)), rand)
     if a.limit:
         pick = np.sort(np.random.default_rng(a.seed).choice(pick, min(a.limit, len(pick)), replace=False))
     in_rand = np.isin(pick, rand)
@@ -503,6 +561,10 @@ def main() -> None:
     out = {key: np.zeros((len(rows), n_k)) for key in ("rollout", "rollout_prod", "hit", "zero_shot")}
     churn, churn_hit, expected, capped = (np.zeros(len(rows)) for _ in range(4))
     order = np.argsort([len(s) for s in hist])
+    seq_rows: dict[str, list[dict[str, float]]] = {"model": [], "repeat": [], "poisson": []}
+    seq_index: list[int] = []
+    etype_of_tok = {i: int(t.removeprefix("name=trx_")) for t, i in vocab.structured.items() if t.startswith("name=trx_")}
+    rng = np.random.default_rng(a.seed)
     autocast = torch.autocast("cuda", dtype=torch.bfloat16, enabled=a.bf16 and dev.type == "cuda")
     t1 = time.time()
     for i in range(0, len(order), a.batch):
@@ -514,7 +576,10 @@ def main() -> None:
             st = st.repeat(a.k)
             s_t = torch.tensor(silence[sel], dtype=torch.float32, device=dev).repeat_interleave(a.k)
             m_t = torch.tensor(month[sel], dtype=torch.float32, device=dev).repeat_interleave(a.k)
-            r = sample_month(model, st, tb, s_t, m_t, a.max_events, gen)
+            trace: list[dict[str, np.ndarray]] | None = [] if a.sequences else None
+            r = sample_month(model, st, tb, s_t, m_t, a.max_events, gen, trace, a.temperature)
+        if trace is not None:
+            sequence_rows(trace, sel, a.k, rows, fold, first, n_hist, month, in_rand, etype_of_tok, rng, seq_rows, seq_index)
         per = functools.partial(path_mean, k=a.k)
         out["rollout"][sel], out["rollout_prod"][sel] = per(r["comp"]), 1.0 - per(r["prod"])
         out["hit"][sel] = per(r["hit"])
@@ -567,6 +632,24 @@ def main() -> None:
             saved[f"unseen_{lab}"] = unseen[:, k]
         saved = saved.assign(rollout_churn=churn, hit_churn=churn_hit, expected_trx=expected, realized_trx=realized, capped=capped)
         saved.to_parquet(dest.with_name("rollout_scores.parquet"))
+    if a.sequences:
+        clients = rows["client_id"].to_numpy()[seq_index]
+        per_row = pd.concat({src: pd.DataFrame(v) for src, v in seq_rows.items()}, axis=1)
+        summary = []
+        for m in METRICS:
+            line: dict[str, object] = {"metric": m}
+            for src in seq_rows:
+                line[src], line[f"{src}_se"] = clustered_mean(per_row[(src, m)].to_numpy(), clients)
+            for base in ("repeat", "poisson"):
+                diff = (per_row[("model", m)] - per_row[(base, m)]).to_numpy()
+                line[f"model-{base}"], line[f"model-{base}_se"] = clustered_mean(diff, clients)
+            summary.append(line)
+        s_df = pd.DataFrame(summary).set_index("metric")
+        print(s_df.round(4).to_string())
+        s_df.to_csv(dest.with_name(dest.stem + "_sequences.csv"))
+        levels = zip(per_row.columns.get_level_values(0), per_row.columns.get_level_values(1), strict=True)
+        per_row.columns = pd.Index([f"{src}_{m}" for src, m in levels])
+        per_row.assign(client_id=clients, row=seq_index).to_parquet(dest.with_name(dest.stem + "_sequences.parquet"))
     print(f"written to {dest} ({time.time() - t0:.0f}s)")
 
 

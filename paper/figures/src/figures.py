@@ -573,6 +573,80 @@ def futures() -> None:
     g.save("futures")
 
 
+def futures_compare(cases: tuple[int, ...] = (3, 1)) -> None:
+    """Random active test clients: a month predicted by EventGPT above the month that followed, colored by event type."""
+    import json
+
+    many = json.loads((RUN.parent / "futures_many.json").read_text())
+    palette = ["#DB6F44", "#835ECF", "#53AD7D", "#DB9643", "#DC58B5", "#4FAC9B", "#9A8DEB"]
+    m0, m1, block = 150.0, 740.0, 128.0
+    rows = []
+    counts: dict[str, int] = {}
+    for case in cases:
+        d = many[case]
+        lengths = sorted(len(path) for path in d["paths"])
+        predicted = next(path for path in d["paths"] if len(path) == lengths[len(lengths) // 2])
+        rows.append((d, predicted))
+        for e in d["actual"] + predicted:
+            if e["kind"] != "geo":
+                counts[e["kind"]] = counts.get(e["kind"], 0) + 1
+    top = sorted(counts, key=lambda k: (-counts[k], k))[: len(palette)]
+    color = {k: palette[j] for j, k in enumerate(top)}
+    g = Svg(880, int(44 + block * len(cases)))
+    lx = 16.0
+    for k in top:
+        g.items.append(f'<circle cx="{lx + 5}" cy="14" r="5" fill="{color[k]}"/>')
+        g.text(lx + 14, 18, k, size=10, fill=INK, mono=True)
+        lx += 70
+    g.items.append(f'<circle cx="{lx + 5}" cy="14" r="5" fill="{LINE}"/>')
+    g.text(lx + 14, 18, "other", size=10, fill=MUTED)
+    lx += 62
+    g.items.append(f'<line x1="{lx + 2}" y1="8" x2="{lx + 2}" y2="20" stroke="{MUTED}" stroke-width="1" opacity="0.6"/>')
+    g.text(lx + 10, 18, "geolocation", size=10, fill=MUTED)
+    for c, (d, predicted) in enumerate(rows):
+        y0 = 44 + block * c
+
+        def x_of(day: float, d: dict = d) -> float:
+            return m0 + day / d["month_days"] * (m1 - m0)
+
+        g.text(16, y0 + 8, f"Client {c + 1}", size=11, weight=600)
+        # events matched by type, ignoring timing: the overlap of the two type counts, transactions and geolocation apart
+        pred_n: dict[str, int] = {}
+        real_n: dict[str, int] = {}
+        for evs, n in ((predicted, pred_n), (d["actual"], real_n)):
+            for e in evs:
+                n[e["kind"]] = n.get(e["kind"], 0) + 1
+        trx = [k for k in real_n if k != "geo"]
+        hit = sum(min(pred_n.get(k, 0), real_n[k]) for k in trx)
+        lines = [f"{hit} of {sum(real_n[k] for k in trx)} transactions"]
+        if "geo" in real_n:
+            lines.append(f"{min(pred_n.get('geo', 0), real_n['geo'])} of {real_n['geo']} geolocation")
+        lines.append(f"{sum(k in pred_n for k in trx)} of {len(trx)} types seen")
+        g.text(764, y0 + 34, "Matched by type", size=10, weight=600)
+        for j, line in enumerate(lines):
+            g.text(764, y0 + 52 + 16 * j, line, size=10, fill=MUTED if j == len(lines) - 1 else INK)
+        for r, (name, evs) in enumerate([("Predicted", predicted), ("What followed", d["actual"])]):
+            y = y0 + 30 + 36 * r
+            g.text(16, y + 4, name, size=11)
+            g.text(126, y + 4, str(len(evs)), size=9.5, fill=MUTED, anchor="end")
+            g.items.append(f'<line x1="{m0}" y1="{y}" x2="{m1}" y2="{y}" stroke="{LINE}" stroke-width="1.2"/>')
+            for e in evs:
+                x = x_of(float(e["day"]))
+                if e["kind"] == "geo":
+                    tick = f'x1="{x:.1f}" y1="{y - 7}" x2="{x:.1f}" y2="{y + 7}"'
+                    g.items.append(f'<line {tick} stroke="{MUTED}" stroke-width="1" opacity="0.6"/>')
+            for e in evs:
+                if e["kind"] != "geo":
+                    dot = f'cx="{x_of(float(e["day"])):.1f}" cy="{y}" r="5" fill="{color.get(e["kind"], LINE)}"'
+                    g.items.append(f'<circle {dot} stroke="white" stroke-width="1.5"/>')
+        yb = y0 + 98
+        g.items.append(f'<line x1="{m0}" y1="{y0 + 18}" x2="{m0}" y2="{yb - 12}" stroke="{INK}" stroke-width="1.2"/>')
+        g.text(m0, yb + 2, "as-of date", size=9.5, weight=600, anchor="middle")
+        for day in (7, 14, 21, 28):
+            g.text(x_of(day), yb + 2, f"+{day} d", size=9.5, fill=MUTED, anchor="middle")
+    g.save("futures_compare")
+
+
 if __name__ == "__main__":
     import sys
 

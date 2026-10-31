@@ -88,20 +88,25 @@ def main() -> None:
         s_t, m_t = torch.full((k,), silence), torch.full((k,), month)
         return sample_month(model, st, tb, s_t, m_t, 120, gen, trace)
 
+    def traced(trace: list[dict[str, np.ndarray]], k: int) -> list[list[dict[str, object]]]:
+        paths = []
+        for p in range(k):
+            evs = []
+            for step in trace:
+                if not step["inside"][p]:
+                    continue
+                name = inv[int(step["name"][p])].removeprefix("name=")
+                kind = f"{name.removeprefix('trx_')}/{int(step['sub'][p])}" if name.startswith("trx_") else name
+                evs.append({"day": float(step["t"][p] / DAY), "kind": kind})
+            paths.append(evs)
+        return paths
+
     trace: list[dict[str, np.ndarray]] = []
     sample(SHOWN_PATHS, 0, trace)
-    paths = []
-    for p in range(SHOWN_PATHS):
-        evs = []
-        for step in trace:
-            if not step["inside"][p]:
-                continue
-            name = inv[int(step["name"][p])].removeprefix("name=")
-            kind = f"{name.removeprefix('trx_')}/{int(step['sub'][p])}" if name.startswith("trx_") else name
-            evs.append({"day": float(step["t"][p] / DAY), "kind": kind})
-        paths.append(evs)
+    paths = traced(trace, SHOWN_PATHS)
     k_target = f"{TARGET[0]}/{TARGET[1]}"
-    scored = sample(SCORED_PATHS, 1, None)
+    scored_trace: list[dict[str, np.ndarray]] = []
+    scored = sample(SCORED_PATHS, 1, scored_trace)
     j = FIRST_KINDS.index(TARGET)
     rollout = float(path_mean(scored["comp"], SCORED_PATHS)[0, j])
     head = np.array([vocab.id("[EVT]"), vocab.id(f"name=trx_{TARGET[0]}")])
@@ -130,10 +135,11 @@ def main() -> None:
         "rollout": rollout,
         "single_step": single,
         "scored_paths": SCORED_PATHS,
+        "all_paths": traced(scored_trace, SCORED_PATHS),
     }
     dest = RUN / "futures.json"
     dest.write_text(json.dumps(out, indent=1))
-    print(json.dumps({k: v for k, v in out.items() if k not in ("history", "actual", "paths")}, indent=1))
+    print(json.dumps({k: v for k, v in out.items() if k not in ("history", "actual", "paths", "all_paths")}, indent=1))
     print(f"{len(out['history'])} history events, {len(out['actual'])} actual, {[len(p) for p in paths]} sampled; written to {dest}")
 
 
