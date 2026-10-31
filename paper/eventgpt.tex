@@ -308,7 +308,7 @@ We read a history in three ways (Figure~\ref{fig:inference}): the hidden state a
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/inference.pdf}
-\caption{Three readings of one history. The embedding appends a now event and passes the last hidden state to a head fitted on labels. The one-step score appends the start of an event of the target type. The sampled month continues the history to the end of the label month 16 times.}
+\caption{Inference from one history. The hidden state $h$ at the as-of date is the embedding read by a supervised head. From $h$ the model gives the distribution of the next event, which the one-step score reads for the target type. Sampling events one after another continues each branch to the end of the month; 16 sampled months give the monthly probability of the target.}
 \label{fig:inference}
 \end{figure}
 

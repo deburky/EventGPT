@@ -751,28 +751,44 @@ def blocks() -> None:
 
 
 def inference() -> None:
-    """One history before the as-of date, read three ways: the embedding, the one-step score and the sampled month."""
-    g = Svg(760, 176)
-    g.rect(20, 20, 210, 136, "white", LINE, r=12)
-    g.text(125, 44, "History", size=12, weight=600, anchor="middle")
-    x, y = 34.0, 58.0
-    for t in ["profile", "1/12", "geo", "40/52", "11/32", "46/40"]:
-        w = len(t) * 6.0 + 12
-        if x + w > 218:
-            x, y = 34.0, y + 26
-        x += g.pill(x, y, t) + 6
-    g.text(125, 140, "to the as-of date", size=10, fill=MUTED, anchor="middle")
-    rows = [
-        ("hidden state, head fitted on labels", "P(label)"),
-        ("append the start of a 50/19", "P(next event is 50/19)"),
-        ("sample the month 16 times", "P(50/19 in the month)"),
-    ]
-    for k, (how, out) in enumerate(rows):
-        y = 38 + 50 * k
-        g.arrow([(230, 88), (262, 88), (262, y), (536, y)])
-        g.text(276, y - 7, how, size=10.5, fill=MUTED)
-        g.rect(538, y - 17, 202, 34, EMB, r=10)
-        g.text(639, y + 5, out, size=11, weight=600, fill="white", anchor="middle")
+    """Past, as-of date, futures: the embedding sits at the as-of date and the future branches from it."""
+    g = Svg(760, 268)
+    axis, now, end = 130.0, 400.0, 726.0
+    violet, pale = "#9A8DEB", "#C9C2F5"
+    # the past: real events on one line
+    g.items.append(f'<line x1="30" y1="{axis}" x2="{now}" y2="{axis}" stroke="{LINE}" stroke-width="2"/>')
+    past = [(52, "profile"), (98, "1/12"), (131, "geo"), (158, "geo"), (214, "40/52"), (251, "1/12"), (300, "11/32"), (352, "1/12")]
+    for k, (x, t) in enumerate(past):
+        g.items.append(f'<circle cx="{x}" cy="{axis}" r="6" fill="{TOK}" stroke="{INK}" stroke-width="0.8"/>')
+        g.text(x, axis - 14 if k % 2 == 0 else axis + 24, t, size=9.5, fill=MUTED, anchor="middle", mono=True)
+    # the as-of date and the state there
+    g.items.append(f'<line x1="{now}" y1="34" x2="{now}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
+    g.text(now, 26, "as-of date", size=10.5, weight=600, anchor="middle")
+    # the next event: branches whose width is its probability, each continued as a sampled month
+    branches = [(58.0, "40/52", 8.0), (100.0, "1/12", 6.0), (160.0, "geo", 4.0), (202.0, "50/19", 1.6)]
+    for y, t, w in branches:
+        g.items.append(
+            f'<path d="M{now},{axis} C{now + 40},{axis} {now + 40},{y} {now + 84},{y}" fill="none" stroke="{violet}" '
+            f'stroke-width="{w}" stroke-linecap="round" opacity="0.85"/>'
+        )
+        pw = g.pill(now + 88, y - 9.5, t, DEC)
+        x0 = now + 92 + pw
+        g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="1.4"/>')
+        for dx in (0.22, 0.47, 0.8) if t != "50/19" else (0.55,):
+            g.items.append(f'<circle cx="{x0 + dx * (end - x0):.1f}" cy="{y}" r="4" fill="{DEC}" stroke="{violet}" stroke-width="0.8"/>')
+    g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
+    g.text(now, axis + 4, "h", size=11, weight=600, fill="white", anchor="middle")
+    g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="218" stroke="{LINE}" stroke-width="1.2"/>')
+    g.text(end, 26, "end of month", size=10.5, fill=MUTED, anchor="end")
+    # what each part is read as
+    for x, head, note in [
+        (200, "History", "real events"),
+        (now - 10, "Embedding", "h at the as-of date"),
+        (now + 118, "Next event", "width shows probability"),
+        (end - 80, "Sampled months", "to the end of the month"),
+    ]:
+        g.text(x, 244, head, size=11, weight=600, anchor="middle")
+        g.text(x, 259, note, size=9.5, fill=MUTED, anchor="middle")
     g.save("inference")
 
 
