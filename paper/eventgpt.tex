@@ -534,6 +534,21 @@ The next-event distribution also answers queries that a classification head cann
 
 The open question is whether the model can carry history beyond its window. We would next test a compressed summary of the earlier history, read as a prefix before the window. The other test is a lender's mixed applications, repayments and account events, where a feature table is hardest to build.
 
+\paragraph{Pretraining per institution.}\label{sec:per-institution} Each institution pretrains an event model on its own events. The architecture, the rules that turn an event into tokens and the training procedure carry over to another institution. The weights do not transfer the way a language model's do. A language model reads text through a vocabulary that all its users share, so one checkpoint serves any text in its languages. An event model's vocabulary is the issuer's event schema: its tokens name the event types, field codes and categories of one bank's systems, and its amount bins are quantiles of that bank's amounts.
+
+Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \tok{s21=18808} has no meaning outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on the pretraining folds of this one population, and a token id has its meaning only together with the vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint against a vocabulary it was not trained on. The time-gap tokens are the exception, since $\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
+
+A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
+
+Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/labels.pdf}
+\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
+\label{fig:labels}
+\end{figure}
+
 \section{Limitations}\label{sec:limits}
 
 The results are on MBD-mini, for which no published numbers exist, so the comparison with the methods of the MBD paper (Table~\ref{tab:published}) waits for a run on full MBD. MBD's events are mostly transactions with one field layout, which gives the event encoder less to do than histories that mix applications, repayments and other events with different fields. The geolocation stream starts a year after the transactions, so early as-of dates carry little of it, and dialogue embeddings are not used. Zero-shot scoring covers only targets that are events in the stream; MBD's product targets are external labels and need a head. It scores the next event while the label covers the month, and its comparison with the supervised head uses a sample of the test fold.
@@ -830,22 +845,5 @@ window & (CatBoost) & random & aligned & recency \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\section{Pretraining per institution}\label{sec:per-institution}
-
-Each institution pretrains an event model on its own events. The architecture, the rules that turn an event into tokens and the training procedure carry over to another institution. The weights do not transfer the way a language model's do. A language model reads text through a vocabulary that all its users share, so one checkpoint serves any text in its languages. An event model's vocabulary is the issuer's event schema: its tokens name the event types, field codes and categories of one bank's systems, and its amount bins are quantiles of that bank's amounts.
-
-Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \tok{s21=18808} has no meaning outside it. The 12,828 tokens and the 21 amount-bin edges were fitted on the pretraining folds of this one population, and a token id has its meaning only together with the vocabulary file it was fitted with. Even within one institution, fitting the vocabulary again assigns ids anew, so we store a fingerprint of the vocabulary with every checkpoint and refuse to score a checkpoint against a vocabulary it was not trained on. The time-gap tokens are the exception, since $\lfloor 8\ln(1 + \Delta s/8) \rfloor$ means the same at every bank.
-
-A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
-
-Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/labels.pdf}
-\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
-\label{fig:labels}
-\end{figure}
 
 \end{document}
