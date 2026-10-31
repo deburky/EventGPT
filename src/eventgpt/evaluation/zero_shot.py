@@ -44,6 +44,7 @@ from sklearn.preprocessing import StandardScaler
 
 from eventgpt.data.mbd import OUT
 from eventgpt.data.vocab import MAX_TIME_BUCKET, Vocab, time_bucket
+from eventgpt.evaluation.auc_se import auc_se
 from eventgpt.evaluation.probe import FIRST_KINDS, MSK_OFFSET, UNDEFINED, Fold, history_tokens, mark_undefined, score
 from eventgpt.models.flat import load_checkpoint
 from eventgpt.training.train import device
@@ -193,15 +194,22 @@ def all_kinds(a: argparse.Namespace, model: Any, te: pd.DataFrame, vocab: Vocab,
         if (i // a.batch) % 200 == 0:
             print(f"  {i:,}/{len(order):,} ({time.time() - t0:.0f}s)", flush=True)
     res = []
+    clients = rows["client_id"].to_numpy()
     for k, (x, y) in enumerate(kinds):
         ev = in_rand | pos[:, k]
         yk = pos[ev, k].astype(np.int64)
-        unseen_auc = score(yk, (zs[:, k] * ~seen[:, k])[ev])["roc_auc"]
-        res.append((x, y, int(counts[keep[k]]), int(yk.sum()), unseen_auc, score(yk, zs[ev, k])["roc_auc"]))
-    r = pd.DataFrame(res, columns=["type", "subtype", "test_positives", "positives", "zero_shot_unseen", "zero_shot"])
+        unseen_auc, unseen_se = auc_se(yk, (zs[:, k] * ~seen[:, k])[ev], clients[ev])
+        res.append((x, y, int(counts[keep[k]]), int(yk.sum()), unseen_auc, unseen_se, score(yk, zs[ev, k])["roc_auc"]))
+    cols = ["type", "subtype", "test_positives", "positives", "zero_shot_unseen", "se_unseen", "zero_shot"]
+    r = pd.DataFrame(res, columns=cols)
     r["target"] = [(x, y) in FIRST_KINDS for x, y in zip(r["type"], r["subtype"], strict=True)]
     out = a.out or a.ckpt.parent / "zero_shot_all.csv"
     r.to_csv(out, index=False)
+    # per-row scores and labels, for paired standard errors against other scores later
+    saved = rows[["client_id", "mon", "cut"]].assign(in_rand=in_rand)
+    for k, (x, y) in enumerate(kinds):
+        saved[f"zs_{x}_{y}"], saved[f"seen_{x}_{y}"], saved[f"first_{x}_{y}"] = zs[:, k], seen[:, k], pos[:, k]
+    saved.to_parquet(out.with_name("zero_shot_all_scores.parquet"))
     q = r["zero_shot_unseen"].quantile([0.25, 0.5, 0.75]).round(3).tolist()
     print(r.sort_values("zero_shot_unseen").round(4).to_string(index=False))
     print(f"{len(r)} kinds: quartiles {q}; targets {r.loc[r['target'], 'zero_shot_unseen'].round(3).tolist()}")

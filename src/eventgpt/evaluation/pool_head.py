@@ -34,6 +34,7 @@ from torch import nn
 
 from eventgpt.data.mbd import OUT
 from eventgpt.data.vocab import Vocab
+from eventgpt.evaluation.auc_se import compare
 from eventgpt.evaluation.probe import OFFICIAL, UNDEFINED, Fold, fit_score, history_tokens, labels, mark_undefined, score
 from eventgpt.models.flat import load_checkpoint
 from eventgpt.training.train import device
@@ -270,6 +271,13 @@ def main() -> None:
     table = pd.DataFrame({c: {lab: v["roc_auc"] for lab, v in res.items()} for c, res in {**results, **probe}.items()})
     print(f"\nroc_auc\n{table.round(4).to_string()}", flush=True)
     out = a.out or a.probe_dir / "pool_head.json"
+    # test predictions for eventgpt.evaluation.auc_se, and the pooled head's clustered standard errors
+    preds = te[["client_id", "mon"]].copy()
+    for k, lab in enumerate(labs):
+        preds[lab] = probs[:, k]
+    preds.to_parquet(out.with_name("preds_pool.parquet"))
+    scorable = [lab for lab in labs if (te[lab] == 1).any() and (te[lab] == 0).any()]
+    se = compare(te, {"pool": preds}, scorable)
     settings = {k: v for k, v in vars(a).items() if k not in ("ckpt", "probe_dir", "out")}
     record = {
         "ckpt": str(a.ckpt),
@@ -277,6 +285,7 @@ def main() -> None:
         "train_rows": len(tr),
         "test_rows": len(te),
         "metrics": results,
+        "se": {str(lab): {"auc": float(v), "se": float(e)} for lab, v, e in zip(se["label"], se["auc"], se["se"], strict=True)},
         "elapsed_s": round(time.time() - t0),
     }
     out.write_text(json.dumps(record, indent=1))

@@ -56,6 +56,12 @@ def covariance(infl: np.ndarray, cluster: np.ndarray | None) -> np.ndarray:
     return infl.T @ infl * g / (g - 1)
 
 
+def auc_se(y: np.ndarray, p: np.ndarray, clients: np.ndarray) -> tuple[float, float]:
+    """ROC-AUC and its standard error clustered by client, for one model and label."""
+    auc, inf = influence(y, p)
+    return auc, float(np.sqrt(covariance(inf[:, None], clients)[0, 0]))
+
+
 def compare(test: pd.DataFrame, preds: dict[str, pd.DataFrame], labs: list[str], cluster: bool = True) -> pd.DataFrame:
     """AUC and SE per model and label, the official mean, and each model's paired difference from the first.
 
