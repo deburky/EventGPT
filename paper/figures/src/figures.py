@@ -777,7 +777,9 @@ def inference() -> None:
             f'<path d="M{now},{axis} C{now + 40},{axis} {now + 40},{y} {now + 84},{y}" fill="none" stroke="{violet}" '
             f'stroke-width="{w:.1f}" stroke-linecap="round" opacity="0.85"/>'
         )
-        pw = g.pill(now + 88, y - 9.5, t, DEC)
+        pw = 48.0  # one width for every type, so a box's size says nothing about its probability
+        g.rect(now + 88, y - 9.5, pw, 19, DEC, r=6)
+        g.text(now + 88 + pw / 2, y + 3.7, t, size=10, anchor="middle", mono=True)
         x0 = now + 92 + pw
         g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="{w:.1f}" stroke-linecap="round"/>')
         g.text(now + 88 + pw / 2, y - 14, f"{p:.0%}" if p >= 0.05 else f"{p:.1%}", size=10, weight=600, anchor="middle")
