@@ -792,7 +792,7 @@ def inference() -> None:
     # what each part is read as
     for x, head, note in [
         (200, "History", "real events"),
-        (now - 10, "Embedding", "h at the as-of date"),
+        (now, "Embedding", "h at the as-of date"),
         (now + 118, "Next event", "width shows probability"),
         (end - 80, "Sampled months", "to the end of the month"),
     ]:
