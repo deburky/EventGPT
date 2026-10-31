@@ -542,13 +542,6 @@ A checkpoint that transfers would need tokens that mean the same at every bank. 
 
 Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/labels.pdf}
-\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
-\label{fig:labels}
-\end{figure}
-
 \section{Limitations}\label{sec:limits}
 
 The results are on MBD-mini, for which no published numbers exist, so the comparison with the methods of the MBD paper (Table~\ref{tab:published}) waits for a run on full MBD. MBD's events are mostly transactions with one field layout, which gives the event encoder less to do than histories that mix applications, repayments and other events with different fields. The geolocation stream starts a year after the transactions, so early as-of dates carry little of it, and dialogue embeddings are not used. Zero-shot scoring covers only targets that are events in the stream; MBD's product targets are external labels and need a head. It scores the next event while the label covers the month, and its comparison with the supervised head uses a sample of the test fold.
@@ -845,5 +838,12 @@ window & (CatBoost) & random & aligned & recency \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/labels.pdf}
+\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
+\label{fig:labels}
+\end{figure}
 
 \end{document}
