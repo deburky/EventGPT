@@ -752,6 +752,8 @@ def blocks() -> None:
 
 def inference() -> None:
     """Past, as-of date, futures: the embedding sits at the as-of date and the future branches from it."""
+    import json
+
     g = Svg(760, 268)
     axis, now, end = 130.0, 400.0, 726.0
     violet, pale = "#9A8DEB", "#C9C2F5"
@@ -764,17 +766,22 @@ def inference() -> None:
     # the as-of date and the state there
     g.items.append(f'<line x1="{now}" y1="34" x2="{now}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
     g.text(now, 26, "as-of date", size=10.5, weight=600, anchor="middle")
-    # the next event: branches whose width is its probability, each continued as a sampled month
-    branches = [(58.0, "40/52", 8.0), (100.0, "1/12", 6.0), (160.0, "geo", 4.0), (202.0, "50/19", 1.6)]
-    for y, t, w in branches:
+    # the next event: one branch per type, as wide as its probability for the client of Figure~futures, all the way
+    # to the month's end; the dots are the later events of a month sampled down that branch
+    d = json.loads((RUN.parent / "futures.json").read_text())
+    p_of = {c["name"].removeprefix("trx_"): c["p"] for c in d["candidates"]}
+    branches = [(58.0, "40/52", p_of["40"]), (100.0, "1/12", p_of["1"]), (160.0, "geo", p_of["geo"]), (202.0, "50/19", d["next_p"])]
+    for y, t, p in branches:
+        w = max(1.0, p * 32)
         g.items.append(
             f'<path d="M{now},{axis} C{now + 40},{axis} {now + 40},{y} {now + 84},{y}" fill="none" stroke="{violet}" '
-            f'stroke-width="{w}" stroke-linecap="round" opacity="0.85"/>'
+            f'stroke-width="{w:.1f}" stroke-linecap="round" opacity="0.85"/>'
         )
         pw = g.pill(now + 88, y - 9.5, t, DEC)
         x0 = now + 92 + pw
-        g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="1.4"/>')
-        for dx in (0.22, 0.47, 0.8) if t != "50/19" else (0.55,):
+        g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="{w:.1f}" stroke-linecap="round"/>')
+        g.text(x0 + 6, y - max(6.0, w / 2 + 4), f"{p:.0%}" if p >= 0.05 else f"{p:.1%}", size=9.5, fill=MUTED)
+        for dx in (0.3, 0.55, 0.85) if t != "50/19" else (0.6,):
             g.items.append(f'<circle cx="{x0 + dx * (end - x0):.1f}" cy="{y}" r="4" fill="{DEC}" stroke="{violet}" stroke-width="0.8"/>')
     g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
     g.text(now, axis + 4, "h", size=11, weight=600, fill="white", anchor="middle")
