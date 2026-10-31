@@ -392,27 +392,6 @@ first 50/19 & 0.905 & 0.815 (0.031) & 0.847 (0.022) & 0.875 (0.021) & 0.897 (0.0
 \end{tabular}}
 \end{table}
 
-\begin{table}[htbp]
-\centering
-\caption{Engineered features fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws (five up to 30,000 rows, three at 100,000, two at 300,000), with the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The last column is the engineered-feature baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the pretraining folds and 60,000 negatives, under the same rule.}
-\label{tab:labels}
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{lcccccccc}
-\toprule
- & zero-shot & \multicolumn{6}{c}{engineered features, labeled rows $n$} & all \\
-\cmidrule(lr){3-8}
-target & (no labels) & 1,000 & 3,000 & 10,000 & 30,000 & 100,000 & 300,000 & labels \\
-\midrule
-first 48/31 & 0.909 & 0.573 (0) & 0.650 (0) & 0.718 (2) & 0.871 (6) & 0.894 (19) & 0.912 (66) & 0.921 \\
-first 23/49 & 0.918 & 0.784 (2) & 0.809 (2) & 0.866 (7) & 0.856 (25) & 0.896 (81) & 0.902 (263) & 0.930 \\
-first 26/28 & 0.828 & 0.735 (2) & 0.739 (4) & 0.776 (11) & 0.817 (34) & 0.858 (128) & 0.849 (355) & 0.880 \\
-first 48/10 & 0.787 & 0.739 (2) & 0.668 (5) & 0.695 (11) & 0.763 (34) & 0.771 (134) & 0.826 (394) & 0.841 \\
-first 50/19 & 0.905 & 0.746 (2) & 0.821 (8) & 0.854 (34) & 0.921 (95) & 0.929 (342) & 0.932 (992) & 0.937 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \subsection{Frozen embeddings with a supervised head}\label{sec:propensity}
 
 We fit a classification head on the frozen embedding for each label (Table~\ref{tab:main}). Within a 2,048-token window EventGPT scores level with a flat decoder of the same size and with token counts. Both feature tables over the full history score higher.
@@ -776,6 +755,27 @@ Because the history itself fixes its as-of date, an embedding can be stored in a
 \caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
 \label{fig:labels}
 \end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Engineered features fitted on $n$ labeled client-months drawn at random, against EventGPT zero-shot (mean of the two seeds of Table~\ref{tab:zero-shot}, no labels). ROC-AUC on the test fold, mean over draws (five up to 30,000 rows, three at 100,000, two at 300,000), with the rule for earlier occurrences applied to both; in brackets the mean number of positives in a draw. The last column is the engineered-feature baseline of Table~\ref{tab:zero-shot}, fitted on every positive of the pretraining folds and 60,000 negatives, under the same rule.}
+\label{tab:labels}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccccccc}
+\toprule
+ & zero-shot & \multicolumn{6}{c}{engineered features, labeled rows $n$} & all \\
+\cmidrule(lr){3-8}
+target & (no labels) & 1,000 & 3,000 & 10,000 & 30,000 & 100,000 & 300,000 & labels \\
+\midrule
+first 48/31 & 0.909 & 0.573 (0) & 0.650 (0) & 0.718 (2) & 0.871 (6) & 0.894 (19) & 0.912 (66) & 0.921 \\
+first 23/49 & 0.918 & 0.784 (2) & 0.809 (2) & 0.866 (7) & 0.856 (25) & 0.896 (81) & 0.902 (263) & 0.930 \\
+first 26/28 & 0.828 & 0.735 (2) & 0.739 (4) & 0.776 (11) & 0.817 (34) & 0.858 (128) & 0.849 (355) & 0.880 \\
+first 48/10 & 0.787 & 0.739 (2) & 0.668 (5) & 0.695 (11) & 0.763 (34) & 0.771 (134) & 0.826 (394) & 0.841 \\
+first 50/19 & 0.905 & 0.746 (2) & 0.821 (8) & 0.854 (34) & 0.921 (95) & 0.929 (342) & 0.932 (992) & 0.937 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{thebibliography}{99}
 \raggedright
