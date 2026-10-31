@@ -217,15 +217,11 @@ geolocation & \tok{[EVT] name=geo dt=<b> g4=<cell> g5=<cell>} \\
 \end{tabular}
 \end{center}
 
-\paragraph{Profile event.} The four fields \tok{src\_type21}, \tok{src\_type22}, \tok{src\_type31} and \tok{src\_type32} never change within a client: each takes one value per client in all 98,721 clients with transactions. On fold 1, by contrast, \tok{src\_type11} and \tok{src\_type12} change on 13--15\% of consecutive transactions, and the destination fields and the event type on 55--63\%. The four fields are attributes of the client's account. Repeated on every transaction they took 4 of 13 tokens, so we state them once, in a profile event at the time of the client's first event. Transactions shrink to 9 tokens, and the pretraining stream from 454 million to 332 million tokens. The profile event gives the model what PRAGMA's profile-state encoder provides \cite{pragma}: a representation of static attributes learned together with the events.
-
-\paragraph{Geolocation.} Raw pings outnumber transactions 1.7 to 1 and would crowd them out of a window. We keep one geolocation event per client per Moscow day. It carries the day's most frequent \tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, and it is stamped at the day's last ping, so it never runs ahead of the pings it summarizes. This leaves 14.7 million events. The geohash codes are anonymized, so neighboring cells cannot be identified, but every \tok{geohash\_5} cell lies in exactly one \tok{geohash\_4} cell, and the shared \tok{g4} token lets cells in the same area share information.
+The profile event states the client's static fields once, and one geolocation event summarizes each day (Appendix~\ref{app:tokens}).
 
 \paragraph{Time and amounts.} The gap since the client's previous event becomes a token
 \tok{dt=}$\lfloor 8 \ln(1 + \Delta s/8) \rfloor$, capped at 140, so 141 buckets span seconds to
 decades. Amounts become one of 21 bins with quantile edges fitted on the pretraining folds. A currency token \tok{cur} appears only when the currency is not the one shared by 99.9\% of transactions.
-
-\paragraph{Vocabulary.} Values seen in the pretraining folds become tokens. Values of the two counterparty-like fields seen fewer than 1,000 times, and geohash cells seen fewer than 100 (\tok{g4}) or 300 (\tok{g5}) times, fall into one \tok{other} token per key. The vocabulary has 12,828 tokens, and no token of the held-out fold is unknown. Dialogue embeddings are left out of this version.
 
 The stream holds 53.4 million events in all, about 8 tokens per event. Folds 1--4 give the pretraining stream, with 2\% of their clients held out for validation loss: 332 million training tokens and 6.8 million validation tokens. Fold 0 is never seen in pretraining or vocabulary fitting.
 
@@ -772,6 +768,14 @@ Windows drawn at random offsets usually start partway through a client's history
 Because the history itself fixes its as-of date, an embedding can be stored in a feature store like any other dated feature. It is keyed by client, stamped with its as-of date instead of the time it was computed, and joined to labels by the store's point-in-time join, which returns for each label the latest embedding before it. The join decides which embedding a label sees, and since each history ends at its as-of date, that embedding depends only on earlier events. Embeddings from different checkpoints are not comparable, so each version of the backbone needs its own feature set, and a head is valid only on the version it was fitted on.
 
 \paragraph{Delta scoring.} The same property lets a daily job rescore only the clients whose input changed and reproduce a full pass exactly (Appendix~\ref{app:delta}).
+
+\section{Tokenization}\label{app:tokens}
+
+\paragraph{Profile event.} The four fields \tok{src\_type21}, \tok{src\_type22}, \tok{src\_type31} and \tok{src\_type32} never change within a client: each takes one value per client in all 98,721 clients with transactions. On fold 1, by contrast, \tok{src\_type11} and \tok{src\_type12} change on 13--15\% of consecutive transactions, and the destination fields and the event type on 55--63\%. The four fields are attributes of the client's account. Repeated on every transaction they took 4 of 13 tokens, so we state them once, in a profile event at the time of the client's first event. Transactions shrink to 9 tokens, and the pretraining stream from 454 million to 332 million tokens. The profile event gives the model what PRAGMA's profile-state encoder provides \cite{pragma}: a representation of static attributes learned together with the events.
+
+\paragraph{Geolocation.} Raw pings outnumber transactions 1.7 to 1 and would crowd them out of a window. We keep one geolocation event per client per Moscow day. It carries the day's most frequent \tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, and it is stamped at the day's last ping, so it never runs ahead of the pings it summarizes. This leaves 14.7 million events. The geohash codes are anonymized, so neighboring cells cannot be identified, but every \tok{geohash\_5} cell lies in exactly one \tok{geohash\_4} cell, and the shared \tok{g4} token lets cells in the same area share information.
+
+\paragraph{Vocabulary.} Values seen in the pretraining folds become tokens. Values of the two counterparty-like fields seen fewer than 1,000 times, and geohash cells seen fewer than 100 (\tok{g4}) or 300 (\tok{g5}) times, fall into one \tok{other} token per key. The vocabulary has 12,828 tokens, and no token of the held-out fold is unknown. Dialogue embeddings are left out of this version.
 
 \begin{thebibliography}{99}
 \raggedright
