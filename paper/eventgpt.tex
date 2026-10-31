@@ -465,15 +465,7 @@ ensemble with engineered features & 0.830 & $+0.014$ [$+0.010$, $+0.019$] & $<0.
 \end{tabular}}
 \end{table}
 
-\paragraph{Static attributes.} Without the profile fields the engineered features lose most on \tok{target\_4} (0.036). We add the profile fields to the hidden state by late fusion (Section~\ref{sec:static}). \tok{target\_4} rises from 0.754 to 0.821 (seed 42). With early fusion as well it reaches 0.830 and 0.822 against 0.818 for the engineered features ($p = 0.11$ and 0.61). Late fusion lowers \tok{target\_1} slightly. We also pretrain with early fusion. The hidden state then scores 0.789 against 0.787 without it. We fit a linear model on the last hidden state to read the client's attributes. It reads log tenure with $R^2 = 0.89$ but \tok{src\_type32} only at a balanced accuracy of 0.37 against 0.17 by chance (aligned windows, seed 42, 12,000 test clients on 1 December 2022).
-
-\paragraph{Timing.} We add five timing features to the hidden state: the days since the first and the last event and the event counts over 30 days, 90 days and all history. They raise the official mean by 0.001 and 0.003 and leave churn unchanged. The engineered features lose 0.009 without their own timing features, so the hidden state already carries this information.
-
-\paragraph{History before the window.} We add the full-history token counts to the hidden state and the profile fields. They raise churn, first 50/19 (from about 0.84 to 0.92) and first 48/10 (from about 0.80 to 0.83) on both seeds. They raise the official mean on seed 42 only, because \tok{target\_2} moves in opposite directions on the two seeds. Token counts over EventGPT's window score 0.026 below token counts over the full history. A longer window did not recover this history for EventGPT (Section~\ref{sec:context}).
-
-\paragraph{Schema knowledge.} The engineered features score 0.816 and full-history token counts 0.803, so knowledge of the schema adds 0.013.
-
-\paragraph{Amount resolution.} EventGPT sees each amount as one of 21 quantile bins. We replace each amount in the engineered features by the mean of its bin. The official mean falls by 0.005 with 21 bins and does not change with 256 bins. Most of the loss is on \tok{target\_2}, the noisiest target.
+Appendix~\ref{app:gap} breaks the gap down by static attributes, timing, history before the window, knowledge of the schema and amount resolution.
 
 \paragraph{Combining the two.} We test the embedding inside the engineered features, as 32 principal components or as a CatBoost embedding feature. The official mean stays the same or falls (Appendix~\ref{sec:finetune}). We then average the ranks of EventGPT with the profile fields and token counts and of the engineered features, with equal weights. The ensemble reaches 0.830 on both seeds, 0.014 above the engineered features, with intervals that exclude zero (Table~\ref{tab:gap}). Any second model can raise a rank average, so we build the same ensemble without EventGPT: a logistic head on the profile fields, one-hot encoded, and the same token counts, rank-averaged with the engineered features. On the ten fold and seed pairs of Table~\ref{tab:folds} it scores 0.001 to 0.008 above the engineered features (mean 0.004). The ensemble with EventGPT scores 0.007 to 0.016 above it (mean 0.012, $p < 0.01$ on each pair, paired standard errors clustered by client). The gain is largest on \tok{target\_2} and \tok{target\_4} and appears on four of the five event targets. Churn does not change. An ensemble with full-history token counts in place of the engineered features reaches 0.816, the level of the engineered features, with no knowledge of the schema.
 
@@ -780,6 +772,18 @@ official mean ROC-AUC & 0.774 & 0.775 & 0.786 & 0.768 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\section{Sources of the gap to engineered features}\label{app:gap}
+
+\paragraph{Static attributes.} Without the profile fields the engineered features lose most on \tok{target\_4} (0.036). We add the profile fields to the hidden state by late fusion (Section~\ref{sec:static}). \tok{target\_4} rises from 0.754 to 0.821 (seed 42). With early fusion as well it reaches 0.830 and 0.822 against 0.818 for the engineered features ($p = 0.11$ and 0.61). Late fusion lowers \tok{target\_1} slightly. We also pretrain with early fusion. The hidden state then scores 0.789 against 0.787 without it. We fit a linear model on the last hidden state to read the client's attributes. It reads log tenure with $R^2 = 0.89$ but \tok{src\_type32} only at a balanced accuracy of 0.37 against 0.17 by chance (aligned windows, seed 42, 12,000 test clients on 1 December 2022).
+
+\paragraph{Timing.} We add five timing features to the hidden state: the days since the first and the last event and the event counts over 30 days, 90 days and all history. They raise the official mean by 0.001 and 0.003 and leave churn unchanged. The engineered features lose 0.009 without their own timing features, so the hidden state already carries this information.
+
+\paragraph{History before the window.} We add the full-history token counts to the hidden state and the profile fields. They raise churn, first 50/19 (from about 0.84 to 0.92) and first 48/10 (from about 0.80 to 0.83) on both seeds. They raise the official mean on seed 42 only, because \tok{target\_2} moves in opposite directions on the two seeds. Token counts over EventGPT's window score 0.026 below token counts over the full history. A longer window did not recover this history for EventGPT (Section~\ref{sec:context}).
+
+\paragraph{Schema knowledge.} The engineered features score 0.816 and full-history token counts 0.803, so knowledge of the schema adds 0.013.
+
+\paragraph{Amount resolution.} EventGPT sees each amount as one of 21 quantile bins. We replace each amount in the engineered features by the mean of its bin. The official mean falls by 0.005 with 21 bins and does not change with 256 bins. Most of the loss is on \tok{target\_2}, the noisiest target.
 
 \begin{thebibliography}{99}
 \raggedright
