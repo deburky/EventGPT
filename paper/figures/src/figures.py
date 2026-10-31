@@ -438,7 +438,7 @@ def delta() -> None:
 # -------------------------------------------------------------------------------
 # Plots, drawn with the same primitives as the diagrams
 # -------------------------------------------------------------------------------
-NAVY = ["#14283C", "#3E5A78", "#7189A3", "#A3B4C6"]
+PRODUCT = ["#DB6F44", "#835ECF", "#DC58B5", "#14283C"]  # one distinct hue per product target
 TEAL = ["#0B5F58", "#13827A", "#2FA597", "#5DBDB0", "#8ACFC5"]
 BLUE = "#3B7DDD"
 
@@ -456,7 +456,7 @@ def labels() -> None:
     months = pd.DatetimeIndex(sorted(rows["month"].unique()))
     series: list[tuple[str, str, np.ndarray, bool]] = []
     for k in range(4):
-        series.append((NAVY[k], f"product {k + 1} (target_{k + 1})", rate(f"target_{k + 1}"), False))
+        series.append((PRODUCT[k], f"product {k + 1} (target_{k + 1})", rate(f"target_{k + 1}"), False))
     for k, (t, s_) in enumerate([(48, 31), (23, 49), (26, 28), (48, 10), (50, 19)]):
         y = rate(f"first_{t}_{s_}")
         y[-1] = np.nan  # no transactions after the last month
