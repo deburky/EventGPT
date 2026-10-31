@@ -138,6 +138,13 @@ EventGPT has three stages (Figure~\ref{fig:arch}). An event encoder turns each e
 \label{fig:blocks}
 \end{figure}
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/attention.pdf}
+\caption{Attention at the two levels. Within an event every token attends to every other; across events attention is causal and confined to one customer. The tokens of an event reach earlier events only through the hidden state of the previous event.}
+\label{fig:masks}
+\end{figure}
+
 \subsection{Event encoder}
 
 An event is a short run of tokens that starts with \tok{[EVT]}, followed by its name, its time gap and its fields as \tok{key=value} tokens (Section~\ref{sec:data}). The fields of an event are a record, and reading \tok{amt\_bin} before \tok{sub} states the same fact as reading them in the other order. The event encoder is therefore bidirectional within an event, has no positions inside it, and cannot attend across an event boundary. Two layers produce token states that are mean-pooled into one vector per event.
@@ -163,6 +170,13 @@ ratio of their elapsed times.}
 
 Each token of event $i$ receives its embedding, a learned position within the event and $h_{i-1}$, the history decoder's hidden state after the previous event. The first event in a window receives zero in its place. Two causal layers within the event then predict the next token through an output layer tied to the input embedding (Figure~\ref{fig:decoder}). The token decoder sees $h_{i-1}$ and never the pooled vector of event $i$, so an event is read in both directions only once it is complete and in the past. The event encoder has no loss of its own. Its only gradient comes from the tokens of the next event, through the hidden state, so it keeps the fields of an event that help predict what follows.
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/decoder.pdf}
+\caption{What the token decoder reads. Each token of event 3 attends to the earlier tokens of its own event and to $h_2$, the history decoder's hidden state after event 2. It has no path to the tokens inside earlier events, which reach it only through the event vectors and $h_2$.}
+\label{fig:decoder}
+\end{figure}
+
 \subsection{Customer embedding}\label{sec:embedding}
 
 The embedding of a client at an as-of date is read from the history decoder's hidden states for the events before that date. The last hidden state (\emph{last}) is the embedding used throughout the paper; the mean of the hidden states (\emph{mean}) and a mean weighted by $\exp(-a/32)$ for the event $a$ events before the last (\emph{recency}) are compared in Section~\ref{sec:ablations}. One forward pass gives all three. Each history ends in a \emph{now} event, \tok{[EVT] dt=<gap>}, whose gap runs from the last event to the as-of date. The last hidden state then sits at the as-of date, and two clients with the same events but different silences before it get different embeddings. When a history is longer than the window, the window keeps the most recent events and starts with \tok{[USR]} and the profile event, which would otherwise be cut off, so the clients with the longest histories keep their static attributes.
@@ -172,6 +186,14 @@ The embedding of a client at an as-of date is read from the history decoder's hi
 We encode the profile event like any other event. We give its four attributes a direct path to the classification head in two ways. In \emph{late fusion} we append the input embeddings of the four field tokens to the hidden state and fit the classification head on both. We do not retrain the backbone. In \emph{early fusion} we add the attributes during pretraining. We concatenate the four embeddings, project them to the model width with a linear layer initialized at zero and add the result to the vector of every event from the profile event on. We add no profile vector to the \tok{[USR]} event, because its hidden state predicts the profile event's tokens. We take the field tokens from the client's stream and use no knowledge of what the attributes mean.
 
 \paragraph{Training windows.} A window drawn at a random offset usually starts partway through a client's history, without \tok{[USR]} and the profile event that every evaluation history opens with. We also train on \emph{aligned} windows, which put both back in front (Appendix~\ref{sec:windows}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/windows.pdf}
+\caption{A training window drawn at a random offset and the aligned window over the same events, on a client from fold 1, shortened to 110 tokens. The random window starts inside an event and holds no \tok{[USR]} or profile event; the aligned window puts both back in front, and the gap token of its first event counts from the client's first event.}
+\label{fig:windows}
+\end{figure}
+
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
@@ -239,6 +261,13 @@ A row is a client and a month from February 2022 to January 2023, 12 rows per cl
 \paragraph{The last month.} The transaction tables end on 31 December 2022. In January 2023 no client has a transaction, so 99.1\% of that month's rows are labeled churn, against 12.7\% to 20.4\% in the other months, and the month holds 20,032 of the test fold's 55,920 churn positives. A model that can tell the month of the as-of date scores those rows without reading any behavior, and the time since a client's first event gives the month away. With January 2023 included, EventGPT on aligned windows (Section~\ref{sec:windows}) reached 0.910 on churn against 0.830 on random windows; without it, both reach 0.93. We therefore leave January 2023 out of the churn label, in training and in testing, which keeps 35,888 test positives. The event targets have no positives in that month and change by at most 0.014 without it. The official targets are the dataset's own labels and keep all twelve months.
 
 The product targets are rare and drift (Figure~\ref{fig:labels}): \tok{target\_1} falls from 0.56\% of rows in February 2022 to 0.16\% in January 2023, while \tok{target\_2} stays near 0.05\%. The event targets lie between 0.01\% and 0.4\%, and churn rises from 12.7\% to 20.1\% before the last month.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/labels.pdf}
+\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
+\label{fig:labels}
+\end{figure}
 
 \subsection{Heads and metrics}\label{sec:metrics}
 
@@ -629,30 +658,11 @@ CatBoost, engineered features and embedding feature & 0.808 \\
 
 Neither the event encoder nor the token decoder attends across an event boundary (Figure~\ref{fig:masks}), but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the block and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Block attention makes windows of 8,192 tokens affordable (Section~\ref{sec:context}).
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/attention.pdf}
-\caption{Attention at the two levels. Within an event every token attends to every other; across events attention is causal and confined to one customer. The tokens of an event reach earlier events only through the hidden state of the previous event.}
-\label{fig:masks}
-\end{figure}
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/decoder.pdf}
-\caption{What the token decoder reads. Each token of event 3 attends to the earlier tokens of its own event and to $h_2$, the history decoder's hidden state after event 2. It has no path to the tokens inside earlier events, which reach it only through the event vectors and $h_2$.}
-\label{fig:decoder}
-\end{figure}
 
 \section{Training windows and tenure}\label{sec:windows}
 
 Windows drawn at random offsets usually start partway through a client's history and lack \tok{[USR]} and the profile event. Every evaluation history opens with both. We remove this mismatch with \emph{aligned} windows (Figure~\ref{fig:windows}). When a window starts partway through a client's history, we put \tok{[USR]} and the profile event back at its start, as we do when we truncate a long evaluation history. We stamp the profile event at the client's first event. We start both the \tok{dt} token of the next event and the temporal RoPE positions of Eq.~(\ref{eq:pos}) at the client's first event. Apart from the profile event and this one \tok{dt} token, an aligned window holds the same tokens as a random one. We build evaluation and zero-shot histories the same way for these models.
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/windows.pdf}
-\caption{A training window drawn at a random offset and the aligned window over the same events, on a client from fold 1, shortened to 110 tokens. The random window starts inside an event and holds no \tok{[USR]} or profile event; the aligned window puts both back in front, and the gap token of its first event counts from the client's first event.}
-\label{fig:windows}
-\end{figure}
 
 \section{Point-in-time guarantees}\label{app:pit}
 
@@ -677,13 +687,6 @@ Because the history itself fixes its as-of date, an embedding can be stored in a
 \paragraph{Geolocation.} Raw pings outnumber transactions 1.7 to 1 and would crowd them out of a window. We keep one geolocation event per client per Moscow day. It carries the day's most frequent \tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, and it is stamped at the day's last ping, so it never runs ahead of the pings it summarizes. This leaves 14.7 million events. The geohash codes are anonymized, so neighboring cells cannot be identified, but every \tok{geohash\_5} cell lies in exactly one \tok{geohash\_4} cell, and the shared \tok{g4} token lets cells in the same area share information.
 
 \paragraph{Vocabulary.} Values seen in the pretraining folds become tokens. Values of the two counterparty-like fields seen fewer than 1,000 times, and geohash cells seen fewer than 100 (\tok{g4}) or 300 (\tok{g5}) times, fall into one \tok{other} token per key. The vocabulary has 12,828 tokens, and no token of the held-out fold is unknown. Dialogue embeddings are left out of this version.
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/labels.pdf}
-\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
-\label{fig:labels}
-\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -844,7 +847,5 @@ Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \to
 A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
 
 Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
-
-
 
 \end{document}
