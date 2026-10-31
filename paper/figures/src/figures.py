@@ -794,7 +794,7 @@ def inference() -> None:
         (200, "History", "real events"),
         (now, "Embedding", "h at the as-of date"),
         (now + 118, "Next event", "width shows probability"),
-        (end - 66, "Sampled futures", "each continued to the horizon"),
+        (end - 66, "Sampled futures", "up to the horizon"),
     ]:
         g.text(x, 244, head, size=11, weight=600, anchor="middle")
         g.text(x, 259, note, size=9.5, fill=MUTED, anchor="middle")
