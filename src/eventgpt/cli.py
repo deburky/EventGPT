@@ -20,6 +20,7 @@ COMMANDS = {
     "auc-se": ("eventgpt.evaluation.auc_se", "AUC standard errors and paired differences, clustered by client"),
     "catboost": ("eventgpt.baselines.catboost", "CatBoost on hand-built features"),
     "token-counts": ("eventgpt.baselines.token_counts", "CatBoost on token counts over time windows"),
+    "coles": ("eventgpt.baselines.coles", "CoLES contrastive encoder (MBD benchmark config) with the probe's heads"),
     "emb-boost": ("eventgpt.baselines.emb_boost", "CatBoost on a frozen embedding"),
     "label-curve": ("eventgpt.baselines.label_curve", "CatBoost on n labeled rows beside the zero-shot score"),
     "export": ("eventgpt.hub", "write a checkpoint as safetensors, config and vocabulary for the Hugging Face Hub"),
