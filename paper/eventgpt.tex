@@ -177,21 +177,7 @@ We encode the profile event like any other event. We give its four attributes a 
 
 An embedding computed once per client and as-of date serves every downstream task through a small classification head, and the backbone is not retrained per task. In this paper one set of embeddings serves ten labels (four product targets, five event targets and churn, Section~\ref{sec:protocol}), each through a logistic regression. A new task then needs only a head fitted on stored vectors. Revolut and Nubank describe the same arrangement for their backbones \cite{pragma, nuformer}.
 
-This reuse is safe only if the embedding at an as-of date depends on events before that date alone. An embedding that has seen the future inflates the offline results of every task built on it, and because every head inherits the embedding, the error spreads to all of them. EventGPT guarantees the property in its architecture and in its data.
-
-\paragraph{In the architecture.} The history decoder is causal, so the hidden state after event $i$ depends on events $1, \dots, i$ only. The event encoder reads in both directions only within one event, and the token decoder reaches earlier events only through $h_{i-1}$. No token of event $i$ has a path to the encoded vector of event $i$ itself. The embedding after the last event before an as-of date is the same whether or not later events exist in the stream. Evaluation also builds each input to end at its as-of date, so later events are never present in it.
-
-\paragraph{In the data.} How events are built matters as well, and each step of Section~\ref{sec:data} keeps the property.
-\begin{itemize}
-\item The history for an as-of date is every event strictly before the first day of the month, in the bank's own time zone.
-\item A daily geolocation event is stamped at the day's last ping, so a summary of the day never appears before the pings it summarizes.
-\item The profile event carries fields that never change within a client and is stamped at the client's first event, so it enters a history only when some event does.
-\item The vocabulary and the amount-bin edges are fitted on the pretraining folds only, and the test fold is never seen in pretraining.
-\end{itemize}
-
-Because the history itself fixes its as-of date, an embedding can be stored in a feature store like any other dated feature. It is keyed by client, stamped with its as-of date instead of the time it was computed, and joined to labels by the store's point-in-time join, which returns for each label the latest embedding before it. The join decides which embedding a label sees, and since each history ends at its as-of date, that embedding depends only on earlier events. Embeddings from different checkpoints are not comparable, so each version of the backbone needs its own feature set, and a head is valid only on the version it was fitted on.
-
-\paragraph{Delta scoring.} The same property lets a daily job rescore only the clients whose input changed and reproduce a full pass exactly (Appendix~\ref{app:delta}).
+This reuse is safe only if the embedding at an as-of date depends on events before that date alone. An embedding that has seen the future inflates the offline results of every task built on it, and because every head inherits the embedding, the error spreads to all of them. EventGPT guarantees the property in its architecture and in its data (Appendix~\ref{app:pit}).
 
 The guarantee does not cover the population. Pretraining reads the pretraining clients' events from 2021 and 2022, which include the test clients' label months. An out-of-time run measures the effect (Section~\ref{sec:limits}).
 
@@ -770,6 +756,22 @@ Windows drawn at random offsets usually start partway through a client's history
 \caption{A training window drawn at a random offset and the aligned window over the same events, on a client from fold 1, shortened to 110 tokens. The random window starts inside an event and holds no \tok{[USR]} or profile event; the aligned window puts both back in front, and the gap token of its first event counts from the client's first event.}
 \label{fig:windows}
 \end{figure}
+
+\section{Point-in-time guarantees}\label{app:pit}
+
+\paragraph{In the architecture.} The history decoder is causal, so the hidden state after event $i$ depends on events $1, \dots, i$ only. The event encoder reads in both directions only within one event, and the token decoder reaches earlier events only through $h_{i-1}$. No token of event $i$ has a path to the encoded vector of event $i$ itself. The embedding after the last event before an as-of date is the same whether or not later events exist in the stream. Evaluation also builds each input to end at its as-of date, so later events are never present in it.
+
+\paragraph{In the data.} How events are built matters as well, and each step of Section~\ref{sec:data} keeps the property.
+\begin{itemize}
+\item The history for an as-of date is every event strictly before the first day of the month, in the bank's own time zone.
+\item A daily geolocation event is stamped at the day's last ping, so a summary of the day never appears before the pings it summarizes.
+\item The profile event carries fields that never change within a client and is stamped at the client's first event, so it enters a history only when some event does.
+\item The vocabulary and the amount-bin edges are fitted on the pretraining folds only, and the test fold is never seen in pretraining.
+\end{itemize}
+
+Because the history itself fixes its as-of date, an embedding can be stored in a feature store like any other dated feature. It is keyed by client, stamped with its as-of date instead of the time it was computed, and joined to labels by the store's point-in-time join, which returns for each label the latest embedding before it. The join decides which embedding a label sees, and since each history ends at its as-of date, that embedding depends only on earlier events. Embeddings from different checkpoints are not comparable, so each version of the backbone needs its own feature set, and a head is valid only on the version it was fitted on.
+
+\paragraph{Delta scoring.} The same property lets a daily job rescore only the clients whose input changed and reproduce a full pass exactly (Appendix~\ref{app:delta}).
 
 \begin{thebibliography}{99}
 \raggedright
