@@ -58,14 +58,81 @@ def transitions(folds: list[Fold], codes: np.ndarray) -> np.ndarray:
     return counts / counts.sum(1, keepdims=True)
 
 
+def baseline_scores(
+    fold: Fold, trans: np.ndarray, codes: np.ndarray, ci: np.ndarray, n_hist: np.ndarray, cut: np.ndarray, kinds_xy: list[tuple[int, int]]
+) -> dict[str, np.ndarray]:
+    """Each baseline's score (rows, kinds) for the transaction kinds kinds_xy."""
+    first = fold.client_events[ci]
+    fold_kinds = np.searchsorted(codes, kinds(fold))
+    target_idx = np.searchsorted(codes, [x * 1000 + y for x, y in kinds_xy])
+    n, k = len(ci), len(kinds_xy)
+    out = {m: np.zeros((n, k)) for m in ("markov", "markov_recent", "markov_activity", "type_share", "activity")}
+    for r in range(n):
+        a0, e = int(first[r]), int(first[r] + n_hist[r])
+        if n_hist[r] == 0:
+            continue
+        out["markov"][r] = trans[fold_kinds[e - 1], target_idx]
+        p_recent = trans[fold_kinds[max(a0, e - RECENT) : e]][:, target_idx].mean(0)
+        out["markov_recent"][r] = p_recent
+        in_window = fold.event_time[a0:e] >= cut[r] - WINDOW_DAYS * 86_400
+        out["activity"][r] = (in_window & fold.is_trx[a0:e]).sum()
+        out["markov_activity"][r] = p_recent * in_window.sum()
+        trx = fold.is_trx[a0:e]
+        if trx.any():
+            et = fold.etype[a0:e][trx]
+            out["type_share"][r] = [(et == x).mean() for x, _ in kinds_xy]
+    return out
+
+
+def events_before(fold: Fold, ci: np.ndarray, cut: np.ndarray) -> np.ndarray:
+    """Number of each client's events strictly before its cut."""
+    lo, hi = fold.client_events[ci], fold.client_events[ci + 1]
+    return np.array([np.searchsorted(fold.event_time[a:b], c, side="left") for a, b, c in zip(lo, hi, cut, strict=True)])
+
+
 # -------------------------------------------------------------------------------
 # Main
 # -------------------------------------------------------------------------------
+def all_kinds(rows: pd.DataFrame, test: Fold, trans: np.ndarray, codes: np.ndarray, ci: np.ndarray, cut: np.ndarray, dest: Path) -> None:
+    """Compare EventGPT zero-shot with Markov x events on every kind of zero_shot_all_scores.parquet, paired SEs by client."""
+    pairs = [c[3:].split("_") for c in rows.columns if c.startswith("zs_")]
+    kinds_xy = [(int(x), int(y)) for x, y in pairs]
+    base = baseline_scores(test, trans, codes, ci, events_before(test, ci, cut), cut, kinds_xy)["markov_activity"]
+    clients, out = rows["client_id"].to_numpy(), []
+    for k, (x, y) in enumerate(kinds_xy):
+        pos = rows[f"first_{x}_{y}"].to_numpy().astype(bool)
+        ev = rows["in_rand"].to_numpy() | pos
+        unseen = ~rows[f"seen_{x}_{y}"].to_numpy()[ev]
+        a_m, i_m = influence(pos[ev].astype(np.int64), rows[f"zs_{x}_{y}"].to_numpy()[ev] * unseen)
+        a_b, i_b = influence(pos[ev].astype(np.int64), base[ev, k] * unseen)
+        cov = covariance(np.stack([i_m, i_b], 1), clients[ev])
+        se = float(np.sqrt(max(cov[0, 0] + cov[1, 1] - 2 * cov[0, 1], 0.0)))
+        out.append(
+            {
+                "type": x,
+                "subtype": y,
+                "positives": int(pos[ev].sum()),
+                "eventgpt": a_m,
+                "markov_activity": a_b,
+                "diff": a_m - a_b,
+                "diff_se": se,
+            }
+        )
+    r = pd.DataFrame(out)
+    r["z"] = r["diff"] / r["diff_se"]
+    print(r.sort_values("diff").round(3).to_string(index=False))
+    q = r[["eventgpt", "markov_activity", "diff"]].median().round(3).to_dict()
+    print(f"{len(r)} kinds, medians {q}; EventGPT higher by 2 SE on {int((r.z > 2).sum())}, lower on {int((r.z < -2).sum())}")
+    r.to_csv(dest, index=False)
+    print(f"written to {dest}")
+
+
 def main() -> None:
     """Fit the transitions on folds 1 to 4 and score the saved zero-shot rows of fold 0."""
     p = argparse.ArgumentParser()
     p.add_argument("scores", type=Path, help="zero_shot_scores.parquet from eventgpt.evaluation.zero_shot --save-scores")
     p.add_argument("--out", type=Path, default=None, help="csv path; default next_event_baselines.csv beside the scores")
+    p.add_argument("--all-kinds", action="store_true", help="scores is zero_shot_all_scores.parquet: compare on every kind in it")
     a = p.parse_args()
 
     vocab = Vocab.load(OUT / "vocab")
@@ -77,28 +144,12 @@ def main() -> None:
 
     rows = pd.read_parquet(a.scores)
     ci = rows["client_id"].map(test.index).to_numpy()
-    first, n_hist, cut = test.client_events[ci], rows["n_hist"].to_numpy(), rows["cut"].to_numpy()
-    test_kinds = np.searchsorted(codes, kinds(test))
-    target_idx = np.searchsorted(codes, [x * 1000 + y for x, y in FIRST_KINDS])
-    n = len(rows)
-    scores = {m: np.zeros((n, len(FIRST_KINDS))) for m in ("markov", "markov_recent", "markov_activity", "type_share")}
-    activity = np.zeros(n)
-    for r in range(n):
-        a0, e = int(first[r]), int(first[r] + n_hist[r])
-        if n_hist[r] == 0:
-            continue
-        recent = test_kinds[max(a0, e - RECENT) : e]
-        p_recent = trans[recent][:, target_idx].mean(0)
-        scores["markov"][r] = trans[test_kinds[e - 1], target_idx]
-        scores["markov_recent"][r] = p_recent
-        in_window = test.event_time[a0:e] >= cut[r] - WINDOW_DAYS * 86_400
-        activity[r] = (in_window & test.is_trx[a0:e]).sum()
-        scores["markov_activity"][r] = p_recent * in_window.sum()
-        trx = test.is_trx[a0:e]
-        if trx.any():
-            et = test.etype[a0:e][trx]
-            scores["type_share"][r] = [(et == x).mean() for x, _ in FIRST_KINDS]
-    scores["activity"] = np.repeat(activity[:, None], len(FIRST_KINDS), 1)
+    cut = rows["cut"].to_numpy()
+    if a.all_kinds:
+        all_kinds(rows, test, trans, codes, ci, cut, a.out or a.scores.with_name("next_event_all.csv"))
+        return
+    n_hist = rows["n_hist"].to_numpy()
+    scores = baseline_scores(test, trans, codes, ci, n_hist, cut, FIRST_KINDS)
     scores["eventgpt"] = rows[[f"zs_first_{x}_{y}" for x, y in FIRST_KINDS]].to_numpy()
 
     clients = rows["client_id"].to_numpy()
