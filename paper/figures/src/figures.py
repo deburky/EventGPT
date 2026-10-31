@@ -780,7 +780,7 @@ def inference() -> None:
         pw = g.pill(now + 88, y - 9.5, t, DEC)
         x0 = now + 92 + pw
         g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="{w:.1f}" stroke-linecap="round"/>')
-        g.text(x0 + 6, y - max(6.0, w / 2 + 4), f"{p:.0%}" if p >= 0.05 else f"{p:.1%}", size=9.5, fill=MUTED)
+        g.text(now + 88 + pw / 2, y - 14, f"{p:.0%}" if p >= 0.05 else f"{p:.1%}", size=10, weight=600, anchor="middle")
         for dx in (0.3, 0.55, 0.85) if t != "50/19" else (0.6,):
             g.items.append(f'<circle cx="{x0 + dx * (end - x0):.1f}" cy="{y}" r="4" fill="{DEC}" stroke="{violet}" stroke-width="0.8"/>')
     g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
