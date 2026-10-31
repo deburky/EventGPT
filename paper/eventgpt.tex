@@ -547,13 +547,6 @@ The split is by client, as in MBD. Pretraining reads the pretraining clients' ev
 
 The code (tokenization, model, training, evaluation and baselines) is at \url{https://github.com/deburky/EventGPT}, and the pretrained checkpoints are on the Hugging Face Hub as \tok{deburky/EventGPT}. MBD-mini is available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/labels.pdf}
-\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
-\label{fig:labels}
-\end{figure}
-
 \begin{thebibliography}{99}
 \raggedright
 
@@ -847,5 +840,12 @@ Every field is an integer code assigned by the bank, so \tok{name=trx\_1} or \to
 A checkpoint that transfers would need tokens that mean the same at every bank. The time-gap tokens already do. Event types and fields could be named by text descriptions, as in the masked model trained on data from thousands of North American institutions \cite{openbanking}, or mapped to a shared schema of event kinds. Amounts would need bins on a common scale, such as currency units, in place of one bank's quantiles. Codes with no shared meaning, such as counterparty types, could be hashed into a fixed number of buckets, which fixes the vocabulary size but gives a code no meaning across banks. We have not tested any of these.
 
 Serving such a model starts with pretraining on the institution's own history, and the comparisons in this paper are between methods trained on the same data. Privacy and competition keep the industrial checkpoints of Section~\ref{sec:related} private in any case, and without its issuer's schema another institution could not use one.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/labels.pdf}
+\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
+\label{fig:labels}
+\end{figure}
 
 \end{document}
