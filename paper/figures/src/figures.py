@@ -767,7 +767,7 @@ def inference() -> None:
     g.items.append(f'<line x1="{now}" y1="34" x2="{now}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
     g.text(now, 26, "as-of date", size=10.5, weight=600, anchor="middle")
     # the next event: one branch per type, as wide as its probability for the client of Figure~futures, all the way
-    # to the month's end; the dots are the later events of a month sampled down that branch
+    # to the horizon; the dots are the later events of a future sampled down that branch
     d = json.loads((RUN.parent / "futures.json").read_text())
     p_of = {c["name"].removeprefix("trx_"): c["p"] for c in d["candidates"]}
     branches = [(58.0, "40/52", p_of["40"]), (100.0, "1/12", p_of["1"]), (160.0, "geo", p_of["geo"]), (202.0, "50/19", d["next_p"])]
@@ -788,13 +788,13 @@ def inference() -> None:
     g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
     g.text(now, axis + 4, "h", size=11, weight=600, fill="white", anchor="middle")
     g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
-    g.text(end, 26, "end of month", size=10.5, weight=600, anchor="middle")
+    g.text(end, 26, "horizon", size=10.5, weight=600, anchor="middle")
     # what each part is read as
     for x, head, note in [
         (200, "History", "real events"),
         (now, "Embedding", "h at the as-of date"),
         (now + 118, "Next event", "width shows probability"),
-        (end - 66, "Sampled months", "to the end of the month"),
+        (end - 66, "Sampled futures", "each continued to the horizon"),
     ]:
         g.text(x, 244, head, size=11, weight=600, anchor="middle")
         g.text(x, 259, note, size=9.5, fill=MUTED, anchor="middle")
