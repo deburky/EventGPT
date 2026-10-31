@@ -791,7 +791,7 @@ def inference() -> None:
             f'<path d="M{now},{axis} C{now + 40},{axis} {now + 40},{y} {now + 84},{y}" fill="none" stroke="{violet}" '
             f'stroke-width="0.8" opacity="0.6"/>'
         )
-    g.text(now + 92, 176, f"{d['names'] - len(branches)} other types", size=9.5, fill=MUTED)
+    g.text(now + 92, 176, f"{d['names'] - len(branches)} other event types", size=9.5, fill=MUTED)
     g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
     g.text(now, axis + 4, "h", size=11, weight=600, fill="white", anchor="middle")
     g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="228" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
