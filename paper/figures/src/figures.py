@@ -752,35 +752,27 @@ def blocks() -> None:
 
 def inference() -> None:
     """One history before the as-of date, read three ways: the embedding, the one-step score and the sampled month."""
-    g = Svg(760, 272)
-    g.legend([(TOK, "Real events"), (DEC, "Appended or sampled"), (EMB, "Output")])
-    g.rect(20, 40, 720, 40, "white", LINE, r=12)
-    g.text(34, 64, "History", size=11.5, weight=600)
-    x = 100.0
-    for t in ["profile", "1/12", "geo", "40/52", "11/32"]:
-        x += g.pill(x, 50, t) + 6
-    g.items.append(f'<line x1="{x + 6}" y1="46" x2="{x + 6}" y2="74" stroke="{INK}" stroke-width="1.2"/>')
-    g.text(x + 14, 64, "as-of date", size=10, weight=600)
-    width, gap = 232.0, 12.0
-    columns = [
-        ("Embedding", ["[EVT]", "dt"], "head fitted on labels", "P(label)"),
-        ("One-step score", ["[EVT]", "name=trx_50", "dt"], "P(type) × P(subtype)", "P(next event is 50/19)"),
-        ("Sampled month", ["40/52", "1/12", "50/19"], "mean over 16 sampled months", "P(50/19 in the month)"),
+    g = Svg(760, 176)
+    g.rect(20, 20, 210, 136, "white", LINE, r=12)
+    g.text(125, 44, "History", size=12, weight=600, anchor="middle")
+    x, y = 34.0, 58.0
+    for t in ["profile", "1/12", "geo", "40/52", "11/32", "46/40"]:
+        w = len(t) * 6.0 + 12
+        if x + w > 218:
+            x, y = 34.0, y + 26
+        x += g.pill(x, y, t) + 6
+    g.text(125, 140, "to the as-of date", size=10, fill=MUTED, anchor="middle")
+    rows = [
+        ("hidden state, head fitted on labels", "P(label)"),
+        ("append the start of a 50/19", "P(next event is 50/19)"),
+        ("sample the month 16 times", "P(50/19 in the month)"),
     ]
-    for c, (title, toks, step, out) in enumerate(columns):
-        x0 = 20 + c * (width + gap)
-        cx = x0 + width / 2
-        g.arrow([(cx, 80), (cx, 96)])
-        g.rect(x0, 98, width, 166, "#F7F9FB", LINE, r=12)
-        g.text(cx, 120, title, size=12.5, weight=600, anchor="middle")
-        xs = cx - sum(len(t) * 6.0 + 12 + 5 for t in toks) / 2
-        for t in toks:
-            xs += g.pill(xs, 132, t, DEC) + 5
-        g.arrow([(cx, 152), (cx, 170)])
-        g.text(cx, 186, step, size=10.5, anchor="middle")
-        g.arrow([(cx, 194), (cx, 212)])
-        g.rect(cx - 95, 214, 190, 34, EMB, r=10)
-        g.text(cx, 236, out, size=11, weight=600, fill="white", anchor="middle")
+    for k, (how, out) in enumerate(rows):
+        y = 38 + 50 * k
+        g.arrow([(230, 88), (262, 88), (262, y), (536, y)])
+        g.text(276, y - 7, how, size=10.5, fill=MUTED)
+        g.rect(538, y - 17, 202, 34, EMB, r=10)
+        g.text(639, y + 5, out, size=11, weight=600, fill="white", anchor="middle")
     g.save("inference")
 
 
