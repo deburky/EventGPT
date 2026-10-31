@@ -171,16 +171,7 @@ The embedding of a client at an as-of date is read from the history decoder's hi
 
 We encode the profile event like any other event. We give its four attributes a direct path to the classification head in two ways. In \emph{late fusion} we append the input embeddings of the four field tokens to the hidden state and fit the classification head on both. We do not retrain the backbone. In \emph{early fusion} we add the attributes during pretraining. We concatenate the four embeddings, project them to the model width with a linear layer initialized at zero and add the result to the vector of every event from the profile event on. We add no profile vector to the \tok{[USR]} event, because its hidden state predicts the profile event's tokens. We take the field tokens from the client's stream and use no knowledge of what the attributes mean.
 
-\subsection{Training windows and tenure}\label{sec:windows}
-
-Windows drawn at random offsets usually start partway through a client's history and lack \tok{[USR]} and the profile event. Every evaluation history opens with both. We remove this mismatch with \emph{aligned} windows (Figure~\ref{fig:windows}). When a window starts partway through a client's history, we put \tok{[USR]} and the profile event back at its start, as we do when we truncate a long evaluation history. We stamp the profile event at the client's first event. We start both the \tok{dt} token of the next event and the temporal RoPE positions of Eq.~(\ref{eq:pos}) at the client's first event. Apart from the profile event and this one \tok{dt} token, an aligned window holds the same tokens as a random one. We build evaluation and zero-shot histories the same way for these models.
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/windows.pdf}
-\caption{A training window drawn at a random offset and the aligned window over the same events, on a client from fold 1, shortened to 110 tokens. The random window starts inside an event and holds no \tok{[USR]} or profile event; the aligned window puts both back in front, and the gap token of its first event counts from the client's first event.}
-\label{fig:windows}
-\end{figure}
+\paragraph{Training windows.} A window drawn at a random offset usually starts partway through a client's history, without \tok{[USR]} and the profile event that every evaluation history opens with. We also train on \emph{aligned} windows, which put both back in front (Appendix~\ref{sec:windows}).
 
 \section{Embeddings as point-in-time features}\label{sec:pit}
 
@@ -767,6 +758,17 @@ Neither the event encoder nor the token decoder attends across an event boundary
 \includegraphics[width=\textwidth]{figures/decoder.pdf}
 \caption{What the token decoder reads. Each token of event 3 attends to the earlier tokens of its own event and to $h_2$, the history decoder's hidden state after event 2. It has no path to the tokens inside earlier events, which reach it only through the event vectors and $h_2$.}
 \label{fig:decoder}
+\end{figure}
+
+\section{Training windows and tenure}\label{sec:windows}
+
+Windows drawn at random offsets usually start partway through a client's history and lack \tok{[USR]} and the profile event. Every evaluation history opens with both. We remove this mismatch with \emph{aligned} windows (Figure~\ref{fig:windows}). When a window starts partway through a client's history, we put \tok{[USR]} and the profile event back at its start, as we do when we truncate a long evaluation history. We stamp the profile event at the client's first event. We start both the \tok{dt} token of the next event and the temporal RoPE positions of Eq.~(\ref{eq:pos}) at the client's first event. Apart from the profile event and this one \tok{dt} token, an aligned window holds the same tokens as a random one. We build evaluation and zero-shot histories the same way for these models.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/windows.pdf}
+\caption{A training window drawn at a random offset and the aligned window over the same events, on a client from fold 1, shortened to 110 tokens. The random window starts inside an event and holds no \tok{[USR]} or profile event; the aligned window puts both back in front, and the gap token of its first event counts from the client's first event.}
+\label{fig:windows}
 \end{figure}
 
 \begin{thebibliography}{99}
