@@ -511,6 +511,10 @@ def futures() -> None:
     accent = "#DB6F44"
     g = Svg(760, 282)
     g.legend([(TOK, "Real event"), (DEC, "Sampled by EventGPT"), (accent, f"First {d['target']}, the target")])
+    gx = 560.0  # the geolocation key is a tick, not a swatch
+    for dx in (0, 4, 8):
+        g.items.append(f'<line x1="{gx + dx}" y1="{8}" x2="{gx + dx}" y2="{20}" stroke="{MUTED}" stroke-width="1" opacity="0.5"/>')
+    g.text(gx + 16, 18, "Geolocation, one per day", size=11, fill=MUTED)
     h0, h1, m0, m1 = 132.0, 246.0, 268.0, 540.0  # history and label-month scales
     lo = min(-56.0, min(float(e["day"]) for e in d["history"]))
 
