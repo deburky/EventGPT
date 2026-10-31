@@ -308,7 +308,7 @@ We read a history in three ways (Figure~\ref{fig:inference}): the hidden state a
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/inference.pdf}
-\caption{Three readings of one history. The embedding appends a now event and feeds the last hidden state to a head fitted on labels. The one-step score appends the start of an event of the target's type and multiplies the probability of the type at \tok{[EVT]} by the probability of the subtype at the \tok{dt} token. The sampled month continues the history event by event to the end of the label month, 16 times, and averages over the paths the probability of the target kind at each step up to its first sampled occurrence.}
+\caption{Three readings of one history. The embedding appends a now event and passes the last hidden state to a head fitted on labels. The one-step score appends the start of an event of the target type. The sampled month continues the history to the end of the label month 16 times.}
 \label{fig:inference}
 \end{figure}
 

@@ -752,73 +752,35 @@ def blocks() -> None:
 
 def inference() -> None:
     """One history before the as-of date, read three ways: the embedding, the one-step score and the sampled month."""
-    g = Svg(760, 400)
-    g.legend([(TOK, "Real tokens"), (DEC, "Appended or sampled"), (HID, "Hidden state"), (EMB, "Output")])
-    # the shared history
-    g.rect(20, 40, 720, 46, "white", LINE, r=12)
-    g.text(34, 67, "History before the as-of date", size=11.5, weight=600)
-    x = 230.0
-    for t in ["[USR]", "profile", "trx 1/12", "geo", "trx 40/52", "trx 11/32"]:
-        x += g.pill(x, 54, t) + 6
-    g.items.append(f'<line x1="{x + 8}" y1="46" x2="{x + 8}" y2="80" stroke="{INK}" stroke-width="1.2"/>')
-    g.text(x + 16, 67, "as-of date", size=10, weight=600)
+    g = Svg(760, 272)
+    g.legend([(TOK, "Real events"), (DEC, "Appended or sampled"), (EMB, "Output")])
+    g.rect(20, 40, 720, 40, "white", LINE, r=12)
+    g.text(34, 64, "History", size=11.5, weight=600)
+    x = 100.0
+    for t in ["profile", "1/12", "geo", "40/52", "11/32"]:
+        x += g.pill(x, 50, t) + 6
+    g.items.append(f'<line x1="{x + 6}" y1="46" x2="{x + 6}" y2="74" stroke="{INK}" stroke-width="1.2"/>')
+    g.text(x + 14, 64, "as-of date", size=10, weight=600)
     width, gap = 232.0, 12.0
-    panels = [
-        ("Embedding", "append a now event", [("[EVT]", DEC), ("dt=&lt;gap&gt;", DEC)]),
-        ("One-step score", "append the start of a 50/19", [("[EVT]", DEC), ("name=trx_50", DEC), ("dt=&lt;gap&gt;", DEC)]),
-        ("Sampled month", "continue from the last real event", []),
+    columns = [
+        ("Embedding", ["[EVT]", "dt"], "head fitted on labels", "P(label)"),
+        ("One-step score", ["[EVT]", "name=trx_50", "dt"], "P(type) × P(subtype)", "P(next event is 50/19)"),
+        ("Sampled month", ["40/52", "1/12", "50/19"], "mean over 16 sampled months", "P(50/19 in the month)"),
     ]
-    for c, (title, subtitle, toks) in enumerate(panels):
+    for c, (title, toks, step, out) in enumerate(columns):
         x0 = 20 + c * (width + gap)
         cx = x0 + width / 2
-        g.arrow([(cx, 86), (cx, 104)])
-        g.rect(x0, 106, width, 284, "#F7F9FB", LINE, r=12)
-        g.text(cx, 128, title, size=12.5, weight=600, anchor="middle")
-        g.text(cx, 144, subtitle, size=10, fill=MUTED, anchor="middle")
-        xs = cx - sum(len(t.replace("&lt;", "<").replace("&gt;", ">")) * 6.0 + 12 + 5 for t, _ in toks) / 2
-        for t, fill in toks:
-            xs += g.pill(xs, 156, t.replace("&lt;", "<").replace("&gt;", ">"), fill) + 5
-    # embedding
-    cx = 20 + width / 2
-    g.arrow([(cx, 176), (cx, 196)])
-    g.rect(cx - 90, 198, 180, 30, HID, r=8)
-    g.text(cx, 217, "last hidden state h", size=10.5, weight=600, anchor="middle")
-    g.arrow([(cx, 228), (cx, 250)])
-    g.rect(cx - 90, 252, 180, 30, "white", LINE, r=8)
-    g.text(cx, 271, "logistic head, fitted on labels", size=10, anchor="middle")
-    g.arrow([(cx, 282), (cx, 316)])
-    g.rect(cx - 90, 318, 180, 46, EMB, r=10)
-    g.text(cx, 337, "P(label)", size=11.5, weight=600, fill="white", anchor="middle")
-    g.text(cx, 354, "product targets and churn", size=9.5, fill="#BFD0E2", anchor="middle")
-    # one-step score
-    cx = 20 + width + gap + width / 2
-    g.arrow([(cx, 176), (cx, 196)])
-    g.rect(cx - 100, 198, 200, 30, "white", LINE, r=8)
-    g.text(cx, 217, "P(name=trx_50) at [EVT]", size=10, anchor="middle", mono=True)
-    g.text(cx, 245, "×", size=13, weight=600, anchor="middle")
-    g.rect(cx - 100, 252, 200, 30, "white", LINE, r=8)
-    g.text(cx, 271, "P(sub=19 | name, dt) at dt", size=10, anchor="middle", mono=True)
-    g.arrow([(cx, 282), (cx, 316)])
-    g.rect(cx - 100, 318, 200, 46, EMB, r=10)
-    g.text(cx, 337, "P(next event is 50/19)", size=11.5, weight=600, fill="white", anchor="middle")
-    g.text(cx, 354, "zero if the client had 50/19", size=9.5, fill="#BFD0E2", anchor="middle")
-    # sampled month
-    x0 = 20 + 2 * (width + gap)
-    cx = x0 + width / 2
-    for k, (ys, evs) in enumerate([(160.0, ["40/52", "1/12", "50/19"]), (184.0, ["1/12", "geo"])]):
-        g.text(x0 + 14, ys + 13, f"path {k + 1}", size=9.5, fill=MUTED)
-        xs = x0 + 62.0
-        for t in evs:
-            xs += g.pill(xs, ys, t, DEC) + 4
-    g.text(cx, 220, "16 paths, each to the end of the month", size=9.5, fill=MUTED, anchor="middle")
-    g.arrow([(cx, 226), (cx, 250)])
-    g.rect(cx - 100, 252, 200, 30, "white", LINE, r=8)
-    g.text(cx, 266, "sum P(50/19 at this step, in the", size=9.5, anchor="middle")
-    g.text(cx, 278, "month) to the first 50/19, mean over paths", size=9.5, anchor="middle")
-    g.arrow([(cx, 282), (cx, 316)])
-    g.rect(cx - 100, 318, 200, 46, EMB, r=10)
-    g.text(cx, 337, "P(50/19 in the month)", size=11.5, weight=600, fill="white", anchor="middle")
-    g.text(cx, 354, "counts and churn from the same paths", size=9.5, fill="#BFD0E2", anchor="middle")
+        g.arrow([(cx, 80), (cx, 96)])
+        g.rect(x0, 98, width, 166, "#F7F9FB", LINE, r=12)
+        g.text(cx, 120, title, size=12.5, weight=600, anchor="middle")
+        xs = cx - sum(len(t) * 6.0 + 12 + 5 for t in toks) / 2
+        for t in toks:
+            xs += g.pill(xs, 132, t, DEC) + 5
+        g.arrow([(cx, 152), (cx, 170)])
+        g.text(cx, 186, step, size=10.5, anchor="middle")
+        g.arrow([(cx, 194), (cx, 212)])
+        g.rect(cx - 95, 214, 190, 34, EMB, r=10)
+        g.text(cx, 236, out, size=11, weight=600, fill="white", anchor="middle")
     g.save("inference")
 
 
