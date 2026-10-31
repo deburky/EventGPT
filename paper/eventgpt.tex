@@ -262,13 +262,6 @@ A row is a client and a month from February 2022 to January 2023, 12 rows per cl
 
 The product targets are rare and drift (Figure~\ref{fig:labels}): \tok{target\_1} falls from 0.56\% of rows in February 2022 to 0.16\% in January 2023, while \tok{target\_2} stays near 0.05\%. The event targets lie between 0.01\% and 0.4\%, and churn rises from 12.7\% to 20.1\% before the last month.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/labels.pdf}
-\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
-\label{fig:labels}
-\end{figure}
-
 \subsection{Heads and metrics}\label{sec:metrics}
 
 For each label we fit a logistic regression ($C = 0.1$) on the frozen, standardized embeddings of rows from folds 1--4, and score every row of fold 0. Positives are rare, so the training rows are every row positive for any label plus 60,000 rows sampled uniformly from the rest, reweighted to their share. We report ROC-AUC and PR-AUC (average precision). PR-AUC matters because a ranking can reach a high ROC-AUC while its top is still mostly negatives. A random ranking has a PR-AUC equal to the prevalence.
@@ -553,6 +546,13 @@ The split is by client, as in MBD. Pretraining reads the pretraining clients' ev
 \section{Code and data availability}\label{app:code}
 
 The code (tokenization, model, training, evaluation and baselines) is at \url{https://github.com/deburky/EventGPT}, and the pretrained checkpoints are on the Hugging Face Hub as \tok{deburky/EventGPT}. MBD-mini is available on the Hugging Face Hub as \tok{ai-lab/MBD-mini} under CC BY 4.0 \cite{mbdmini}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/labels.pdf}
+\caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
+\label{fig:labels}
+\end{figure}
 
 \begin{thebibliography}{99}
 \raggedright
