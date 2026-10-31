@@ -303,6 +303,15 @@ Standard errors follow DeLong's method \cite{delong}, which writes ROC-AUC as a 
 An event target, the kind $(X, Y)$ appearing in a client's history for the first time during the month, can be scored by the pretrained model with no head and no labels. After the history at an as-of date we append the start of a next event, \tok{[EVT] name=trx\_X dt=<g>}, where $g$ is the bucketed gap from the last event to the as-of date. The token decoder gives $P(\tok{name=trx\_X})$ at \tok{[EVT]} and
 $P(\tok{sub=Y} \mid \tok{name=trx\_X}, \tok{dt=g})$ at the \tok{dt} token, and the score is their product, the probability that the next event is of kind $(X, Y)$. A client who already had the kind before the as-of date cannot be positive under the label's definition, so that client's score is set to zero. This rule uses no labels, and we apply it to the supervised scores as well when comparing the two. For EventGPT the history stages run once per row and the token decoder once per type $X$; the flat decoder is scored the same way and runs whole once per type.
 
+We read a history in three ways (Figure~\ref{fig:inference}): the hidden state at the as-of date for a supervised head, this one-step score, and months sampled from the model (Section~\ref{sec:zero-shot}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/inference.pdf}
+\caption{Three readings of one history. The embedding appends a now event and feeds the last hidden state to a head fitted on labels. The one-step score appends the start of an event of the target's type and multiplies the probability of the type at \tok{[EVT]} by the probability of the subtype at the \tok{dt} token. The sampled month continues the history event by event to the end of the label month, 16 times, and averages over the paths the probability of the target kind at each step up to its first sampled occurrence.}
+\label{fig:inference}
+\end{figure}
+
 Zero-shot scoring is evaluated on every test row positive for one of the five event targets and on
 20,000 rows sampled uniformly from the test fold. Each target's ROC-AUC uses its own positives and the uniform sample, so the positives of the other targets do not enter as negatives, and uniform sampling of negatives leaves ROC-AUC unbiased. The supervised comparison is the logistic head on the last hidden state, scored on the same rows.
 
