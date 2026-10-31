@@ -114,7 +114,9 @@ egpt token-counts --probe-dir data/runs/hier-alq-s42/probe  # token-count baseli
 ```
 
 `scripts/gcp.py` runs training and the probe on a Google Cloud L4 that deletes itself when done
-(`uv run --group gcp scripts/gcp.py up <run> [train args]`, with Application Default Credentials).
+(`uv run --group gcp scripts/gcp.py up <run> [train args]`). `gcp.py queue runs.toml` runs a list of runs in
+turn on one L4, retrying while no zone has one free. Credentials come from Application Default Credentials, or
+from the gcloud CLI's login when those are not set up.
 
 `just mlflow-sync` logs every run and probe under `data/runs` into a local MLflow store (training curves,
 checkpoint configs, ROC-AUC and PR-AUC per readout and label), and `just mlflow-ui` compares them in the browser.

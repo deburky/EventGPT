@@ -7,6 +7,9 @@
     uv run --group gcp scripts/gcp.py logs <run>              the run's training log, synced to the bucket every minute
     uv run --group gcp scripts/gcp.py boot <run>              startup progress from the VM's serial console
     uv run --group gcp scripts/gcp.py pull <run>              the run's checkpoint and log, into data/runs/<run>
+    uv run --group gcp scripts/gcp.py wait <run>              block until the run's VM has deleted itself, then pull
+    uv run --group gcp scripts/gcp.py queue <runs.toml>       start each run of the file in turn, retrying while no
+                                                              zone has an L4 free, and pull each when its VM is gone
     uv run --group gcp scripts/gcp.py status                  VMs carrying the event-gpt label
     uv run --group gcp scripts/gcp.py down                    delete every VM carrying the label, and the NAT gateways
     uv run --group gcp scripts/gcp.py nuke                    also delete the bucket, service account and role
@@ -18,19 +21,36 @@ deletes anything labeled project=event-gpt. Checkpoints and logs live in the buc
 The project's organization policy forbids external IPs on VMs, so the VM gets none and reaches PyPI and the
 uv installer through a Cloud NAT on the default network, created on demand by `up`.
 
-Credentials come from Application Default Credentials (`gcloud auth application-default login`). Settings are
+Credentials come from Application Default Credentials (`gcloud auth application-default login`), or, without
+them, from the gcloud CLI's own login, whose access token is fetched again before it expires. Settings are
 read from the environment: GCP_PROJECT, GCP_REGION, GCP_ZONES, GCP_BUCKET, GCP_MACHINE, MAX_HOURS, PROBE,
 PROBE_ARGS, SPOT, DATA_PREFIX, MBD_OUT and MBD_ROOT.
+
+A queue file lists runs as TOML tables; each takes the settings of `up` and falls back to the environment's:
+
+    [[run]]
+    name = "hier-rope-attn-s42"
+    args = ""                  # training flags; empty means DEFAULT_ARGS
+    probe = "only"
+    probe_args = "--batch 32 --now --attn --out /opt/egpt/ckpt/probe-attn"
+    max_hours = 4
 """
 
 import io
 import os
 import re
+import subprocess
 import sys
 import tarfile
+import time
+import tomllib
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import google.auth
+import google.auth.credentials
 from google.api_core.exceptions import GoogleAPICallError, NotFound
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import compute_v1, iam_admin_v1, resourcemanager_v3, service_usage_v1
@@ -40,21 +60,49 @@ from google.iam.v1 import policy_pb2
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def default_project() -> str:
-    """The project of Application Default Credentials, or "" without them."""
+# -------------------------------------------------------------------------------
+# Credentials
+# -------------------------------------------------------------------------------
+def gcloud(*args: str) -> str:
+    """Output of a gcloud CLI command, "" when gcloud is missing or fails."""
     try:
-        return google.auth.default()[1] or ""
-    except DefaultCredentialsError:
+        out = subprocess.run(["gcloud", *args], capture_output=True, text=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return ""
+    return out.stdout.strip()
 
 
-PROJECT = os.environ.get("GCP_PROJECT") or default_project()
+class GcloudCredentials(google.auth.credentials.Credentials):
+    """The gcloud CLI's login, for machines without Application Default Credentials; refreshed every 45 minutes."""
+
+    def refresh(self, request: Any) -> None:
+        """Fetch a new access token from gcloud."""
+        token = gcloud("auth", "print-access-token")
+        if not token:
+            sys.exit("no credentials: run `gcloud auth application-default login` (or `gcloud auth login`)")
+        self.token = token
+        # google.auth compares expiry with a naive UTC time
+        self.expiry = (datetime.now(UTC) + timedelta(minutes=45)).replace(tzinfo=None)
+
+
+def credentials() -> tuple[google.auth.credentials.Credentials, str]:
+    """Application Default Credentials and their project, or the gcloud CLI's login and configured project."""
+    try:
+        creds, project = google.auth.default()
+        return creds, project or gcloud("config", "get-value", "project")
+    except DefaultCredentialsError:
+        return GcloudCredentials(), gcloud("config", "get-value", "project")
+
+
+CREDS, DEFAULT_PROJECT = credentials()
+PROJECT = os.environ.get("GCP_PROJECT") or DEFAULT_PROJECT
 REGION = os.environ.get("GCP_REGION", "europe-west4")
-# every European zone with L4s, tried in order until one has capacity
+# every European zone with L4s, then the US ones, tried in order until one has capacity
 ZONES = os.environ.get(
     "GCP_ZONES",
     "europe-west4-a europe-west4-b europe-west4-c europe-west1-b europe-west1-c europe-west3-a europe-west3-b "
-    "europe-west2-a europe-west2-b europe-west6-b europe-west6-c",
+    "europe-west2-a europe-west2-b europe-west6-b europe-west6-c "
+    "us-central1-a us-central1-b us-central1-c us-east1-c us-east1-d us-east4-a us-east4-c us-west1-a us-west1-b",
 ).split()
 BUCKET = os.environ.get("GCP_BUCKET", f"event-gpt-{PROJECT}")
 DATA = Path(os.environ.get("MBD_OUT", ROOT / "data/MBD-mini/tokens"))
@@ -75,6 +123,21 @@ DATA_PREFIX = os.environ.get("DATA_PREFIX", "data")  # bucket folder of the toke
 LABELS = {"project": "event-gpt"}
 DEFAULT_ARGS = "--arch eventgpt --rope --steps 20000 --batch 8 --accum 2"
 STOCKOUT = re.compile(r"ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources")
+RETRY_SECONDS = 300
+POLL_SECONDS = 120
+
+
+@dataclass
+class Run:
+    """One run's name, training flags and VM settings; the defaults come from the environment."""
+
+    name: str
+    args: str = DEFAULT_ARGS
+    probe: str = PROBE
+    probe_args: str = PROBE_ARGS
+    max_hours: int = MAX_HOURS
+    spot: bool = SPOT
+    data_prefix: str = DATA_PREFIX
 
 
 # -------------------------------------------------------------------------------
@@ -82,7 +145,7 @@ STOCKOUT = re.compile(r"ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resour
 # -------------------------------------------------------------------------------
 def bucket() -> Bucket:
     """The run bucket."""
-    return Client(project=PROJECT).bucket(BUCKET)
+    return Client(project=PROJECT, credentials=CREDS).bucket(BUCKET)
 
 
 def upload_tree(local: Path, prefix: str) -> None:
@@ -110,7 +173,7 @@ def ensure_nat(region: str) -> bool:
     the other project deletes its own when its run ends, which would cut this VM off mid-run, so the region is
     skipped rather than shared.
     """
-    routers = compute_v1.RoutersClient()
+    routers = compute_v1.RoutersClient(credentials=CREDS)
     ours = None
     for r in routers.list(project=PROJECT, region=region):
         if r.name == ROUTER:
@@ -146,10 +209,10 @@ def bind(policy: policy_pb2.Policy, role: str, member: str) -> bool:
 
 def init() -> None:
     """Enable the APIs and create the service account, its role, the bucket and the data upload."""
-    usage = service_usage_v1.ServiceUsageClient()
+    usage = service_usage_v1.ServiceUsageClient(credentials=CREDS)
     apis = ["compute.googleapis.com", "storage.googleapis.com", "iam.googleapis.com"]
     usage.batch_enable_services(request={"parent": f"projects/{PROJECT}", "service_ids": apis}).result()
-    iam = iam_admin_v1.IAMClient()
+    iam = iam_admin_v1.IAMClient(credentials=CREDS)
     try:
         iam.get_service_account(name=f"projects/{PROJECT}/serviceAccounts/{SA}")
     except NotFound:
@@ -163,11 +226,11 @@ def init() -> None:
             included_permissions=["compute.instances.delete", "compute.instances.get", "compute.zoneOperations.get"],
         )
         iam.create_role(request=iam_admin_v1.CreateRoleRequest(parent=f"projects/{PROJECT}", role_id=ROLE, role=role))
-    projects = resourcemanager_v3.ProjectsClient()
+    projects = resourcemanager_v3.ProjectsClient(credentials=CREDS)
     policy = projects.get_iam_policy(resource=f"projects/{PROJECT}")
     if bind(policy, ROLE_NAME, f"serviceAccount:{SA}"):
         projects.set_iam_policy(request={"resource": f"projects/{PROJECT}", "policy": policy})
-    client = Client(project=PROJECT)
+    client = Client(project=PROJECT, credentials=CREDS)
     b = client.bucket(BUCKET)
     if not b.exists():
         b.iam_configuration.uniform_bucket_level_access_enabled = True
@@ -201,35 +264,35 @@ def push_code(run: str) -> None:
 def gpu_vms() -> list[str]:
     """Names of the project's running VMs with an accelerator; the quota is one L4, shared with other projects."""
     out = []
-    for _, scoped in compute_v1.InstancesClient().aggregated_list(project=PROJECT):
+    for _, scoped in compute_v1.InstancesClient(credentials=CREDS).aggregated_list(project=PROJECT):
         for vm in scoped.instances:
             if vm.guest_accelerators and vm.status != "TERMINATED":
                 out.append(vm.name)
     return out
 
 
-def instance(run: str, zone: str, args: str) -> compute_v1.Instance:
-    """The VM of a run in zone: one L4, no external IP, deleted after MAX_HOURS at most."""
+def instance(run: Run, zone: str) -> compute_v1.Instance:
+    """The VM of a run in zone: one L4, no external IP, deleted after max_hours at most."""
     scheduling = compute_v1.Scheduling(
         on_host_maintenance="TERMINATE",
-        provisioning_model="SPOT" if SPOT else "STANDARD",
-        max_run_duration=compute_v1.Duration(seconds=MAX_HOURS * 3600),
+        provisioning_model="SPOT" if run.spot else "STANDARD",
+        max_run_duration=compute_v1.Duration(seconds=run.max_hours * 3600),
         instance_termination_action="DELETE",
     )
-    if SPOT:
+    if run.spot:
         scheduling.automatic_restart = False
     metadata = {
         "install-nvidia-driver": "True",
         "bucket": BUCKET,
-        "run": run,
-        "probe": PROBE,
-        "probe-args": PROBE_ARGS,
-        "data-prefix": DATA_PREFIX,
-        "train-args": args,
+        "run": run.name,
+        "probe": run.probe,
+        "probe-args": run.probe_args,
+        "data-prefix": run.data_prefix,
+        "train-args": run.args,
         "startup-script": (ROOT / "scripts/gcp_startup.sh").read_text(),
     }
     return compute_v1.Instance(
-        name=f"egpt-{run}",
+        name=f"egpt-{run.name}",
         machine_type=f"zones/{zone}/machineTypes/{MACHINE}",
         guest_accelerators=[compute_v1.AcceleratorConfig(accelerator_type=f"zones/{zone}/acceleratorTypes/nvidia-l4", accelerator_count=1)],
         scheduling=scheduling,
@@ -242,38 +305,66 @@ def instance(run: str, zone: str, args: str) -> compute_v1.Instance:
         ],
         network_interfaces=[compute_v1.NetworkInterface(network="global/networks/default")],
         service_accounts=[compute_v1.ServiceAccount(email=SA, scopes=["https://www.googleapis.com/auth/cloud-platform"])],
-        labels={**LABELS, "run": run},
+        labels={**LABELS, "run": run.name},
         metadata=compute_v1.Metadata(items=[compute_v1.Items(key=k, value=v) for k, v in metadata.items()]),
     )
 
 
-def up(run: str, args: str) -> None:
-    """Push the code and start the run's VM in the first zone with an L4 free."""
-    if not re.fullmatch(r"[a-z0-9-]+", run):
+def start(run: Run) -> bool:
+    """Push the code and start the run's VM in the first zone with an L4 free; False when every zone is out."""
+    if not re.fullmatch(r"[a-z0-9-]+", run.name):
         sys.exit("run name must be lowercase letters, digits and dashes (it becomes a VM name and a label)")
     busy = gpu_vms()
     if busy:
         sys.exit(f"a GPU VM is already running ({' '.join(busy)}); the quota is one L4, so wait for it to finish")
-    push_code(run)
-    client = compute_v1.InstancesClient()
+    push_code(run.name)
+    client = compute_v1.InstancesClient(credentials=CREDS)
     for zone in ZONES:
         print(f"trying {zone}")
         if not ensure_nat(zone.rsplit("-", 1)[0]):
             continue
         try:
-            client.insert(project=PROJECT, zone=zone, instance_resource=instance(run, zone, args)).result()
+            client.insert(project=PROJECT, zone=zone, instance_resource=instance(run, zone)).result()
         except GoogleAPICallError as e:
-            print(e, file=sys.stderr)
             # only a stockout is worth another zone; anything else fails the same way everywhere
             if not STOCKOUT.search(str(e)):
+                print(e, file=sys.stderr)
                 drop_nats()
                 sys.exit(1)
             continue
-        print(f"started egpt-{run} in {zone} (deleted after training, or after {MAX_HOURS}h at most)")
-        print(f"log: uv run --group gcp scripts/gcp.py logs {run}")
-        return
+        print(f"started egpt-{run.name} in {zone} (deleted after training, or after {run.max_hours}h at most)")
+        print(f"log: uv run --group gcp scripts/gcp.py logs {run.name}")
+        return True
     drop_nats()
-    sys.exit(f"no zone in [{' '.join(ZONES)}] had an L4 free")
+    print(f"no zone in [{' '.join(ZONES)}] had an L4 free")
+    return False
+
+
+def up(run: Run, retry: bool = False) -> None:
+    """Start the run; with retry, try every zone again each RETRY_SECONDS until one has an L4 free."""
+    while not start(run):
+        if not retry:
+            sys.exit(1)
+        print(f"{time.strftime('%H:%M')} {run.name}: retrying in {RETRY_SECONDS // 60} min", flush=True)
+        time.sleep(RETRY_SECONDS)
+
+
+def wait(name: str) -> None:
+    """Block until the run's VM has deleted itself, then pull its files."""
+    while any(vm.name == f"egpt-{name}" for vm in labeled_vms()):
+        time.sleep(POLL_SECONDS)
+    print(f"{time.strftime('%H:%M')} {name}: VM gone", flush=True)
+    pull(name)
+
+
+def queue(path: Path) -> None:
+    """Run every [[run]] of a TOML file in turn on the one L4."""
+    runs = [Run(**spec) for spec in tomllib.loads(path.read_text())["run"]]
+    for run in runs:
+        run.args = run.args or DEFAULT_ARGS
+        up(run, retry=True)
+        wait(run.name)
+    print(f"{time.strftime('%H:%M')} queue done: {' '.join(r.name for r in runs)}", flush=True)
 
 
 def logs(run: str) -> None:
@@ -283,7 +374,7 @@ def logs(run: str) -> None:
 
 def boot(run: str) -> None:
     """Print the startup script's lines from the VM's serial console, before the training log exists."""
-    client = compute_v1.InstancesClient()
+    client = compute_v1.InstancesClient(credentials=CREDS)
     vm = next((v for v in labeled_vms() if v.name == f"egpt-{run}"), None)
     if vm is None:
         sys.exit(f"no VM egpt-{run}")
@@ -310,7 +401,7 @@ def labeled_vms() -> list[compute_v1.Instance]:
     """The project's VMs carrying the event-gpt label."""
     out: list[compute_v1.Instance] = []
     request = compute_v1.AggregatedListInstancesRequest(project=PROJECT, filter="labels.project=event-gpt")
-    for _, scoped in compute_v1.InstancesClient().aggregated_list(request=request):
+    for _, scoped in compute_v1.InstancesClient(credentials=CREDS).aggregated_list(request=request):
         out.extend(scoped.instances)
     return out
 
@@ -325,7 +416,7 @@ def status() -> None:
 
 def drop_nats() -> None:
     """Delete the routers; a NAT holds an external IP that is billed even with no VM behind it."""
-    routers = compute_v1.RoutersClient()
+    routers = compute_v1.RoutersClient(credentials=CREDS)
     request = compute_v1.AggregatedListRoutersRequest(project=PROJECT, filter=f"name={ROUTER}")
     for scope, scoped in routers.aggregated_list(request=request):
         for r in scoped.routers:
@@ -336,7 +427,7 @@ def drop_nats() -> None:
 
 def down() -> None:
     """Delete every labeled VM and the NAT gateways."""
-    client = compute_v1.InstancesClient()
+    client = compute_v1.InstancesClient(credentials=CREDS)
     for vm in labeled_vms():
         zone = vm.zone.rsplit("/", 1)[-1]
         client.delete(project=PROJECT, zone=zone, instance=vm.name).result()
@@ -354,13 +445,13 @@ def nuke() -> None:
     for blob in b.list_blobs():
         blob.delete()
     b.delete()
-    projects = resourcemanager_v3.ProjectsClient()
+    projects = resourcemanager_v3.ProjectsClient(credentials=CREDS)
     policy = projects.get_iam_policy(resource=f"projects/{PROJECT}")
     for binding in policy.bindings:
         if binding.role == ROLE_NAME and f"serviceAccount:{SA}" in binding.members:
             binding.members.remove(f"serviceAccount:{SA}")
     projects.set_iam_policy(request={"resource": f"projects/{PROJECT}", "policy": policy})
-    iam = iam_admin_v1.IAMClient()
+    iam = iam_admin_v1.IAMClient(credentials=CREDS)
     iam.delete_service_account(name=f"projects/{PROJECT}/serviceAccounts/{SA}")
     iam.delete_role(request=iam_admin_v1.DeleteRoleRequest(name=ROLE_NAME))
 
@@ -372,17 +463,21 @@ def main() -> None:
     """Dispatch the subcommand."""
     cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("", [])
     if not PROJECT:
-        sys.exit("no project: set GCP_PROJECT or run `gcloud auth application-default login`")
+        sys.exit("no project: set GCP_PROJECT or `gcloud config set project <id>`")
     if cmd == "init":
         init()
     elif cmd == "up" and rest:
-        up(rest[0], " ".join(rest[1:]) or DEFAULT_ARGS)
+        up(Run(rest[0], " ".join(rest[1:]) or DEFAULT_ARGS))
     elif cmd == "logs" and rest:
         logs(rest[0])
     elif cmd == "boot" and rest:
         boot(rest[0])
     elif cmd == "pull" and rest:
         pull(rest[0])
+    elif cmd == "wait" and rest:
+        wait(rest[0])
+    elif cmd == "queue" and rest:
+        queue(Path(rest[0]))
     elif cmd == "status":
         status()
     elif cmd == "down":

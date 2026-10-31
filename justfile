@@ -129,6 +129,16 @@ gcp-status:
 gcp-pull run:
     uv run --group gcp scripts/gcp.py pull {{ run }}
 
+# Block until a run's VM has deleted itself, then pull its files
+[group('gcp')]
+gcp-wait run:
+    uv run --group gcp scripts/gcp.py wait {{ run }}
+
+# Run every [[run]] of a TOML file in turn on the one L4, retrying while no zone has one free
+[group('gcp')]
+gcp-queue file:
+    uv run --group gcp scripts/gcp.py queue {{ file }}
+
 # Delete every event-gpt VM and the NAT gateways
 [group('gcp')]
 gcp-down:
