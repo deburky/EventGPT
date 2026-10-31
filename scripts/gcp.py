@@ -34,6 +34,13 @@ A queue file lists runs as TOML tables; each takes the settings of `up` and fall
     probe = "only"
     probe_args = "--batch 32 --now --attn --out /opt/egpt/ckpt/probe-attn"
     max_hours = 4
+    files = { "probe" = "bucket:runs/hier-rope-s42/ckpt/probe" }   # copied to runs/<name>/ckpt/<key> before launch
+
+A files source is a local file or folder, or bucket:<prefix> for an object or folder already in the bucket, copied
+there without a download.
+
+With probe = "module", the VM runs `python -m <probe_args>` (an evaluation module and its flags) in place of training,
+on the files copied in; /opt/egpt/ckpt is the run's checkpoint folder there.
 """
 
 import io
@@ -44,7 +51,7 @@ import sys
 import tarfile
 import time
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -122,7 +129,8 @@ SPOT = os.environ.get("SPOT", "0") == "1"
 DATA_PREFIX = os.environ.get("DATA_PREFIX", "data")  # bucket folder of the token streams the VM trains and probes on
 LABELS = {"project": "event-gpt"}
 DEFAULT_ARGS = "--arch eventgpt --rope --steps 20000 --batch 8 --accum 2"
-STOCKOUT = re.compile(r"ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources")
+# no L4 free in the zone, or the project's one-GPU quota taken by a VM started a moment earlier
+STOCKOUT = re.compile(r"ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources|QUOTA_EXCEEDED|GPUS_ALL_REGIONS")
 RETRY_SECONDS = 300
 POLL_SECONDS = 120
 
@@ -138,6 +146,7 @@ class Run:
     max_hours: int = MAX_HOURS
     spot: bool = SPOT
     data_prefix: str = DATA_PREFIX
+    files: dict[str, str] = field(default_factory=dict)
 
 
 # -------------------------------------------------------------------------------
@@ -160,6 +169,21 @@ def upload_tree(local: Path, prefix: str) -> None:
             b.blob(name).upload_from_filename(str(p))
             sent += 1
     print(f"{prefix}: {sent} of {len(files)} files uploaded")
+
+
+def copy_in_bucket(src: str, dest: str) -> None:
+    """Copy the object src, or every object under the folder src, to dest inside the bucket."""
+    b = bucket()
+    one = b.get_blob(src)
+    if one is not None:
+        b.copy_blob(one, b, dest)
+        return
+    blobs = list(b.list_blobs(prefix=f"{src.rstrip('/')}/"))
+    if not blobs:
+        sys.exit(f"nothing at gs://{BUCKET}/{src}")
+    for blob in blobs:
+        b.copy_blob(blob, b, dest + blob.name.removeprefix(src.rstrip("/")))
+    print(f"{src}: {len(blobs)} objects copied to {dest}")
 
 
 # -------------------------------------------------------------------------------
@@ -311,13 +335,22 @@ def instance(run: Run, zone: str) -> compute_v1.Instance:
 
 
 def start(run: Run) -> bool:
-    """Push the code and start the run's VM in the first zone with an L4 free; False when every zone is out."""
+    """Push the code and start the run's VM in the first zone with an L4 free; False when the L4 is taken or every zone is out."""
     if not re.fullmatch(r"[a-z0-9-]+", run.name):
         sys.exit("run name must be lowercase letters, digits and dashes (it becomes a VM name and a label)")
     busy = gpu_vms()
     if busy:
-        sys.exit(f"a GPU VM is already running ({' '.join(busy)}); the quota is one L4, so wait for it to finish")
+        print(f"a GPU VM is already running ({' '.join(busy)}); the quota is one L4")
+        return False
     push_code(run.name)
+    for rel, src in run.files.items():
+        dest = f"runs/{run.name}/ckpt/{rel}"
+        if src.startswith("bucket:"):
+            copy_in_bucket(src.removeprefix("bucket:"), dest)
+        elif (ROOT / src).is_dir():
+            upload_tree(ROOT / src, dest)
+        else:
+            bucket().blob(dest).upload_from_filename(str(ROOT / src))
     client = compute_v1.InstancesClient(credentials=CREDS)
     for zone in ZONES:
         print(f"trying {zone}")
@@ -329,13 +362,13 @@ def start(run: Run) -> bool:
             # only a stockout is worth another zone; anything else fails the same way everywhere
             if not STOCKOUT.search(str(e)):
                 print(e, file=sys.stderr)
-                drop_nats()
+                drop_nats(force=False)
                 sys.exit(1)
             continue
         print(f"started egpt-{run.name} in {zone} (deleted after training, or after {run.max_hours}h at most)")
         print(f"log: uv run --group gcp scripts/gcp.py logs {run.name}")
         return True
-    drop_nats()
+    drop_nats(force=False)
     print(f"no zone in [{' '.join(ZONES)}] had an L4 free")
     return False
 
@@ -414,8 +447,14 @@ def status() -> None:
         print(f"{vm.name:32} {zone:16} {vm.status:12} {vm.labels.get('run', ''):24} {vm.creation_timestamp[:16]}")
 
 
-def drop_nats() -> None:
-    """Delete the routers; a NAT holds an external IP that is billed even with no VM behind it."""
+def drop_nats(force: bool = True) -> None:
+    """Delete the routers; a NAT holds an external IP that is billed even with no VM behind it.
+
+    Without force the routers stay while any GPU VM exists, since a run started by another queue a moment ago
+    may still be installing its packages through them.
+    """
+    if not force and gpu_vms():
+        return
     routers = compute_v1.RoutersClient(credentials=CREDS)
     request = compute_v1.AggregatedListRoutersRequest(project=PROJECT, filter=f"name={ROUTER}")
     for scope, scoped in routers.aggregated_list(request=request):

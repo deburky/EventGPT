@@ -7,6 +7,10 @@ event target and score the whole test fold. A draw with no positive gives no mod
 budget is drawn several times. CatBoost's scores are also reported under the zero-shot rule, which sets
 clients who already had the kind to zero and needs no labels either.
 
+With --case-control the budget counts positives instead of rows: each draw takes n positives of the target from
+the pretraining folds and a fixed --negatives client-months drawn uniformly from its negatives, as a team that
+labels its known cases and a sample of the rest would. The curve is then read in positives.
+
 Example: `uv run egpt label-curve --zero-shot data/runs/hier-rope-s42/zero_shot.csv data/runs/hier-rope-s43/zero_shot.csv`
 """
 
@@ -28,6 +32,7 @@ from eventgpt.evaluation.zero_shot import FIRST, seen_before
 
 ROOT = Path(__file__).resolve().parents[3]
 BUDGETS = [1_000, 3_000, 10_000, 30_000, 100_000, 300_000]
+POSITIVE_BUDGETS = [5, 10, 20, 50, 100, 200, 400]
 
 
 def draws(n: int) -> int:
@@ -71,7 +76,9 @@ def main() -> None:
     p.add_argument("--zero-shot", type=Path, nargs="+", required=True, help="zero_shot.csv files, averaged as the reference")
     p.add_argument("--budgets", type=int, nargs="+", default=BUDGETS)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--out", type=Path, default=ROOT / "data" / "baseline" / "label_curve.csv")
+    p.add_argument("--case-control", action="store_true", help="budgets count positives of the target, beside --negatives negatives")
+    p.add_argument("--negatives", type=int, default=10_000)
+    p.add_argument("--out", type=Path, default=None, help="default data/baseline/label_curve.csv, or label_curve_cc.csv")
     a = p.parse_args()
 
     t0 = time.time()
@@ -89,7 +96,20 @@ def main() -> None:
         print(f"fold {k}: {len(rows):,} rows ({time.time() - t0:.0f}s)", flush=True)
     pool = pd.concat(pool_parts, ignore_index=True)
     rng = np.random.default_rng(a.seed)
-    picks = {(n, d): rng.choice(len(pool), size=min(n, len(pool)), replace=False) for n in a.budgets for d in range(draws(n))}
+    budgets = (POSITIVE_BUDGETS if a.budgets == BUDGETS else a.budgets) if a.case_control else a.budgets
+    # (budget, draw, label) -> training rows; uniform draws share their rows across labels
+    picks: dict[tuple[int, int, str], np.ndarray] = {}
+    for n in budgets:
+        for d in range(5 if a.case_control else draws(n)):
+            if not a.case_control:
+                idx = rng.choice(len(pool), size=min(n, len(pool)), replace=False)
+                picks.update({(n, d, lab): idx for lab in FIRST})
+                continue
+            for lab in FIRST:
+                pos, neg = np.flatnonzero(pool[lab].to_numpy() == 1), np.flatnonzero(pool[lab].to_numpy() != 1)
+                if n > len(pos):
+                    continue
+                picks[(n, d, lab)] = np.r_[rng.choice(pos, n, replace=False), rng.choice(neg, a.negatives, replace=False)]
     used = pool.iloc[np.unique(np.concatenate(list(picks.values())))]
     feats = features(pd.concat([used, test]))
     print(f"{feats.shape[1] - 2} features for {len(used):,} pool rows ({time.time() - t0:.0f}s)", flush=True)
@@ -102,25 +122,26 @@ def main() -> None:
 
     xte = design(test)
     res = []
-    for (n, d), idx in picks.items():
+    for (n, d, lab), idx in picks.items():
+        k = FIRST.index(lab)
         tr = pool.iloc[idx]
-        xtr = design(tr)
-        for k, lab in enumerate(FIRST):
-            y, yte = tr[lab].to_numpy(), test[lab].to_numpy()
-            q = fit_predict(xtr, y, tr["client_id"].to_numpy(), xte, a.seed + d)
-            raw = score(yte, q)["roc_auc"] if q is not None else 0.5
-            rule = score(yte, q * unseen[:, k])["roc_auc"] if q is not None else 0.5
-            res.append({"budget": n, "draw": d, "label": lab, "positives": int(y.sum()), "catboost": raw, "catboost_rule": rule})
-        print(f"budget {n:,} draw {d} ({time.time() - t0:.0f}s)", flush=True)
+        y, yte = tr[lab].to_numpy(), test[lab].to_numpy()
+        q = fit_predict(design(tr), y, tr["client_id"].to_numpy(), xte, a.seed + d)
+        raw = score(yte, q)["roc_auc"] if q is not None else 0.5
+        rule = score(yte, q * unseen[:, k])["roc_auc"] if q is not None else 0.5
+        row = {"budget": n, "draw": d, "label": lab, "rows": len(idx), "positives": int(y.sum())}
+        res.append({**row, "catboost": raw, "catboost_rule": rule})
+        print(f"budget {n:,} draw {d} {lab} ({time.time() - t0:.0f}s)", flush=True)
     r = pd.DataFrame(res)
-    a.out.parent.mkdir(parents=True, exist_ok=True)
-    r.to_csv(a.out, index=False)
+    out = a.out or ROOT / "data" / "baseline" / ("label_curve_cc.csv" if a.case_control else "label_curve.csv")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    r.to_csv(out, index=False)
 
     zs = pd.concat([pd.read_csv(f, index_col="label")["zero_shot_unseen"] for f in a.zero_shot], axis=1).mean(axis=1)
     summary = r.groupby(["label", "budget"])[["positives", "catboost", "catboost_rule"]].mean().unstack("budget")
     print(summary.round(3).to_string())
     print(f"zero-shot reference (mean of {len(a.zero_shot)}):\n{zs.round(3).to_string()}")
-    print(f"written to {a.out} ({time.time() - t0:.0f}s)")
+    print(f"written to {out} ({time.time() - t0:.0f}s)")
 
 
 if __name__ == "__main__":

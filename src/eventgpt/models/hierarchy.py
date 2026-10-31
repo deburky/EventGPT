@@ -31,6 +31,7 @@ class EventGPTConfig(GPTConfig):
     evt_id: int = 2
     max_events: int = 512  # positions for the history decoder
     rope: bool = False  # no positions inside an event; time-aware rotary positions over events
+    time_pos: str = "log"  # rotary position of an event with rope: log (64 ln(1 + minutes)), linear (hours) or ordinal (index)
     n_experts: int = 1  # feed-forward experts in the event encoder, hard-routed by event kind
     packed: bool = True  # token stages attend within packed per-event rows (linear in the window) rather than dense masks
     profile_path: bool = False  # the profile event's field embeddings added to every later event of the client (needs packed)
@@ -135,17 +136,32 @@ class KindRouter(nn.Module):
 
 
 class TimePositions(nn.Module):
-    """Rotary position per event = 64 * log1p(minutes since the client's first event in the window)."""
+    """Rotary position per event from the time since the client's first event in the window.
 
-    def forward(self, idx: torch.Tensor, event: torch.Tensor, n_ev: int, first_ev: torch.Tensor, dt_seconds: torch.Tensor) -> torch.Tensor:
+    log: 64 * log1p(minutes), the scheme of the paper; linear: hours; ordinal: the event's index from the client's
+    first event, which keeps every other part of the model the same for an ablation of the time scale.
+    """
+
+    def __init__(self, scheme: str = "log") -> None:
+        super().__init__()
+        if scheme not in ("log", "linear", "ordinal"):
+            raise ValueError(f"unknown time_pos {scheme}")
+        self.scheme = scheme
+
+    def forward(
+        self, idx: torch.Tensor, event: torch.Tensor, n_ev: int, first_ev: torch.Tensor, dt_seconds: torch.Tensor, ev_pos: torch.Tensor
+    ) -> torch.Tensor:
         """Positions (b, n_ev)."""
+        if self.scheme == "ordinal":
+            return ev_pos.float()
         b, _ = idx.shape
         gap = torch.zeros(b, n_ev, device=idx.device)
         gap.scatter_add_(1, event, dt_seconds[idx])
         elapsed = torch.cumsum(gap, dim=1)
         elapsed = elapsed - torch.gather(elapsed, 1, first_ev) + torch.gather(gap, 1, first_ev)
         # float32 sums of 1e10+ seconds lose whole minutes; on MPS the difference can dip below zero and log1p would give NaN
-        return 64.0 * torch.log1p(elapsed.clamp(min=0.0) / 60.0)
+        elapsed = elapsed.clamp(min=0.0)
+        return elapsed / 3600.0 if self.scheme == "linear" else 64.0 * torch.log1p(elapsed / 60.0)
 
 
 class EventPacker(nn.Module):
@@ -273,7 +289,7 @@ class EventGPT(nn.Module):
         self.pool = EventPool()
         self.packer = EventPacker()
         self.layout = HistoryLayout(cfg.max_events)
-        self.time_positions = TimePositions()
+        self.time_positions = TimePositions(cfg.time_pos)
         self.hist_blocks = nn.ModuleList([Block(ca) for _ in range(cfg.n_layer)])
         self.ln_hist = nn.LayerNorm(d)
         self.context = PreviousEventContext()
@@ -352,7 +368,7 @@ class EventGPT(nn.Module):
         rope_pos = None
         if self.cfg.rope:
             h = ev
-            rope_pos = self.time_positions(idx, event, n_ev, first_ev, self.dt_seconds)
+            rope_pos = self.time_positions(idx, event, n_ev, first_ev, self.dt_seconds, ev_pos)
         else:
             h = ev + self.pos_event(ev_pos)
         for blk in self.hist_blocks:
