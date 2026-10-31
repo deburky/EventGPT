@@ -755,7 +755,7 @@ def inference() -> None:
     import json
 
     g = Svg(760, 268)
-    axis, now, end = 130.0, 400.0, 726.0
+    axis, now, end = 130.0, 400.0, 712.0
     violet, pale = "#9A8DEB", "#C9C2F5"
     # the past: real events on one line
     g.items.append(f'<line x1="30" y1="{axis}" x2="{now}" y2="{axis}" stroke="{LINE}" stroke-width="2"/>')
@@ -781,20 +781,20 @@ def inference() -> None:
         g.rect(now + 88, y - 9.5, pw, 19, DEC, r=6)
         g.text(now + 88 + pw / 2, y + 3.7, t, size=10, anchor="middle", mono=True)
         x0 = now + 92 + pw
-        g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="{w:.1f}" stroke-linecap="round"/>')
+        g.items.append(f'<line x1="{x0}" y1="{y}" x2="{end}" y2="{y}" stroke="{pale}" stroke-width="{w:.1f}"/>')
         g.text(now + 88 + pw / 2, y - 14, f"{p:.0%}" if p >= 0.05 else f"{p:.1%}", size=10, weight=600, anchor="middle")
         for dx in (0.3, 0.55, 0.85) if t != "50/19" else (0.6,):
             g.items.append(f'<circle cx="{x0 + dx * (end - x0):.1f}" cy="{y}" r="4" fill="{DEC}" stroke="{violet}" stroke-width="0.8"/>')
     g.items.append(f'<circle cx="{now}" cy="{axis}" r="10" fill="{EMB}"/>')
     g.text(now, axis + 4, "h", size=11, weight=600, fill="white", anchor="middle")
-    g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="218" stroke="{LINE}" stroke-width="1.2"/>')
-    g.text(end, 26, "end of month", size=10.5, fill=MUTED, anchor="end")
+    g.items.append(f'<line x1="{end}" y1="34" x2="{end}" y2="218" stroke="{INK}" stroke-width="1" stroke-dasharray="3 3"/>')
+    g.text(end, 26, "end of month", size=10.5, weight=600, anchor="middle")
     # what each part is read as
     for x, head, note in [
         (200, "History", "real events"),
         (now, "Embedding", "h at the as-of date"),
         (now + 118, "Next event", "width shows probability"),
-        (end - 80, "Sampled months", "to the end of the month"),
+        (end - 66, "Sampled months", "to the end of the month"),
     ]:
         g.text(x, 244, head, size=11, weight=600, anchor="middle")
         g.text(x, 259, note, size=9.5, fill=MUTED, anchor="middle")
