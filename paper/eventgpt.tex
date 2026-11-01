@@ -76,7 +76,7 @@ A model pretrained to predict a customer's next event can be useful in two ways.
 The usual starting point is a feature table including counts, sums and recencies computed per customer and window that is fed into a machine learning algorithm. Building the table requires business knowledge (which field is the amount, which event types matter, which windows), and that work is repeated for every new event source. Each new question also needs labels and a model of its own. When events of many kinds with different fields are combined, as in a lender's applications, repayments and account events, there is often no obvious table to build. A pretrained event model needs neither the table nor, for questions about events, the labels.
 
 Several financial institutions describe foundation models of this kind. Nubank's nuFormer is a flat
-causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGMA is a masked model with separate encoders for profile state, single events and history \cite{pragma}, and Visa's TransactionGPT encodes the aspects of each transaction before modeling across transactions \cite{transactiongpt}. None of these releases checkpoints or evaluates on publicly available data. A released checkpoint would be of little use to another institution: its vocabulary is the issuer's own event schema, so each institution pretrains its own backbone (Section~\ref{sec:per-institution}). EventGPT combines a per-event encoder, as in PRAGMA and TransactionGPT, with the causal objective of nuFormer, designed to be pretrained on product histories of a consumer lender. Here we train and evaluate it only on public data so that the results can be reproduced.
+causal decoder over customer transaction tokens \cite{nuformer}, Revolut's PRAGMA is a masked model with separate encoders for profile state, single events and history \cite{pragma}, and Visa's TransactionGPT encodes the aspects of each transaction before modeling across transactions \cite{transactiongpt}. Starling Bank has announced a transactional foundation model trained on 15 billion of its transactions, to be deployed in 2027 \cite{starling}. None of these releases checkpoints or evaluates on publicly available data. A released checkpoint would be of little use to another institution: its vocabulary is the issuer's own event schema, so each institution pretrains its own backbone (Section~\ref{sec:per-institution}). EventGPT combines a per-event encoder, as in PRAGMA and TransactionGPT, with the causal objective of nuFormer, designed to be pretrained on product histories of a consumer lender. Here we train and evaluate it only on public data so that the results can be reproduced.
 
 \paragraph{Contributions.}
 \begin{enumerate}
@@ -604,6 +604,8 @@ Processing Systems 31}.
 
 \bibitem{lifestream} Sakhno, A., et al. (2025). PyTorch-Lifestream: Learning embeddings on discrete event sequences. In \emph{Proceedings of the 34th International Joint Conference on Artificial Intelligence (IJCAI), Demo Track}, 11104--11108. doi:10.24963/ijcai.2025/1272.
 \url{https://github.com/dllllb/pytorch-lifestream}.
+
+\bibitem{starling} Starling Bank (2026). Starling backs UK sovereign cloud. Press release, 14 October 2026. \url{https://www.starlingbank.com/news/starling-backs-uk-sovereign-cloud/}.
 
 \bibitem{rope} Su, J., Lu, Y., Pan, S., Murtadha, A., Wen, B., and Liu, Y. (2021). RoFormer: Enhanced transformer with rotary position embedding. arXiv:2104.09864.
 
