@@ -12,14 +12,13 @@ parameter-free submodules so a module-level trace of the model reads as its stag
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from eventgpt.models.flat import Block, GPTConfig
+from eventgpt.models.flat import Block, GPTConfig, dt_midpoint
 
 
 @dataclass
@@ -324,7 +323,7 @@ class EventGPT(nn.Module):
                 self.kind_lut[i] = next((k for pre, k in kinds.items() if name.startswith(pre)), 0)
             elif tok.startswith("dt="):
                 b = int(tok[3:])
-                self.dt_seconds[i] = 0.0 if b >= 140 else (8 * (math.exp(b / 8) - 1) + 8 * (math.exp((b + 1) / 8) - 1)) / 2
+                self.dt_seconds[i] = dt_midpoint(b)
 
     @staticmethod
     def _init(m: nn.Module) -> None:

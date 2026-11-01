@@ -102,8 +102,12 @@ def build(a: argparse.Namespace, vocab: Vocab) -> tuple[Any, Any]:
         usr_id=vocab.id(USR),
         qk_norm=a.qk_norm,
         aligned=a.aligned,
+        rope=a.rope,
+        evt_id=vocab.id(EVT),
     )
-    return GPT(cfg), cfg
+    gpt = GPT(cfg)
+    gpt.set_vocab_tables(vocab.structured)
+    return gpt, cfg
 
 
 def main() -> None:
@@ -122,7 +126,11 @@ def main() -> None:
     p.add_argument("--warmup", type=int, default=0, help="linear warmup steps; 0 means min(200, steps // 10)")
     p.add_argument("--eval-every", type=int, default=250)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--rope", action="store_true", help="eventgpt: time-aware rotary positions over events, none inside an event")
+    p.add_argument(
+        "--rope",
+        action="store_true",
+        help="time-aware rotary positions: eventgpt over events, none inside an event; gpt per event, in place of learned positions",
+    )
     p.add_argument(
         "--time-pos", choices=["log", "linear", "ordinal"], default="log", help="eventgpt with --rope: rotary position of an event"
     )

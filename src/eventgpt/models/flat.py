@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,6 +25,8 @@ class GPTConfig:
     usr_id: int = 1  # [USR] token id; segment boundaries for the block-diagonal mask
     qk_norm: bool = False  # RMSNorm on queries and keys inside each head (Qwen3), bounds attention logits
     aligned: bool = False  # trained on client-aligned windows (eventgpt.data.windows); the probe builds histories the same way
+    rope: bool = False  # flat GPT: time-aware rotary positions per event in place of learned token positions
+    evt_id: int = 2  # [EVT] token id; with usr_id, where events start
 
 
 class RMSNorm(nn.Module):
@@ -39,6 +42,11 @@ class RMSNorm(nn.Module):
         h = x.float()
         h = h * torch.rsqrt(h.pow(2).mean(dim=-1, keepdim=True) + self.eps)
         return (h * self.scale).to(x.dtype)
+
+
+def dt_midpoint(b: int) -> float:
+    """Seconds at the middle of dt bucket b; buckets from 140 on (gaps of years) count as zero."""
+    return 0.0 if b >= 140 else (8 * (math.exp(b / 8) - 1) + 8 * (math.exp((b + 1) / 8) - 1)) / 2
 
 
 def _mlp(d: int) -> nn.Sequential:
@@ -140,13 +148,22 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    """Flat GPT: tied embeddings, learned positions, n_layer blocks, final norm; the encoder head also sees the [USR] state."""
+    """Flat GPT: tied embeddings, learned positions, n_layer blocks, final norm; the encoder head also sees the [USR] state.
+
+    With cfg.rope the learned positions give way to EventGPT's temporal rotary positions: every token of an event
+    rotates by 64 ln(1 + minutes since the client's first event in the window), so the flat decoder receives time
+    the way the history decoder does, and the two architectures differ only in the hierarchy.
+    """
 
     def __init__(self, cfg: GPTConfig) -> None:
         super().__init__()
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.pos_emb = nn.Embedding(cfg.block_size, cfg.d_model)
+        self.pos_emb = None if cfg.rope else nn.Embedding(cfg.block_size, cfg.d_model)
+        # seconds per dt token, filled by set_vocab_tables; only a model with temporal positions has the buffer
+        self.dt_seconds: torch.Tensor
+        if cfg.rope:
+            self.register_buffer("dt_seconds", torch.zeros(cfg.vocab_size))
         self.drop = nn.Dropout(cfg.dropout)
         self.blocks = nn.ModuleList([Block(cfg) for _ in range(cfg.n_layer)])
         self.ln_f = nn.LayerNorm(cfg.d_model)
@@ -163,6 +180,30 @@ class GPT(nn.Module):
             nn.init.normal_(m.weight, mean=0.0, std=0.02)
         if isinstance(m, nn.Linear) and m.bias is not None:
             nn.init.zeros_(m.bias)
+
+    def set_vocab_tables(self, structured: dict[str, int]) -> None:
+        """Fill dt_seconds (dt token -> bucket midpoint) from the vocabulary; a no-op without temporal positions."""
+        if not self.cfg.rope:
+            return
+        for tok, i in structured.items():
+            if tok.startswith("dt="):
+                self.dt_seconds[i] = dt_midpoint(int(tok[3:]))
+
+    def time_positions(self, idx: torch.Tensor, seg_start: torch.Tensor) -> torch.Tensor:
+        """Rotary position (b, t): 64 ln(1 + minutes) from the client's first event in the window, shared by an event's tokens.
+
+        As in EventGPT's TimePositions, the first event counts its own gap, so a client starting mid-window and one
+        starting at the window's first token are measured the same way.
+        """
+        b, t = idx.shape
+        starts = (idx == self.cfg.evt_id) | (idx == self.cfg.usr_id)
+        event = torch.cumsum(starts.long(), dim=1)  # event index per token, 0 before the first boundary
+        gap = torch.zeros(b, t + 1, device=idx.device)
+        gap.scatter_add_(1, event, self.dt_seconds[idx])
+        elapsed = torch.cumsum(gap, dim=1)
+        first = torch.gather(event, 1, seg_start)
+        tok = torch.gather(elapsed, 1, event) - torch.gather(elapsed, 1, first) + torch.gather(gap, 1, first)
+        return 64.0 * torch.log1p(tok.clamp(min=0.0) / 60.0)
 
     def segment_mask(self, idx: torch.Tensor) -> torch.Tensor:
         """Block-diagonal attention mask over client segments (a segment starts at each [USR]), causal if the model is.
@@ -191,10 +232,15 @@ class GPT(nn.Module):
         if doc_mask:
             is_usr = idx == self.cfg.usr_id
             seg_start = torch.cummax(torch.where(is_usr, ar.unsqueeze(0), torch.zeros_like(idx)), dim=1).values
+        else:
+            seg_start = torch.zeros_like(idx)
+        rope_pos = None
+        if self.pos_emb is None:
+            rope_pos = self.time_positions(idx, seg_start)
+            x = self.drop(self.tok_emb(idx))
+        else:
             pos = (ar.unsqueeze(0) - seg_start).clamp(max=self.cfg.block_size - 1)
             x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
-        else:
-            x = self.drop(self.tok_emb(idx) + self.pos_emb(ar))
         mask = self.segment_mask(idx) if doc_mask else None
         if key_mask is not None:
             keys = key_mask.unsqueeze(1).unsqueeze(1)  # (b, 1, 1, t) broadcast over queries
@@ -206,7 +252,7 @@ class GPT(nn.Module):
                 )
             mask = mask & keys
         for blk in self.blocks:
-            x = blk(x, mask)
+            x = blk(x, mask, pos=rope_pos)
         return self.ln_f(x)
 
     def forward(
