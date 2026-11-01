@@ -30,6 +30,8 @@ HID, HID_BAND = "#CADEF9", "#EDF3FD"
 DEC, DEC_BAND = "#DDD9FA", "#F3F1FE"
 EMB = "#14283C"
 CHURN = "#4F5BD5"
+GRAY = "#EEF1F4"
+DARK = "#3B4856"
 SANS = "'Inter 18pt'"  # the static cut, quoted for CSS, so weights resolve
 MONO = "JetBrains Mono"
 
@@ -798,7 +800,7 @@ def inference() -> None:
     g.text(end, 26, "horizon", size=10.5, weight=600, anchor="middle")
     # what each part is read as
     for x, head, note in [
-        (200, "Event history", "real events"),
+        (200.0, "Event history", "real events"),
         (now, "Embedding", "h at the as-of date"),
         (now + 118, "Next event", "width shows probability"),
         (end - 66, "Sampled futures", "up to the horizon"),
@@ -806,6 +808,216 @@ def inference() -> None:
         g.text(x, 244, head, size=11, weight=600, anchor="middle")
         g.text(x, 259, note, size=9.5, fill=MUTED, anchor="middle")
     g.save("inference")
+
+
+def box(
+    g: Svg, cx: float, y: float, label: str, fill: str = "white", stroke: str = INK, w: float = 210, h: float = 26, note: str = ""
+) -> None:
+    """A labeled box centered at cx, with an optional second line."""
+    g.rect(cx - w / 2, y, w, h, fill, stroke, r=6)
+    ink = "white" if fill == DARK else INK
+    if note:
+        g.text(cx, y + h / 2 - 2, label, size=10.5, weight=600, fill=ink, anchor="middle")
+        g.text(cx, y + h / 2 + 11, note, size=9, fill="#D5DEE8" if fill == DARK else MUTED, anchor="middle")
+    else:
+        g.text(cx, y + h / 2 + 4, label, size=10.5, weight=500, fill=ink, anchor="middle")
+
+
+def plus(g: Svg, cx: float, cy: float) -> None:
+    """A residual add."""
+    g.items.append(f'<circle cx="{cx}" cy="{cy}" r="8" fill="white" stroke="{INK}" stroke-width="1.2"/>')
+    g.items.append(f'<line x1="{cx - 4.5}" y1="{cy}" x2="{cx + 4.5}" y2="{cy}" stroke="{INK}" stroke-width="1.2"/>')
+    g.items.append(f'<line x1="{cx}" y1="{cy - 4.5}" x2="{cx}" y2="{cy + 4.5}" stroke="{INK}" stroke-width="1.2"/>')
+
+
+def curve(g: Svg, x0: float, y0: float, x1: float, y1: float) -> None:
+    """A thin curved pointer from a callout to a part of the model."""
+    g.items.append(
+        f'<path d="M{x0},{y0} C{x0 - 60},{y0} {x1 + 70},{y1} {x1},{y1}" fill="none" stroke="{MUTED}" '
+        'stroke-width="1" marker-end="url(#head)"/>'
+    )
+
+
+def fan(
+    g: Svg,
+    x0: float,
+    x1: float,
+    y_top: float,
+    y_bot: float,
+    n_top: int,
+    n_bot: int,
+    top_ends: tuple[str, str],
+    bot_ends: tuple[str, str],
+    fill: str,
+) -> None:
+    """Fully connected units: every bottom unit to every top unit."""
+
+    def xs(n: int, a: float, b: float) -> list[float]:
+        return [a + (b - a) * k / max(n - 1, 1) for k in range(n)] if n > 1 else [(a + b) / 2]
+
+    tops = xs(n_top, x0, x1)
+    pad = (x1 - x0) * 0.18 if n_bot < n_top else 0
+    bots = xs(n_bot, x0 + pad, x1 - pad)
+    for xb in bots:
+        for xt in tops:
+            g.items.append(
+                f'<line x1="{xb:.1f}" y1="{y_bot}" x2="{xt:.1f}" y2="{y_top}" stroke="{INK}" stroke-width="0.45" opacity="0.55"/>'
+            )
+    for row, y in ((tops, y_top), (bots, y_bot)):
+        for x in row:
+            c = fill if row is tops else HID
+            g.items.append(f'<circle cx="{x:.1f}" cy="{y}" r="6" fill="{c}" stroke="{INK}" stroke-width="0.9"/>')
+    if top_ends[0]:
+        g.text(tops[0], y_top - 11, top_ends[0], size=10, anchor="middle")
+    if top_ends[1]:
+        g.text(tops[-1], y_top - 11, top_ends[1], size=10, anchor="middle")
+    g.text(bots[0], y_bot + 21, bot_ends[0], size=10, anchor="middle")
+    g.text(bots[-1], y_bot + 21, bot_ends[1], size=10, anchor="middle")
+
+
+def lines(g: Svg, x: float, y: float, rows: list[str]) -> None:
+    """A callout caption, one line per row."""
+    for k, s in enumerate(rows):
+        g.text(x, y + k * 15, s, size=10.5, weight=600)
+
+
+def explainer() -> None:
+    """The model as one stack, bottom to top, with panels on the output layer, the embedding and the event pooling."""
+    g = Svg(900, 762)
+    cx = 235.0
+    # outputs and the model container
+    g.text(cx, 22, "Next-event tokens", size=11, anchor="middle", mono=True)
+    g.arrow([(cx, 86), (cx, 30)])
+    g.rect(40, 46, 390, 676, GRAY, r=16)
+    g.text(52, 710, "EventGPT", size=13, weight=700)
+
+    # token decoder
+    g.rect(110, 60, 300, 148, DEC_BAND, r=12)
+    g.text(400, 76, "Token decoder", size=10.5, weight=600, fill=MUTED, anchor="end")
+    box(g, cx, 86, "Linear output layer", h=22)
+    box(g, cx, 116, "Final LayerNorm", h=22)
+    box(g, cx, 146, "Causal self-attention block", DEC, "none", note="within the next event", h=30)
+    g.text(cx + 112, 166, "× 2", size=11, weight=600, fill=MUTED)
+    box(g, cx, 184, "Token embeddings + " + sub("h", "i"), w=170, h=20)
+    for y0, y1 in ((116, 108), (146, 138), (184, 176)):
+        g.arrow([(cx, y0), (cx, y1)])
+
+    # the hidden state, the embedding
+    g.items.append(f'<circle cx="{cx}" cy="226" r="12" fill="{EMB}"/>')
+    g.text(cx, 230.5, sub("h", "i"), size=12, weight=600, fill="white", anchor="middle")
+    g.arrow([(cx, 214), (cx, 204)])
+    box(g, cx, 250, "Final LayerNorm", h=22)
+    g.arrow([(cx, 250), (cx, 238)])
+
+    # history decoder: the repeated block
+    top, bot = 284, 500
+    g.rect(110, top, 250, bot - top, HID_BAND, HID, r=14)
+    g.text(122, top + 17, "History decoder", size=10.5, weight=600, fill=MUTED)
+    mid = (top + bot) / 2
+    g.text(84, mid + 6, "6 ×", size=17, weight=500, anchor="end")
+    g.items.append(
+        f'<path d="M104,{top + 8} Q96,{top + 8} 96,{top + 30} L96,{mid - 10} Q96,{mid} 90,{mid} '
+        f'Q96,{mid} 96,{mid + 10} L96,{bot - 30} Q96,{bot - 8} 104,{bot - 8}" fill="none" stroke="{INK}" stroke-width="1.4"/>'
+    )
+    plus(g, cx, 304)
+    box(g, cx, 320, "Feed forward", "#E4E9EF", note="GELU, 384 to 1,536", h=32)
+    box(g, cx, 362, "LayerNorm 2", h=20)
+    plus(g, cx, 398)
+    box(g, cx, 414, "Causal multi-head attention", DARK, "none", note="over events, temporal RoPE", h=34)
+    box(g, cx, 458, "LayerNorm 1", h=20)
+    g.arrow([(cx, 296), (cx, 274)])
+    g.arrow([(cx, 320), (cx, 314)])
+    g.arrow([(cx, 362), (cx, 354)])
+    g.arrow([(cx, 390), (cx, 384)])
+    g.arrow([(cx, 414), (cx, 408)])
+    g.arrow([(cx, 458), (cx, 450)])
+    g.arrow([(cx, 518), (cx, 480)])
+    # residuals
+    rx = cx + 118
+    g.arrow([(cx, 490), (rx, 490), (rx, 398), (cx + 10, 398)])
+    g.arrow([(cx, 388), (rx - 8, 388), (rx - 8, 304), (cx + 10, 304)])
+
+    # event vectors and the event encoder
+    box(g, cx, 518, sub("e", "1") + " to " + sub("e", "i") + ", one vector per event", ENC, "none", w=230, h=22)
+    g.rect(110, 552, 300, 98, ENC_BAND, r=12)
+    g.text(400, 568, "Event encoder", size=10.5, weight=600, fill=MUTED, anchor="end")
+    box(g, cx, 576, "Mean pool", h=22)
+    box(g, cx, 610, "Self-attention block", ENC, "none", note="bidirectional, within each event", h=32)
+    g.text(cx + 112, 631, "× 2", size=11, weight=600, fill=MUTED)
+    g.arrow([(cx, 576), (cx, 542)])
+    g.arrow([(cx, 610), (cx, 600)])
+    box(g, cx, 662, "Token embedding layer", h=22)
+    g.arrow([(cx, 662), (cx, 644)])
+    box(g, cx, 692, "Tokenized events", TOK, "none", h=22)
+    g.arrow([(cx, 692), (cx, 686)])
+    g.arrow([(cx, 734), (cx, 716)])
+    g.text(cx, 752, "A client's events", size=11, anchor="middle", mono=True)
+
+    ax, aw, ah = 470.0, 410.0, 205.0
+    # callout A: the output layer
+    ay = 40.0
+    g.rect(ax, ay, aw, ah, "white", INK, r=18)
+    fan(g, ax + 30, ax + aw - 30, ay + 36, ay + 100, 16, 9, ("1", "12,828"), ("1", "384"), TOK)
+    lines(
+        g,
+        ax + 24,
+        ay + 148,
+        [
+            "The linear output layer maps 384 hidden units to",
+            "12,828 units, one per token in the vocabulary.",
+            "Zero-shot scores read the target's tokens here.",
+        ],
+    )
+    curve(g, ax, ay + 90, cx + 105, 97)
+
+    # callout B: the embedding read by a head
+    by = 265.0
+    g.rect(ax, by, aw, ah, "white", INK, r=18)
+    fan(g, ax + 60, ax + aw - 60, by + 36, by + 100, 1, 9, ("label", ""), ("1", "384"), "#F6D7C3")
+    lines(
+        g,
+        ax + 24,
+        by + 148,
+        [
+            "For a supervised label, a logistic regression reads",
+            sub("h", "i") + " at the as-of date, frozen: 384 hidden units",
+            "to one probability.",
+        ],
+    )
+    g.items.append(
+        f'<path d="M{ax},{by + 15} C{ax - 40},226 {cx + 65},226 {cx + 14},226" fill="none" stroke="{MUTED}" '
+        'stroke-width="1" marker-end="url(#head)"/>'
+    )
+
+    # callout C: one vector per event
+    cy0 = 490.0
+    g.rect(ax, cy0, aw, ah, "white", INK, r=18)
+    toks = ["[EVT]", "name=trx_1", "dt=79", "sub=12", "amt_bin=19"]
+    total = sum(len(t) * 6.0 + 12 for t in toks) + 5 * (len(toks) - 1)
+    x, centers = ax + (aw - total) / 2, []
+    for t in toks:
+        w = g.pill(x, cy0 + 100, t)
+        centers.append(x + w / 2)
+        x += w + 5
+    mid = ax + aw / 2
+    for xc in centers:
+        g.items.append(f'<line x1="{xc}" y1="{cy0 + 98}" x2="{mid}" y2="{cy0 + 60}" stroke="{INK}" stroke-width="0.6" opacity="0.6"/>')
+    g.rect(mid - 70, cy0 + 34, 140, 26, ENC, r=8)
+    g.text(mid, cy0 + 51, sub("e", "i") + ", 384 units", size=10.5, weight=600, anchor="middle")
+    g.text(mid, cy0 + 24, "mean pool", size=9.5, fill=MUTED, anchor="middle")
+    lines(
+        g,
+        ax + 24,
+        cy0 + 148,
+        [
+            "The event encoder pools the tokens of each event",
+            "into one vector, so the history decoder has one",
+            "position per event and attends over events.",
+        ],
+    )
+    curve(g, ax, cy0 + 95, cx + 105, 587)
+
+    g.save("explainer")
 
 
 if __name__ == "__main__":
