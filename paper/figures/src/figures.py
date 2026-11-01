@@ -1015,7 +1015,7 @@ def explainer() -> None:
             "position per event and attends over events.",
         ],
     )
-    curve(g, ax, cy0 + 95, cx + 105, 587)
+    g.arrow([(ax, 587), (cx + 105, 587)], MUTED)
 
     g.save("explainer")
 
