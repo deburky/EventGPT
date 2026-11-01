@@ -892,8 +892,8 @@ def explainer() -> None:
     g.text(52, 710, "EventGPT", size=13, weight=700)
 
     # token decoder
-    g.rect(100, 60, 270, 148, DEC_BAND, r=12)
-    g.text(112, 77, "Token decoder", size=10.5, weight=600, fill=MUTED)
+    g.rect(112, 60, 270, 148, DEC_BAND, r=12)
+    g.text(124, 77, "Token decoder", size=10.5, weight=600, fill=MUTED)
     box(g, cx, 86, "Linear output layer", h=22)
     box(g, cx, 116, "Final LayerNorm", h=22)
     box(g, cx, 146, "Causal self-attention block", DEC, "none", note="within the next event", h=30)
@@ -939,8 +939,8 @@ def explainer() -> None:
 
     # event vectors and the event encoder
     box(g, cx, 518, sub("e", "1") + " to " + sub("e", "i") + ", one vector per event", ENC, "none", w=230, h=22)
-    g.rect(100, 552, 270, 98, ENC_BAND, r=12)
-    g.text(112, 569, "Event encoder", size=10.5, weight=600, fill=MUTED)
+    g.rect(112, 552, 270, 98, ENC_BAND, r=12)
+    g.text(124, 569, "Event encoder", size=10.5, weight=600, fill=MUTED)
     box(g, cx, 576, "Mean pool", h=22)
     box(g, cx, 610, "Self-attention block", ENC, "none", note="bidirectional, within each event", h=32)
     g.text(cx + 110, 631, "× 2", size=11, weight=600, fill=MUTED)
