@@ -893,7 +893,7 @@ def explainer() -> None:
 
     # token decoder
     g.rect(100, 60, 270, 148, DEC_BAND, r=12)
-    g.text(cx - 105, 77, "Token decoder", size=10.5, weight=600, fill=MUTED)
+    g.text(cx - 98, 77, "Token decoder", size=10.5, weight=600, fill=MUTED)
     box(g, cx, 86, "Linear output layer", h=22)
     box(g, cx, 116, "Final LayerNorm", h=22)
     box(g, cx, 146, "Causal self-attention block", DEC, "none", note="within the next event", h=30)
@@ -912,7 +912,7 @@ def explainer() -> None:
     # history decoder: the repeated block
     top, bot = 284, 500
     g.rect(100, top, 270, bot - top, HID_BAND, HID, r=14)
-    g.text(cx - 105, top + 17, "History decoder", size=10.5, weight=600, fill=MUTED)
+    g.text(cx - 98, top + 17, "History decoder", size=10.5, weight=600, fill=MUTED)
     mid = (top + bot) / 2
     g.text(76, mid + 6, "6 ×", size=17, weight=500, anchor="end")
     g.items.append(
@@ -940,7 +940,7 @@ def explainer() -> None:
     # event vectors and the event encoder
     box(g, cx, 518, sub("e", "1") + " to " + sub("e", "i") + ", one vector per event", ENC, "none", w=230, h=22)
     g.rect(100, 552, 270, 98, ENC_BAND, r=12)
-    g.text(cx - 105, 569, "Event encoder", size=10.5, weight=600, fill=MUTED)
+    g.text(cx - 98, 569, "Event encoder", size=10.5, weight=600, fill=MUTED)
     box(g, cx, 576, "Mean pool", h=22)
     box(g, cx, 610, "Self-attention block", ENC, "none", note="bidirectional, within each event", h=32)
     g.text(cx + 110, 631, "× 2", size=11, weight=600, fill=MUTED)
