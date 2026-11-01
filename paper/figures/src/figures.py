@@ -892,12 +892,12 @@ def explainer() -> None:
     g.text(52, 710, "EventGPT", size=13, weight=700)
 
     # token decoder
-    g.rect(110, 60, 300, 148, DEC_BAND, r=12)
-    g.text(400, 76, "Token decoder", size=10.5, weight=600, fill=MUTED, anchor="end")
+    g.rect(100, 60, 270, 148, DEC_BAND, r=12)
+    g.text(112, 77, "Token decoder", size=10.5, weight=600, fill=MUTED)
     box(g, cx, 86, "Linear output layer", h=22)
     box(g, cx, 116, "Final LayerNorm", h=22)
     box(g, cx, 146, "Causal self-attention block", DEC, "none", note="within the next event", h=30)
-    g.text(cx + 112, 166, "× 2", size=11, weight=600, fill=MUTED)
+    g.text(cx + 110, 166, "× 2", size=11, weight=600, fill=MUTED)
     box(g, cx, 184, "Token embeddings + " + sub("h", "i"), w=170, h=20)
     for y0, y1 in ((116, 108), (146, 138), (184, 176)):
         g.arrow([(cx, y0), (cx, y1)])
@@ -911,13 +911,13 @@ def explainer() -> None:
 
     # history decoder: the repeated block
     top, bot = 284, 500
-    g.rect(110, top, 250, bot - top, HID_BAND, HID, r=14)
-    g.text(122, top + 17, "History decoder", size=10.5, weight=600, fill=MUTED)
+    g.rect(100, top, 270, bot - top, HID_BAND, HID, r=14)
+    g.text(112, top + 17, "History decoder", size=10.5, weight=600, fill=MUTED)
     mid = (top + bot) / 2
-    g.text(84, mid + 6, "6 ×", size=17, weight=500, anchor="end")
+    g.text(76, mid + 6, "6 ×", size=17, weight=500, anchor="end")
     g.items.append(
-        f'<path d="M104,{top + 8} Q96,{top + 8} 96,{top + 30} L96,{mid - 10} Q96,{mid} 90,{mid} '
-        f'Q96,{mid} 96,{mid + 10} L96,{bot - 30} Q96,{bot - 8} 104,{bot - 8}" fill="none" stroke="{INK}" stroke-width="1.4"/>'
+        f'<path d="M94,{top + 8} Q86,{top + 8} 86,{top + 30} L86,{mid - 10} Q86,{mid} 80,{mid} '
+        f'Q86,{mid} 86,{mid + 10} L86,{bot - 30} Q86,{bot - 8} 94,{bot - 8}" fill="none" stroke="{INK}" stroke-width="1.4"/>'
     )
     plus(g, cx, 304)
     box(g, cx, 320, "Feed forward", "#E4E9EF", note="GELU, 384 to 1,536", h=32)
@@ -939,11 +939,11 @@ def explainer() -> None:
 
     # event vectors and the event encoder
     box(g, cx, 518, sub("e", "1") + " to " + sub("e", "i") + ", one vector per event", ENC, "none", w=230, h=22)
-    g.rect(110, 552, 300, 98, ENC_BAND, r=12)
-    g.text(400, 568, "Event encoder", size=10.5, weight=600, fill=MUTED, anchor="end")
+    g.rect(100, 552, 270, 98, ENC_BAND, r=12)
+    g.text(112, 569, "Event encoder", size=10.5, weight=600, fill=MUTED)
     box(g, cx, 576, "Mean pool", h=22)
     box(g, cx, 610, "Self-attention block", ENC, "none", note="bidirectional, within each event", h=32)
-    g.text(cx + 112, 631, "× 2", size=11, weight=600, fill=MUTED)
+    g.text(cx + 110, 631, "× 2", size=11, weight=600, fill=MUTED)
     g.arrow([(cx, 576), (cx, 542)])
     g.arrow([(cx, 610), (cx, 600)])
     box(g, cx, 662, "Token embedding layer", h=22)
