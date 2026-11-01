@@ -67,9 +67,7 @@
 
 \begin{abstract}
 \noindent
-A model pretrained to predict a customer's next event can estimate the probability of future events without training on their labels and provide a reusable representation for supervised downstream banking tasks. We pretrain EventGPT, a hierarchical causal transformer, by next-token maximum likelihood estimation on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). From its next-event distribution, EventGPT scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79-0.92. Gradient boosting on 114 engineered features reaches comparable scores after 10,000 to 300,000 randomly sampled client-months on four targets, but remains below EventGPT on the fifth. A Markov-chain baseline also achieves competitive zero-shot performance, although EventGPT scores higher on most transaction kinds with sufficient test positives.
-
-For supervised product prediction, frozen EventGPT embeddings alone underperform gradient boosting on engineered features (mean ROC-AUC 0.787 versus 0.808 across five test folds). Adding profile fields and full-history token counts raises EventGPT to 0.804. A rank-averaged ensemble of these representations and the engineered features improves ROC-AUC by 0.014-0.017 over the feature table alone and by 0.007-0.016 over the corresponding ensemble without EventGPT. Pretraining only on transactions before the label period reduces mean ROC-AUC by 0.004-0.006 relative to a transactions-only model pretrained over the full period. The code and pretrained weights are released.
+A model pretrained to predict a customer's next event can estimate the probability of future events without training on their labels and provide a reusable representation for supervised downstream banking tasks. We pretrain EventGPT, a hierarchical causal transformer, by next-token maximum likelihood estimation on the public Multimodal Banking Dataset (MBD-mini: 100,224 clients, 38.8 million transactions and 66.3 million geolocation pings). Keeping one state per event, EventGPT trains in 1.5 hours on one L4 GPU at windows up to 8,192 tokens. From its next-event distribution, with no labels, EventGPT scores five targets of the form ``the client makes a transaction of a given kind for the first time next month'' at ROC-AUC 0.79 to 0.92. Gradient boosting on 114 engineered features needs 10,000 to 300,000 labeled client-months to match it on four targets and stays below it on the fifth. For product prediction, frozen EventGPT embeddings score below the engineered features (mean ROC-AUC 0.787 against 0.808 over five test folds), and a rank-averaged ensemble of EventGPT, profile fields and token counts with the engineered features adds 0.014 to 0.017, of which 0.007 to 0.016 is EventGPT's own. The code and pretrained weights are released.
 \end{abstract}
 
 % -------------------------------------------------------------------------------
@@ -689,12 +687,6 @@ CatBoost, engineered features and embedding feature & 0.808 \\
 \end{tabular}
 \end{table}
 
-\section{Block attention within events}\label{sec:packed}
-
-Neither the event encoder nor the token decoder attends across an event boundary (Figure~\ref{fig:masks}), but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the block and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Block attention makes windows of 8,192 tokens affordable (Section~\ref{sec:context}).
-
-
-
 \section{Training windows and tenure}\label{sec:windows}
 
 Windows drawn at random offsets usually start partway through a client's history and lack \tok{[USR]} and the profile event. Every evaluation history opens with both. We remove this mismatch with \emph{aligned} windows (Figure~\ref{fig:windows}). When a window starts partway through a client's history, we put \tok{[USR]} and the profile event back at its start, as we do when we truncate a long evaluation history. We stamp the profile event at the client's first event. We start both the \tok{dt} token of the next event and the temporal RoPE positions of Eq.~(\ref{eq:pos}) at the client's first event. Apart from the profile event and this one \tok{dt} token, an aligned window holds the same tokens as a random one. We build evaluation and zero-shot histories the same way for these models.
@@ -717,11 +709,11 @@ Because the history itself fixes its as-of date, an embedding can be stored in a
 
 \section{Tokenization}\label{app:tokens}
 
-\paragraph{Profile event} The four fields \tok{src\_type21}, \tok{src\_type22}, \tok{src\_type31} and \tok{src\_type32} never change within a client: each takes one value per client in all 98,721 clients with transactions. On fold 1, by contrast, \tok{src\_type11} and \tok{src\_type12} change on 13--15\% of consecutive transactions, and the destination fields and the event type on 55--63\%. The four fields are attributes of the client's account. Repeated on every transaction they took 4 of 13 tokens, so we state them once, in a profile event at the time of the client's first event. Transactions shrink to 9 tokens, and the pretraining stream from 454 million to 332 million tokens. The profile event gives the model what PRAGMA's profile-state encoder provides \cite{pragma}: a representation of static attributes learned together with the events.
+\paragraph{Profile event} The four fields \tok{src\_type21}, \tok{src\_type22}, \tok{src\_type31} and \tok{src\_type32} never change within a client: each takes one value per client in all 98,721 clients with transactions. On fold 1, by contrast, \tok{src\_type11} and \tok{src\_type12} change on 13--15\% of consecutive transactions, and the destination fields and the event type on 55--63\%. The four fields are attributes of the client's account. Repeated on every transaction they took 4 of 13 tokens, so we state them once, in a profile event at the time of the client's first event. Transactions shrink to 9 tokens, and the pretraining stream from 454 million to 332 million tokens.
 
-\paragraph{Geolocation} Raw pings outnumber transactions 1.7 to 1 and would crowd them out of a window. We keep one geolocation event per client per Moscow day. It carries the day's most frequent \tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, and it is stamped at the day's last ping, so it never runs ahead of the pings it summarizes. This leaves 14.7 million events. The geohash codes are anonymized, so neighboring cells cannot be identified, but every \tok{geohash\_5} cell lies in exactly one \tok{geohash\_4} cell, and the shared \tok{g4} token lets cells in the same area share information.
+\paragraph{Geolocation} Raw pings outnumber transactions 1.7 to 1 and would crowd them out of a window. We keep one geolocation event per client per Moscow day. It carries the day's most frequent \tok{geohash\_5} cell and the \tok{geohash\_4} cell that contains it, and it is stamped at the day's last ping, so it never runs ahead of the pings it summarizes. This leaves 14.7 million events.
 
-\paragraph{Vocabulary} Values seen in the pretraining folds become tokens. Values of the two counterparty-like fields seen fewer than 1,000 times, and geohash cells seen fewer than 100 (\tok{g4}) or 300 (\tok{g5}) times, fall into one \tok{other} token per key. The vocabulary has 12,828 tokens, and no token of the held-out fold is unknown. Dialogue embeddings are left out of this version.
+\paragraph{Vocabulary} Values seen in the pretraining folds become tokens. Values of the two counterparty-like fields seen fewer than 1,000 times, and geohash cells seen fewer than 100 (\tok{g4}) or 300 (\tok{g5}) times, fall into one \tok{other} token per key. The vocabulary has 12,828 tokens, and no token of the held-out fold is unknown.
 
 \begin{table}[htbp]
 \centering
@@ -895,5 +887,9 @@ window & (CatBoost) & random & aligned & recency \\
 \caption{Share of rows positive for each label by month, on a log scale, over all five folds (the test fold in full, the training rows weighted back to their share). Product targets are solid, event targets dashed and churn blue. January 2023 follows the last transaction, so the event targets and churn end in December.}
 \label{fig:labels}
 \end{figure}
+
+\paragraph{Block attention within events}\label{sec:packed}
+
+Neither the event encoder nor the token decoder attends across an event boundary (Figure~\ref{fig:masks}), but a dense attention mask over a window of $t$ tokens still costs memory in proportion to $t^2$. We lay each event out instead as one row of at most $L$ slots, with $L$ the longest event in the window (ten tokens on MBD), and attend within rows. Both stages then cost in proportion to the number of events times $L^2$. On real windows the block and the dense computations agree to within $1.2 \times 10^{-6}$ on every event. Block attention makes windows of 8,192 tokens affordable.
 
 \end{document}
