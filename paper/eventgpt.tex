@@ -407,6 +407,7 @@ Figure~\ref{fig:futures} shows what the model expects for one client. Its single
 
 Without the rule for earlier occurrences the score on 50/19 falls from 0.91 to 0.72. The model predicts the kind for clients who already make it every month. On the rare kind 48/31 the rule makes no difference. The score is the probability of the kind as the next event, while the label covers the whole month. We have not tried sampling a month of events from the model, which would match the label's horizon.
 
+\paragraph{Labels needed to match the zero-shot score}
 We measure how many labels the engineered features need to match the zero-shot score. We fit CatBoost on the engineered features of $n$ client-months drawn at random from the 699,380 rows of the pretraining folds and score the whole test fold (Figure~\ref{fig:label-curve}, Table~\ref{tab:labels}). A draw without a positive scores 0.5. CatBoost's scores follow the same rule for earlier occurrences.
 
 The engineered features pass the zero-shot score after 10,000 to 30,000 labeled rows on 50/19, the most common kind, and after 30,000 to 300,000 on three others. On 23/49 they are still below it at 300,000 rows and pass it with every positive of the pretraining folds (0.930). This is between about 20 and 400 positives, and more than 260 on 23/49. Draws of 1,000 rows hold at most two positives and draws of 10,000 rows hold 2 to 34, so these row counts are rough thresholds.
