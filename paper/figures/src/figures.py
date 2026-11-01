@@ -507,6 +507,59 @@ def labels() -> None:
     g.save("labels")
 
 
+def label_curve() -> None:
+    """Engineered features on n labeled client-months against the zero-shot score, one panel per event target."""
+    ns = [1_000, 3_000, 10_000, 30_000, 100_000, 300_000]
+    rows = [  # Table tab:labels: zero-shot, then CatBoost at each n
+        ("48/31", 0.909, [0.573, 0.650, 0.718, 0.871, 0.894, 0.912]),
+        ("23/49", 0.918, [0.784, 0.809, 0.866, 0.856, 0.896, 0.902]),
+        ("26/28", 0.828, [0.735, 0.739, 0.776, 0.817, 0.858, 0.849]),
+        ("48/10", 0.787, [0.739, 0.668, 0.695, 0.763, 0.771, 0.826]),
+        ("50/19", 0.905, [0.746, 0.821, 0.854, 0.921, 0.929, 0.932]),
+    ]
+    g = Svg(900, 250)
+    lo, hi = 0.55, 0.95
+    pw, gap, x0, py0, py1 = 150, 22, 62, 196, 52
+    g.items.append(f'<line x1="20" y1="18" x2="46" y2="18" stroke="{DARK}" stroke-width="1.8"/>')
+    g.items.append(f'<circle cx="33" cy="18" r="2.6" fill="{DARK}"/>')
+    g.text(54, 22, "engineered features, CatBoost on n labeled client-months", size=11, fill=MUTED)
+    g.items.append(f'<line x1="420" y1="18" x2="446" y2="18" stroke="{BLUE}" stroke-width="2" stroke-dasharray="5 3"/>')
+    g.text(454, 22, "EventGPT zero-shot, no labels", size=11, fill=MUTED)
+
+    def ty(v: float) -> float:
+        return py0 - (v - lo) / (hi - lo) * (py0 - py1)
+
+    for k, (name, zs, cb) in enumerate(rows):
+        px0 = x0 + k * (pw + gap)
+        px1 = px0 + pw
+
+        def tx(n: float, a: float = px0, b: float = px1) -> float:
+            return a + 6 + (math.log10(n) - 3) / (math.log10(300_000) - 3) * (b - a - 12)
+
+        g.text((px0 + px1) / 2, py1 - 12, f"first {name}", size=11, weight=600, anchor="middle")
+        for v in (0.6, 0.7, 0.8, 0.9):
+            g.items.append(f'<line x1="{px0}" y1="{ty(v):.1f}" x2="{px1}" y2="{ty(v):.1f}" stroke="#E9EDF1" stroke-width="1"/>')
+            if k == 0:
+                g.text(px0 - 8, ty(v) + 3.5, f"{v:.1f}", size=10, fill=MUTED, anchor="end")
+        g.items.append(f'<line x1="{px0}" y1="{py0}" x2="{px1}" y2="{py0}" stroke="{MUTED}" stroke-width="1"/>')
+        for n, lab in [(1_000, "1k"), (10_000, "10k"), (100_000, "100k")]:
+            g.items.append(f'<line x1="{tx(n):.1f}" y1="{py0}" x2="{tx(n):.1f}" y2="{py0 + 4}" stroke="{MUTED}" stroke-width="1"/>')
+            g.text(tx(n), py0 + 17, lab, size=10, fill=MUTED, anchor="middle")
+        g.items.append(
+            f'<line x1="{px0}" y1="{ty(zs):.1f}" x2="{px1}" y2="{ty(zs):.1f}" stroke="{BLUE}" stroke-width="2" stroke-dasharray="5 3"/>'
+        )
+        pts = [(tx(n), ty(v)) for n, v in zip(ns, cb, strict=True)]
+        d = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
+        g.items.append(f'<polyline points="{d}" fill="none" stroke="{DARK}" stroke-width="1.8" stroke-linejoin="round"/>')
+        g.items.extend(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="2.6" fill="{DARK}" stroke="white" stroke-width="1"/>' for a, b in pts)
+    g.items.append(
+        f'<text transform="translate(18,{(py0 + py1) / 2}) rotate(-90)" font-family="{SANS}" font-size="10.5" '
+        f'fill="{INK}" text-anchor="middle">ROC-AUC</text>'
+    )
+    g.text(x0 + (5 * pw + 4 * gap) / 2, py0 + 38, "labeled client-months n (log scale)", size=10.5, anchor="middle")
+    g.save("label_curve")
+
+
 def futures() -> None:
     """One test client's real month beside three months sampled from EventGPT, and the scores read off the model."""
     import json
