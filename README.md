@@ -22,7 +22,7 @@ the event targets are on test fold 0.
 | Five "first transaction of a kind next month" targets, no labels | 0.79 to 0.92 | passes after 10,000 to 300,000 labeled rows on four targets, still below at 300,000 on the fifth |
 | Four product targets, logistic head on the frozen embedding | 0.787 | 0.808 |
 | The same, with profile fields and full-history token counts beside the embedding | 0.804 | 0.808 |
-| Rank average of the two models | 0.824 | |
+| Rank average of the row above and the hand-built features | 0.824 | |
 
 The rank average scores 0.014 to 0.018 above the hand-built features on every fold and seed. On
 transactions alone the embedding reaches 0.793, level with token counts over the full transaction
