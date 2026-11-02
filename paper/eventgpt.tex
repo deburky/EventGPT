@@ -339,7 +339,7 @@ The final configuration, labeled \emph{aligned} in the tables, trains on aligned
 
 \subsection{Event targets without labels}\label{sec:zero-shot}
 
-Scored from the next-event distribution with no labels (Section~\ref{sec:zs-protocol}), the five event targets reach ROC-AUC 0.79 to 0.92 on both seeds (Table~\ref{tab:zero-shot}). A supervised head on the same model scores 0.045 to 0.061 higher on 26/28 and 48/10 ($p < 0.001$ in every run). On the other three targets the two are level after a Bonferroni correction over 20 paired tests, except 23/49 with aligned windows and seed 43, where the head is higher (Appendix~\ref{app:tests}). Training on aligned windows leaves the zero-shot scores unchanged. The score scaled by recent activity, a form we chose after these scores were known (Section~\ref{sec:ablations}), is higher than the head on 48/31 and lower on 26/28 and 48/10 (Appendix~\ref{app:tests}).
+Scored from the next-event distribution with no labels (Section~\ref{sec:zs-protocol}), the five event targets reach ROC-AUC 0.79 to 0.92 on both seeds (Table~\ref{tab:zero-shot}). A supervised head on the same model scores 0.045 to 0.061 higher on 26/28 and 48/10 ($p < 0.001$ in every run). On the other three targets the two are level after a Bonferroni correction over 20 paired tests, except 23/49 with aligned windows and seed 43, where the head is higher (Appendix~\ref{app:tests}). The score scaled by recent activity, a form we chose after these scores were known (Section~\ref{sec:ablations}), is higher than the head on 48/31 and lower on 26/28 and 48/10 (Appendix~\ref{app:tests}).
 
 The flat decoder, scored the same way, reaches 0.78 to 0.92, the same range as EventGPT, so zero-shot scoring needs only a model trained to predict the next event.
 

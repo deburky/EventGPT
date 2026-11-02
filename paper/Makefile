@@ -16,7 +16,7 @@ all: pdf
 
 pdf: $(PDF)
 
-FIGS := $(wildcard figures/*.pdf)
+FIGS := $(sort $(shell grep -oE "figures/[A-Za-z_]+\.pdf" $(TEX)))
 
 $(PDF): $(TEX) $(FIGS)
 	$(LATEX) $(TEX)
