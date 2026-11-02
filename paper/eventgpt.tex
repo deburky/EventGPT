@@ -399,24 +399,24 @@ Figure~\ref{fig:futures} shows what the model expects for one client. Its single
 Without the rule for earlier occurrences the score on 50/19 falls from 0.91 to 0.72. The model predicts the kind for clients who already make it every month. On the rare kind 48/31 the rule makes no difference. The score is the probability of the kind as the next event, while the label covers the whole month.
 
 \paragraph{A month of sampled events}
-We also let the model write the label month. For each test row we sample 16 continuations event by event, from the last event to the end of the month, and sum over the sampled steps the probability that the event at the step is of the target kind and falls inside the month, up to the first sampled event of that kind. The mean over continuations estimates the probability that the kind occurs during the month. On seed 42, with every positive and 10,000 uniform test rows, it scores 0.011 to 0.036 above the one-step score on all five targets, by at least three paired standard errors on four of them (Table~\ref{tab:rollout}). The scaled score of Appendix~\ref{sec:ablations}, the one-step score times one plus the client's transactions in the 30 days before the as-of date, was chosen on the test fold. The rollout scores level with it on four targets and 0.011 higher on 50/19, with no such choice. It expects 15.6 transactions per row in the month against 15.5 observed, with a Spearman correlation of 0.81 across rows.
+We also let the model write the label month. For each test row we sample 16 continuations event by event, from the last event to the end of the month, and sum over the sampled steps the probability that the event at the step is of the target kind and falls inside the month, up to the first sampled event of that kind. The mean over continuations estimates the probability that the kind occurs during the month. Averaged over seeds 42 and 43, with every positive and 10,000 uniform test rows, it scores 0.010 to 0.036 above the one-step score on all five targets, by at least three paired standard errors on four of them (Table~\ref{tab:rollout}). The scaled score of Appendix~\ref{sec:ablations}, the one-step score times one plus the client's transactions in the 30 days before the as-of date, was chosen on the test fold. The rollout scores level with it on four targets and 0.012 higher on 50/19, with no such choice. It expects 15.5 transactions per row in the month against 15.5 observed, with a Spearman correlation of 0.81 across rows.
 
-As forecasts of the month itself, the sampled months are weaker. The probability of no transaction in the month scores 0.842 on churn, the same as the days since the last transaction alone and below the number of transactions in the 30 days before the as-of date (0.884). Matched by kind, a sampled month and the real one share 0.459 of their transactions (counted over the larger of the two in each kind), against 0.545 for the client's previous month repeated and 0.506 for transactions drawn at the client's rate over the last 90 days.
+As forecasts of the month itself, the sampled months are weaker. The probability of no transaction in the month scores 0.846 on churn, close to the days since the last transaction alone (0.842) and below the number of transactions in the 30 days before the as-of date (0.884). Matched by kind, a sampled month and the real one share 0.459 of their transactions (counted over the larger of the two in each kind), against 0.545 for the client's previous month repeated and 0.506 for transactions drawn at the client's rate over the last 90 days.
 
 \begin{table}[htbp]
 \centering
-\caption{Event targets scored from 16 sampled months per row against the one-step zero-shot score and the scaled score, EventGPT on aligned windows, seed 42. ROC-AUC on each target's positives and 10,000 uniform test rows, with the rule for earlier occurrences; differences with paired standard errors clustered by client.}
+\caption{Event targets scored from 16 sampled months per row against the one-step zero-shot score and the scaled score, EventGPT on aligned windows, mean of seeds 42 and 43. ROC-AUC on each target's positives and 10,000 uniform test rows, with the rule for earlier occurrences; differences with paired standard errors clustered by client.}
 \label{tab:rollout}
 \small
 \begin{tabular}{lrcccc}
 \toprule
 target & positives & one-step & scaled & month rollout & rollout $-$ one-step \\
 \midrule
-first 48/31 & 59 & 0.905 & 0.923 & 0.918 & 0.013 (0.007) \\
-first 23/49 & 195 & 0.915 & 0.930 & 0.930 & 0.015 (0.005) \\
-first 26/28 & 252 & 0.824 & 0.856 & 0.859 & 0.036 (0.005) \\
-first 48/10 & 290 & 0.779 & 0.808 & 0.809 & 0.030 (0.004) \\
-first 50/19 & 770 & 0.908 & 0.908 & 0.919 & 0.011 (0.002) \\
+first 48/31 & 59 & 0.912 & 0.927 & 0.922 & 0.010 (0.007) \\
+first 23/49 & 195 & 0.908 & 0.928 & 0.926 & 0.018 (0.005) \\
+first 26/28 & 252 & 0.826 & 0.859 & 0.861 & 0.036 (0.005) \\
+first 48/10 & 290 & 0.781 & 0.812 & 0.813 & 0.032 (0.004) \\
+first 50/19 & 770 & 0.907 & 0.907 & 0.919 & 0.012 (0.002) \\
 \bottomrule
 \end{tabular}
 \end{table}
