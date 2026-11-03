@@ -10,7 +10,7 @@ transactions, 66.3 million geolocation pings). The weights are on the Hugging Fa
 [`deburky/EventGPT`](https://huggingface.co/deburky/EventGPT), and every number in the paper can be rerun
 from this repository.
 
-Paper: *EventGPT: Next-Event Pretraining on Banking Customer Histories* (Burakov, 2026), in [`paper/`](paper/).
+Paper: *EventGPT: Next-Event Pretraining on Banking Customer Histories* (Burakov, 2026), [arXiv:2611.03302](https://arxiv.org/abs/2611.03302); LaTeX source in [`paper/`](paper/).
 
 ## Results
 
@@ -150,6 +150,9 @@ were trained.
   title  = {EventGPT: Next-Event Pretraining on Banking Customer Histories},
   author = {Burakov, Denis},
   year   = {2026},
-  url    = {https://github.com/deburky/EventGPT}
+  eprint = {2611.03302},
+  archivePrefix = {arXiv},
+  primaryClass = {stat.ML},
+  url    = {https://arxiv.org/abs/2611.03302}
 }
 ```

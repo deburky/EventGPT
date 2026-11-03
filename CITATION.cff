@@ -13,3 +13,14 @@ keywords:
   - banking
   - foundation model
   - generative pretrained transformer
+preferred-citation:
+  type: article
+  title: "EventGPT: Next-Event Pretraining on Banking Customer Histories"
+  authors:
+    - family-names: Burakov
+      given-names: Denis
+  year: 2026
+  identifiers:
+    - type: other
+      value: "arXiv:2611.03302"
+  url: "https://arxiv.org/abs/2611.03302"
