@@ -40,7 +40,8 @@ A files source is a local file or folder, or bucket:<prefix> for an object or fo
 there without a download.
 
 With probe = "module", the VM runs `python -m <probe_args>` (an evaluation module and its flags) in place of training,
-on the files copied in; /opt/egpt/ckpt is the run's checkpoint folder there.
+on the files copied in; /opt/egpt/ckpt is the run's checkpoint folder there. With probe = "train-module" it trains first
+and then runs the module, which is how eventgpt.homecredit.probe follows a Home Credit pretraining on one VM.
 """
 
 import io
