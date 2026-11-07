@@ -22,7 +22,8 @@ Two baselines use no labels either: `share`, the share of the case's past paymen
 count of cb_open and app events in the year before the cut), and `last`, whether the last payment month had it.
 For reference, a logistic head on the history state at the cut is fitted on rows from folds 1 to 4.
 
-ROC-AUC per target with DeLong standard errors; rows and scores go to zero_shot_scores.parquet. Example:
+Test rows are every case positive for a target plus 20,000 uniform rows; each target's ROC-AUC uses its own positives
+and the uniform rows, with DeLong standard errors. Rows and scores go to zero_shot_scores.parquet. Example:
 
     MBD_OUT=data/home-credit/tokens uv run python -m eventgpt.homecredit.zero_shot data/runs/hc-alq-s42/ckpt/hc-alq-s42.pt --batch 64
 """
@@ -137,6 +138,21 @@ def load_rows(fold: Fold, ev: Events, k: int, max_cases: int | None, seed: int) 
     return t[t["n_hist"] >= 2].reset_index(drop=True)
 
 
+def select_test_rows(rows: pd.DataFrame, n_random: int, seed: int) -> pd.DataFrame:
+    """Every row positive for a target plus a uniform sample of n_random rows, flagged in `uniform`.
+
+    Each target's ROC-AUC then uses its own positives and the uniform sample, as in the MBD zero-shot protocol:
+    positives of other targets are left out rather than counted as negatives, which keeps the AUC unbiased.
+    """
+    rand = np.random.default_rng(seed).choice(len(rows), min(n_random, len(rows)), replace=False)
+    uniform = np.zeros(len(rows), dtype=bool)
+    uniform[rand] = True
+    pos = rows[TARGETS].to_numpy().any(axis=1)
+    out = rows[uniform | pos].copy()
+    out["uniform"] = uniform[uniform | pos]
+    return out.reset_index(drop=True)
+
+
 # -------------------------------------------------------------------------------
 # Scoring
 # -------------------------------------------------------------------------------
@@ -221,8 +237,9 @@ def main() -> None:
     p.add_argument("ckpt", type=Path)
     p.add_argument("--block", type=int, default=2048)
     p.add_argument("--batch", type=int, default=64)
-    p.add_argument("--max-cases", type=int, default=0, help="cases per fold, for a quick run; 0 is every case")
-    p.add_argument("--n-train", type=int, default=40_000, help="rows from folds 1 to 4 for the supervised head")
+    p.add_argument("--max-cases", type=int, default=0, help="test cases drawn before the row selection, for a quick run; 0 is every case")
+    p.add_argument("--n-random", type=int, default=20_000, help="test rows sampled uniformly beside every row positive for a target")
+    p.add_argument("--n-train", type=int, default=20_000, help="rows from folds 1 to 4 for the supervised head")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=Path, default=None, help="results directory (default: zero_shot/ next to the checkpoint)")
     a = p.parse_args()
@@ -244,6 +261,8 @@ def main() -> None:
         fold = Fold(k, vocab)
         ev = Events(fold)
         rows = load_rows(fold, ev, k, (a.max_cases or None) if split == "test" else max(a.n_train // (N_FOLDS - 1), 1), a.seed + k)
+        if split == "test":
+            rows = select_test_rows(rows, a.n_random, a.seed)
         zs, emb = score_rows(model, fold, rows, vocab, dev, a.block, a.batch, f"fold {k}")
         for j, name in enumerate(("late", "dpd30", "new_credit", "new_app")):
             rows[f"zs_{name}"] = zs[:, j]
@@ -256,17 +275,21 @@ def main() -> None:
 
     results = []
     for name in TARGETS:
-        y = test[name].to_numpy()
-        row: dict[str, Any] = {"target": name, "rows": len(y), "positives": int(y.sum()), "prevalence": float(y.mean())}
-        cols = {"zero_shot": test[f"zs_{name}"].to_numpy(), "share": test[f"{name}_share"].to_numpy()}
+        ev_rows = test["uniform"].to_numpy() | (test[name].to_numpy() == 1)
+        sub = test[ev_rows]
+        y = sub[name].to_numpy()
+        prevalence = float(test.loc[test["uniform"], name].mean())
+        row: dict[str, Any] = {"target": name, "rows": len(y), "positives": int(y.sum()), "prevalence": prevalence}
+        cols = {"zero_shot": sub[f"zs_{name}"].to_numpy(), "share": sub[f"{name}_share"].to_numpy()}
         if f"{name}_last" in test:
-            cols["last"] = test[f"{name}_last"].to_numpy()
+            cols["last"] = sub[f"{name}_last"].to_numpy()
         ytr = train[name].to_numpy()
         if 0 < ytr.sum() < len(ytr):
             head = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000)).fit(etr, ytr)
             pr = head.predict_proba(ete)[:, 1]
-            cols["head"] = np.where(test["seen_late"] == 1, 0.0, pr) if name == "first_late" else pr
-            test[f"head_{name}"] = cols["head"]
+            pr = np.where(test["seen_late"] == 1, 0.0, pr) if name == "first_late" else pr
+            test[f"head_{name}"] = pr
+            cols["head"] = pr[ev_rows]
         for col, pcol in cols.items():
             if 0 < y.sum() < len(y):
                 row[col], row[f"{col}_se"] = auc(y, pcol)
