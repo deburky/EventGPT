@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="312" viewBox="0 0 760 312"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<rect x="20.0" y="8" width="12" height="12" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="38.0" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Before the Fisher step</text>
+<rect x="194.2" y="8" width="12" height="12" rx="3" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="212.2" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">After</text>
+<text x="40" y="52" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Largest absolute score over all tokens</text>
+<rect x="60.0" y="80.0" width="36" height="170.0" rx="4" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="78.0" y="74.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">146.4</text>
+<text x="78.0" y="266.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">before</text>
+<rect x="116.0" y="243.60213408044032" width="36" height="6.397865919559665" rx="4" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="134.0" y="237.60213408044032" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">5.5</text>
+<text x="134.0" y="266.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">step 1</text>
+<rect x="172.0" y="249.0" width="36" height="1.0" rx="4" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="190.0" y="243.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.1</text>
+<text x="190.0" y="266.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">step 2</text>
+<rect x="228.0" y="249.0" width="36" height="1.0" rx="4" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="246.0" y="243.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.0</text>
+<text x="246.0" y="266.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">step 3</text>
+<rect x="284.0" y="249.0" width="36" height="1.0" rx="4" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="302.0" y="243.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.0</text>
+<text x="302.0" y="266.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">step 4</text>
+<line x1="52.0" y1="250.0" x2="340.0" y2="250.0" stroke="#D3DAE2" stroke-width="1"/>
+<text x="400" y="52" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Predicted minus observed count, as a share of observed</text>
+<line x1="560.0" y1="72.0" x2="560.0" y2="257.0" stroke="#1B2A3A" stroke-width="1"/>
+<text x="420.0" y="86.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">late=0</text>
+<rect x="555.7881458615752" y="75.0" width="4.211854138424769" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="549.7881458615752" y="86.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">-0.8%</text>
+<circle cx="560.0" cy="82.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="420.0" y="111.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">late=1</text>
+<rect x="560.0" y="100.0" width="24.807744263429413" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="590.8077442634294" y="111.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">+4.8%</text>
+<circle cx="560.000117131437" cy="107.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="420.0" y="136.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">late=2</text>
+<rect x="560.0" y="125.0" width="117.91661561635146" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="683.9166156163515" y="136.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">+22.7%</text>
+<circle cx="560.0001592037862" cy="132.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="420.0" y="161.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">pdpd=b0</text>
+<rect x="559.7494196177956" y="150.0" width="0.25058038220436174" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="553.7494196177956" y="161.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">0.0%</text>
+<circle cx="560.0000237561985" cy="157.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="420.0" y="186.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">pdpd=b1</text>
+<rect x="560.0" y="175.0" width="45.19081689573545" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="611.1908168957355" y="186.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">+8.7%</text>
+<circle cx="560.0000146755308" cy="182.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="420.0" y="211.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">pdpd=b2</text>
+<rect x="505.15602564318425" y="200.0" width="54.84397435681575" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="499.15602564318425" y="211.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="end">-10.5%</text>
+<circle cx="560.0000328327047" cy="207.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="420.0" y="236.0" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="end">pdpd=na</text>
+<rect x="560.0" y="225.0" width="6.182261257306891" height="14" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="572.1822612573069" y="236.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">+1.2%</text>
+<circle cx="559.9999971863226" cy="232.0" r="4.5" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="560.0" y="275.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">0: predicted = observed on the 21,568 training rows</text>
+<text x="380" y="304" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">Each step adds the pseudo-inverse of the Fisher information times the score s = Σ(y − p), as in the fisher-scoring package.</text>
+</svg>

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="430" viewBox="0 0 760 430"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<rect x="20.0" y="8" width="12" height="12" rx="3" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="38.0" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Tokens</text>
+<rect x="96.6" y="8" width="12" height="12" rx="3" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="114.6" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Hidden states</text>
+<rect x="215.89999999999998" y="8" width="12" height="12" rx="3" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="233.89999999999998" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Claim</text>
+<rect x="286.4" y="8" width="12" height="12" rx="3" fill="#FBDDBF" stroke="none" stroke-width="1.2"/>
+<text x="304.4" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Residual head</text>
+<rect x="405.7" y="8" width="12" height="12" rx="3" fill="#14283C" stroke="none" stroke-width="1.2"/>
+<text x="423.7" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Confidence</text>
+<rect x="20" y="46" width="196" height="150" rx="12" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<text x="32" y="67" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Case 244050: 60 events</text>
+<rect x="30.0" y="80.0" width="78.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="69.0" y="93.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=cb_pay</text>
+<rect x="112.0" y="80.0" width="48.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="136.0" y="93.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">late=1</text>
+<rect x="164.0" y="80.0" width="54.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="191.0" y="93.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">pdpd=b2</text>
+<rect x="30.0" y="105.0" width="60.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="60.0" y="118.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=tax</text>
+<rect x="94.0" y="105.0" width="42.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="115.0" y="118.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">src=b</text>
+<rect x="30.0" y="130.0" width="78.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="69.0" y="143.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=cb_pay</text>
+<rect x="112.0" y="130.0" width="48.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="136.0" y="143.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">late=1</text>
+<rect x="164.0" y="130.0" width="54.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="191.0" y="143.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">pdpd=b1</text>
+<text x="32" y="172" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">last events before the cut</text>
+<polyline points="118,196 118,222" fill="none" stroke="#1B2A3A" stroke-width="1.4" marker-end="url(#head)"/>
+<rect x="78" y="224" width="80" height="30" rx="8" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="118" y="244" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="#1B2A3A" text-anchor="middle">h</text>
+<text x="118" y="272" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">history state at the cut</text>
+<rect x="246" y="46" width="494" height="150" rx="12" fill="#F3F1FE" stroke="none" stroke-width="1.2"/>
+<text x="262" y="67" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Token decoder writes the claim</text>
+<text x="262" y="83" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">probability of each token as written, EventGPT-D</text>
+<rect x="262.0" y="128" width="42.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="283.0" y="141.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">[EVT]</text>
+<rect x="312.0" y="128" width="78.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="351.0" y="141.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=cb_pay</text>
+<text x="351.0" y="118" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">1.00</text>
+<rect x="398.0" y="128" width="48.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="422.0" y="141.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">dt=101</text>
+<rect x="454.0" y="128" width="30.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="469.0" y="141.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">n=3</text>
+<text x="469.0" y="118" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">1.00</text>
+<rect x="492.0" y="128" width="48.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="516.0" y="141.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">late=1</text>
+<text x="516.0" y="118" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.46</text>
+<rect x="548.0" y="128" width="54.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="575.0" y="141.2" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">pdpd=b2</text>
+<text x="575.0" y="118" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.65</text>
+<text x="422.0" y="118" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">given</text>
+<text x="262" y="180" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">The claim is judged on its kind and key fields; n is written but not judged.</text>
+<polyline points="158,239 246,239 246,196" fill="none" stroke="#1B2A3A" stroke-width="1.4" marker-end="url(#head)"/>
+<rect x="246" y="222" width="300" height="64" rx="12" fill="#FEF3E8" stroke="none" stroke-width="1.2"/>
+<text x="262" y="243" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">Output head</text>
+<text x="262" y="262" font-family="JetBrains Mono" font-size="11" font-weight="400" fill="#1B2A3A" text-anchor="start">z = W₀y + A std(y) + b</text>
+<text x="262" y="278" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">W₀ pretrained and frozen; A = 0, b = 0 at the start</text>
+<polyline points="396,222 396,197" fill="none" stroke="#1B2A3A" stroke-width="1.4" marker-end="url(#head)"/>
+<rect x="574" y="222" width="166" height="64" rx="12" fill="#14283C" stroke="none" stroke-width="1.2"/>
+<text x="657" y="247" font-family="'Inter 18pt'" font-size="13" font-weight="600" fill="white" text-anchor="middle">q = 0.30</text>
+<text x="657" y="265" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#D5DEE8" text-anchor="middle">probability of the claim,</text>
+<text x="657" y="278" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#D5DEE8" text-anchor="middle">summed over n</text>
+<polyline points="657,197 657,222" fill="none" stroke="#1B2A3A" stroke-width="1.4" marker-end="url(#head)"/>
+<rect x="20" y="318" width="350" height="92" rx="12" fill="#FEF3E8" stroke="none" stroke-width="1.2"/>
+<text x="36" y="340" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">1. Cross-entropy on the true next event</text>
+<text x="36" y="359" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">trains the token decoder and the residual head;</text>
+<text x="36" y="374" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">the history decoder stays frozen</text>
+<text x="36" y="395" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">Geuter, Cheng and Alvarez-Melis (2026)</text>
+<polyline points="370,364 390,364" fill="none" stroke="#1B2A3A" stroke-width="1.4" marker-end="url(#head)"/>
+<rect x="390" y="318" width="350" height="92" rx="12" fill="#FEF3E8" stroke="none" stroke-width="1.2"/>
+<text x="406" y="340" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="start">2. Fisher scoring of the intercept b</text>
+<text x="406" y="359" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">b + I⁺ s, everything else frozen, until for every token</text>
+<text x="406" y="374" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="start">Σp = Σy on the training rows</text>
+<text x="406" y="395" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="start">maximum-likelihood score equations of b</text>
+</svg>

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="300" viewBox="0 0 800 300"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<rect x="20.0" y="8" width="12" height="12" rx="3" fill="#CADEF9" stroke="none" stroke-width="1.2"/>
+<text x="38.0" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">History state</text>
+<rect x="139.3" y="8" width="12" height="12" rx="3" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="157.3" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Chosen token</text>
+<rect x="252.5" y="8" width="12" height="12" rx="3" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="270.5" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Alternatives</text>
+<rect x="365.7" y="8" width="12" height="12" rx="3" fill="#14283C" stroke="none" stroke-width="1.2"/>
+<text x="383.7" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">Confidence</text>
+<circle cx="40.0" cy="150.0" r="11" fill="#CADEF9" stroke="#1B2A3A" stroke-width="0.9"/>
+<text x="40.0" y="154.0" font-family="'Inter 18pt'" font-size="11" font-weight="600" fill="#1B2A3A" text-anchor="middle">h</text>
+<path d="M52.0,150.0 C90.0,150.0 105.0,150.0 133.0,150.0" fill="none" stroke="#9A8DEB" stroke-width="14.0" stroke-linecap="round" opacity="0.9"/>
+<rect x="135.0" y="140.5" width="78.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="174.0" y="153.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=cb_pay</text>
+<text x="174.0" y="136.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">1.00</text>
+<path d="M52.0,150.0 C90.0,150.0 105.0,88.0 133.0,88.0" fill="none" stroke="#9A8DEB" stroke-width="0.8" stroke-linecap="round" opacity="0.45"/>
+<rect x="135.0" y="78.5" width="60.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="165.0" y="91.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=tax</text>
+<text x="165.0" y="74.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">&lt;0.01</text>
+<path d="M52.0,150.0 C90.0,150.0 105.0,212.0 133.0,212.0" fill="none" stroke="#9A8DEB" stroke-width="0.8" stroke-linecap="round" opacity="0.45"/>
+<rect x="135.0" y="202.5" width="60.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="165.0" y="215.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">name=app</text>
+<text x="165.0" y="198.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">&lt;0.01</text>
+<text x="174.0" y="268" font-family="'Inter 18pt'" font-size="11" font-weight="600" fill="#1B2A3A" text-anchor="middle">kind</text>
+<path d="M225.0,150.0 C263.0,150.0 255.0,150.0 283.0,150.0" fill="none" stroke="#9A8DEB" stroke-width="14.0" stroke-linecap="round" opacity="0.9"/>
+<rect x="285.0" y="140.5" width="30.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="300.0" y="153.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">n=3</text>
+<text x="300.0" y="136.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">1.00</text>
+<path d="M225.0,150.0 C263.0,150.0 255.0,88.0 283.0,88.0" fill="none" stroke="#9A8DEB" stroke-width="0.8" stroke-linecap="round" opacity="0.45"/>
+<rect x="285.0" y="78.5" width="30.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="300.0" y="91.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">n=4</text>
+<text x="300.0" y="74.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">&lt;0.01</text>
+<path d="M225.0,150.0 C263.0,150.0 255.0,212.0 283.0,212.0" fill="none" stroke="#9A8DEB" stroke-width="0.8" stroke-linecap="round" opacity="0.45"/>
+<rect x="285.0" y="202.5" width="30.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="300.0" y="215.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">n=2</text>
+<text x="300.0" y="198.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">&lt;0.01</text>
+<text x="300.0" y="268" font-family="'Inter 18pt'" font-size="11" font-weight="600" fill="#1B2A3A" text-anchor="middle">n</text>
+<path d="M327.0,150.0 C365.0,150.0 405.0,150.0 433.0,150.0" fill="none" stroke="#9A8DEB" stroke-width="6.5" stroke-linecap="round" opacity="0.9"/>
+<rect x="435.0" y="140.5" width="48.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="459.0" y="153.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">late=1</text>
+<text x="459.0" y="136.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.46</text>
+<path d="M327.0,150.0 C365.0,150.0 405.0,88.0 433.0,88.0" fill="none" stroke="#9A8DEB" stroke-width="4.9" stroke-linecap="round" opacity="0.45"/>
+<rect x="435.0" y="78.5" width="48.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="459.0" y="91.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">late=0</text>
+<text x="459.0" y="74.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.35</text>
+<path d="M327.0,150.0 C365.0,150.0 405.0,212.0 433.0,212.0" fill="none" stroke="#9A8DEB" stroke-width="2.5" stroke-linecap="round" opacity="0.45"/>
+<rect x="435.0" y="202.5" width="48.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="459.0" y="215.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">late=2</text>
+<text x="459.0" y="198.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.18</text>
+<text x="459.0" y="268" font-family="'Inter 18pt'" font-size="11" font-weight="600" fill="#1B2A3A" text-anchor="middle">late</text>
+<path d="M495.0,150.0 C533.0,150.0 555.0,150.0 583.0,150.0" fill="none" stroke="#9A8DEB" stroke-width="9.1" stroke-linecap="round" opacity="0.9"/>
+<rect x="585.0" y="140.5" width="54.0" height="19" rx="6" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="612.0" y="153.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">pdpd=b2</text>
+<text x="612.0" y="136.0" font-family="'Inter 18pt'" font-size="10" font-weight="600" fill="#1B2A3A" text-anchor="middle">0.65</text>
+<path d="M495.0,150.0 C533.0,150.0 555.0,88.0 583.0,88.0" fill="none" stroke="#9A8DEB" stroke-width="4.6" stroke-linecap="round" opacity="0.45"/>
+<rect x="585.0" y="78.5" width="54.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="612.0" y="91.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">pdpd=b1</text>
+<text x="612.0" y="74.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.33</text>
+<path d="M495.0,150.0 C533.0,150.0 555.0,212.0 583.0,212.0" fill="none" stroke="#9A8DEB" stroke-width="0.8" stroke-linecap="round" opacity="0.45"/>
+<rect x="585.0" y="202.5" width="54.0" height="19" rx="6" fill="#E2F4B0" stroke="none" stroke-width="1.2"/>
+<text x="612.0" y="215.7" font-family="JetBrains Mono" font-size="10" font-weight="400" fill="#1B2A3A" text-anchor="middle">pdpd=b3</text>
+<text x="612.0" y="198.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.03</text>
+<text x="612.0" y="268" font-family="'Inter 18pt'" font-size="11" font-weight="600" fill="#1B2A3A" text-anchor="middle">pdpd</text>
+<polyline points="645.0,150.0 669.0,150.0" fill="none" stroke="#1B2A3A" stroke-width="1.4" marker-end="url(#head)"/>
+<rect x="671.0" y="128.0" width="88" height="44" rx="10" fill="#14283C" stroke="none" stroke-width="1.2"/>
+<text x="715.0" y="148.0" font-family="'Inter 18pt'" font-size="12" font-weight="600" fill="white" text-anchor="middle">q = 0.30</text>
+<text x="715.0" y="163.0" font-family="'Inter 18pt'" font-size="8.5" font-weight="400" fill="#D5DEE8" text-anchor="middle">product, n summed</text>
+<text x="400" y="292" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">q = P(kind) × Σn P(n) P(late | n) P(pdpd | n, late) = 0.997 × 0.300; width shows probability</text>
+</svg>

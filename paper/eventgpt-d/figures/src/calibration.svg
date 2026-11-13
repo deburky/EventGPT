@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="330" viewBox="0 0 780 330"><defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#1B2A3A"/></marker></defs><rect width="100%" height="100%" fill="white"/>
+<rect x="20.0" y="8" width="12" height="12" rx="3" fill="#DDD9FA" stroke="none" stroke-width="1.2"/>
+<text x="38.0" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">One bin of q; dot size shows the number of claims</text>
+<rect x="358.9" y="8" width="12" height="12" rx="3" fill="#D3DAE2" stroke="none" stroke-width="1.2"/>
+<text x="376.9" y="18" font-family="'Inter 18pt'" font-size="11" font-weight="400" fill="#5B6B7C" text-anchor="start">q equal to the share that came true</text>
+<text x="159.0" y="54.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">EventGPT zero-shot</text>
+<rect x="64.0" y="62.0" width="190.0" height="190.0" rx="0" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<line x1="64.0" y1="252.0" x2="254.0" y2="62.0" stroke="#D3DAE2" stroke-width="1.2"/>
+<polyline points="95.0,218.1 112.9,207.0 131.3,201.1 150.7,170.9 168.3,147.3 187.4,127.5 206.6,113.2 226.0,101.3 245.6,86.5" fill="none" stroke="#8A99AA" stroke-width="1.6"/>
+<circle cx="95.0" cy="218.1" r="3.2" fill="#8A99AA" opacity="0.85"/>
+<circle cx="112.9" cy="207.0" r="3.5" fill="#8A99AA" opacity="0.85"/>
+<circle cx="131.3" cy="201.1" r="4.1" fill="#8A99AA" opacity="0.85"/>
+<circle cx="150.7" cy="170.9" r="4.5" fill="#8A99AA" opacity="0.85"/>
+<circle cx="168.3" cy="147.3" r="5.1" fill="#8A99AA" opacity="0.85"/>
+<circle cx="187.4" cy="127.5" r="5.0" fill="#8A99AA" opacity="0.85"/>
+<circle cx="206.6" cy="113.2" r="5.2" fill="#8A99AA" opacity="0.85"/>
+<circle cx="226.0" cy="101.3" r="5.3" fill="#8A99AA" opacity="0.85"/>
+<circle cx="245.6" cy="86.5" r="6.1" fill="#8A99AA" opacity="0.85"/>
+<text x="64.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">0</text>
+<text x="58.0" y="255.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">0</text>
+<text x="159.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.5</text>
+<text x="58.0" y="160.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">0.5</text>
+<text x="254.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">1</text>
+<text x="58.0" y="65.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">1</text>
+<text x="159.0" y="282.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">stated confidence q</text>
+<text x="159.0" y="302.0" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">slope 0.72, Gini gap +0.101</text>
+<text x="159.0" y="317.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">ECE 0.043, ICE 0.007</text>
+<text x="411.0" y="54.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">RLCR reward, temperature 1.4</text>
+<rect x="316.0" y="62.0" width="190.0" height="190.0" rx="0" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<line x1="316.0" y1="252.0" x2="506.0" y2="62.0" stroke="#D3DAE2" stroke-width="1.2"/>
+<polyline points="348.0,227.6 363.0,212.9 380.7,177.0 402.2,152.8 420.9,137.7 440.2,127.0 459.4,102.9 479.0,87.6 499.8,69.1" fill="none" stroke="#E58A3C" stroke-width="1.6"/>
+<circle cx="348.0" cy="227.6" r="3.1" fill="#E58A3C" opacity="0.85"/>
+<circle cx="363.0" cy="212.9" r="3.4" fill="#E58A3C" opacity="0.85"/>
+<circle cx="380.7" cy="177.0" r="3.3" fill="#E58A3C" opacity="0.85"/>
+<circle cx="402.2" cy="152.8" r="3.3" fill="#E58A3C" opacity="0.85"/>
+<circle cx="420.9" cy="137.7" r="3.6" fill="#E58A3C" opacity="0.85"/>
+<circle cx="440.2" cy="127.0" r="3.8" fill="#E58A3C" opacity="0.85"/>
+<circle cx="459.4" cy="102.9" r="4.0" fill="#E58A3C" opacity="0.85"/>
+<circle cx="479.0" cy="87.6" r="4.8" fill="#E58A3C" opacity="0.85"/>
+<circle cx="499.8" cy="69.1" r="8.5" fill="#E58A3C" opacity="0.85"/>
+<text x="316.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">0</text>
+<text x="310.0" y="255.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">0</text>
+<text x="411.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.5</text>
+<text x="310.0" y="160.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">0.5</text>
+<text x="506.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">1</text>
+<text x="310.0" y="65.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">1</text>
+<text x="411.0" y="282.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">stated confidence q</text>
+<text x="411.0" y="302.0" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">slope 0.91, Gini gap +0.056</text>
+<text x="411.0" y="317.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">ECE 0.013, ICE 0.004</text>
+<text x="663.0" y="54.0" font-family="'Inter 18pt'" font-size="11.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">EventGPT-D</text>
+<rect x="568.0" y="62.0" width="190.0" height="190.0" rx="0" fill="white" stroke="#D3DAE2" stroke-width="1.2"/>
+<line x1="568.0" y1="252.0" x2="758.0" y2="62.0" stroke="#D3DAE2" stroke-width="1.2"/>
+<polyline points="600.1,227.6 616.2,219.4 634.5,194.4 653.4,172.8 673.0,144.9 691.9,124.2 711.4,107.4 731.4,88.0 751.7,68.7" fill="none" stroke="#4F5BD5" stroke-width="1.6"/>
+<circle cx="600.1" cy="227.6" r="2.9" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="616.2" cy="219.4" r="3.3" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="634.5" cy="194.4" r="3.3" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="653.4" cy="172.8" r="3.3" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="673.0" cy="144.9" r="3.6" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="691.9" cy="124.2" r="3.8" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="711.4" cy="107.4" r="4.1" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="731.4" cy="88.0" r="4.9" fill="#4F5BD5" opacity="0.85"/>
+<circle cx="751.7" cy="68.7" r="8.5" fill="#4F5BD5" opacity="0.85"/>
+<text x="568.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">0</text>
+<text x="562.0" y="255.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">0</text>
+<text x="663.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">0.5</text>
+<text x="562.0" y="160.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">0.5</text>
+<text x="758.0" y="266.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="middle">1</text>
+<text x="562.0" y="65.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#5B6B7C" text-anchor="end">1</text>
+<text x="663.0" y="282.0" font-family="'Inter 18pt'" font-size="9.5" font-weight="400" fill="#5B6B7C" text-anchor="middle">stated confidence q</text>
+<text x="663.0" y="302.0" font-family="'Inter 18pt'" font-size="10.5" font-weight="600" fill="#1B2A3A" text-anchor="middle">slope 1.01, Gini gap +0.005</text>
+<text x="663.0" y="317.0" font-family="'Inter 18pt'" font-size="10" font-weight="400" fill="#5B6B7C" text-anchor="middle">ECE 0.007, ICE 0.001</text>
+<text x="22" y="157.0" font-family="'Inter 18pt'" font-size="9" font-weight="400" fill="#1B2A3A" text-anchor="start"></text>
+</svg>
