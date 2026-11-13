@@ -70,7 +70,7 @@ def sample_train(rows: pd.DataFrame, n_neg: int, seed: int) -> pd.DataFrame:
 
 
 def fit_predict(xtr: np.ndarray, ytr: np.ndarray, wtr: np.ndarray, xte: np.ndarray) -> np.ndarray:
-    """Test scores of a standardised logistic head fitted on the weighted training rows."""
+    """Test scores of a standardized logistic head fitted on the weighted training rows."""
     head = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=2000))
     head.fit(xtr, ytr, logisticregression__sample_weight=wtr)
     return np.asarray(head.predict_proba(xte)[:, 1])
