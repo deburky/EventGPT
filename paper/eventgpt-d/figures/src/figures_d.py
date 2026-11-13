@@ -2,7 +2,7 @@
 
 The primitives and colors come from paper/figures/src/figures.py. The case is row 563 of the test fold.
 
-EventGPT-D claims the next event and states its confidence q as its own probability of the claim. It keeps EventGPT's
+EventGPT-D predicts the next event and states its confidence q as its own probability of that prediction. It keeps EventGPT's
 output layer W0 and adds the residual head z = W0 y + A std(y) + b of Geuter, Cheng and Alvarez-Melis (2026,
 arXiv:2610.17205), trains by cross-entropy on the true next event, and solves for the intercept b by Fisher scoring.
 The case's numbers are in case563.json (from eventgpt.homecredit.rlcr, seed 0); the reliability diagrams read the
@@ -14,9 +14,12 @@ and JetBrains Mono).
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +32,8 @@ F = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(F)
 INK, MUTED, LINE, TOK = F.INK, F.MUTED, F.LINE, F.TOK
 HID, HID_BAND, DEC, DEC_BAND, EMB = F.HID, F.HID_BAND, F.DEC, F.DEC_BAND, F.EMB
-RES, RES_BAND = "#FBDDBF", "#FEF3E8"  # the residual head and its training, new in EventGPT-D
+RES, RES_BAND = "#FBDDBF", "#FEF3E8"
+ENC_FILL = F.ENC  # the residual head and its training, new in EventGPT-D
 VIOLET, WARM = "#9A8DEB", "#E58A3C"
 RUN = Path("data/runs/hc-rlcr-s42/v4")
 D = json.loads((SRC / "case563.json").read_text())
@@ -58,81 +62,55 @@ def pill_w(s: str) -> float:
     return len(s) * 6.0 + 12
 
 
-# -------------------------------------------------------------------------------
-# 1. EventGPT-D at a glance
-# -------------------------------------------------------------------------------
-def claim() -> None:
-    """History state, the claim written token by token, the residual head, q, and the two training steps."""
-    g = Svg(760, 430)
-    g.legend([(TOK, "Tokens"), (HID, "Hidden states"), (DEC, "Claim"), (RES, "Residual head"), (EMB, "Confidence")])
-    # the history
-    g.rect(20, 46, 196, 150, "white", LINE, r=12)
-    g.text(32, 67, "Case 244050: 60 events", size=11.5, weight=600)
-    hist = [["name=cb_pay", "late=1", "pdpd=b2"], ["name=tax", "src=b"], ["name=cb_pay", "late=1", "pdpd=b1"]]
-    y = 80.0
-    for row in hist:
-        x = 30.0
-        for t in row:
-            x += g.pill(x, y, t) + 4
-        y += 25
-    g.text(32, 172, "last events before the cut", size=9.5, fill=MUTED)
-    g.arrow([(118, 196), (118, 222)])
-    g.rect(78, 224, 80, 30, HID, r=8)
-    g.text(118, 244, "h", size=12, weight=600, anchor="middle")
-    g.text(118, 272, "history state at the cut", size=9.5, fill=MUTED, anchor="middle")
-    # the claim, token by token
-    g.rect(246, 46, 494, 150, DEC_BAND, r=12)
-    g.text(262, 67, "Token decoder writes the claim", size=11.5, weight=600)
-    g.text(262, 83, "probability of each token as written, EventGPT-D", size=9.5, fill=MUTED)
-    toks = [("[EVT]", None), ("name=cb_pay", 0), ("dt=101", None), ("n=3", 1), ("late=1", 2), ("pdpd=b2", 3)]
-    x = 262.0
-    steps = D["eventgpt_d"]["steps"]
-    centers = []
-    for t, k in toks:
-        w = pill_w(t)
-        fill = DEC if k is not None else TOK
-        g.rect(x, 128, w, 19, fill, r=6)
-        g.text(x + w / 2, 141.2, t, size=10, anchor="middle", mono=True)
-        if k is not None:
-            g.text(x + w / 2, 118, f"{steps[k]['p_chosen']:.2f}", size=10.5, weight=600, anchor="middle")
-        centers.append(x + w / 2)
-        x += w + 8
-    g.text(centers[2], 118, "given", size=9.5, fill=MUTED, anchor="middle")
-    g.text(262, 180, "The claim is judged on its kind and key fields; n is written but not judged.", size=9.5, fill=MUTED)
-    g.arrow([(158, 239), (246, 239), (246, 196)])
-    # the output head under the claim
-    g.rect(246, 222, 300, 64, RES_BAND, r=12)
-    g.text(262, 243, "Output head", size=11.5, weight=600)
-    g.text(262, 262, "z = " + F.sub("W", "0") + "y + A std(y) + b", size=11, mono=True)
-    g.text(262, 278, F.sub("W", "0") + " pretrained and frozen; A = 0, b = 0 at the start", size=9.5, fill=MUTED)
-    g.arrow([(396, 222), (396, 197)])
-    # confidence
-    q = D["q_terms_d"]["q"]
-    g.rect(574, 222, 166, 64, EMB, r=12)
-    g.text(657, 247, f"q = {q:.2f}", size=13, weight=600, fill="white", anchor="middle")
-    g.text(657, 265, "probability of the claim,", size=9.5, fill="#D5DEE8", anchor="middle")
-    g.text(657, 278, "summed over n", size=9.5, fill="#D5DEE8", anchor="middle")
-    g.arrow([(657, 197), (657, 222)])
-    # training
-    g.rect(20, 318, 350, 92, RES_BAND, r=12)
-    g.text(36, 340, "1. Cross-entropy on the true next event", size=11.5, weight=600)
-    g.text(36, 359, "trains the token decoder and the residual head;", size=10, fill=MUTED)
-    g.text(36, 374, "the history decoder stays frozen", size=10, fill=MUTED)
-    g.text(36, 395, "Geuter, Cheng and Alvarez-Melis (2026)", size=9.5, fill=MUTED)
-    g.arrow([(370, 364), (390, 364)])
-    g.rect(390, 318, 350, 92, RES_BAND, r=12)
-    g.text(406, 340, "2. Fisher scoring of the intercept b", size=11.5, weight=600)
-    g.text(406, 359, "b + I⁺ s, everything else frozen, until for every token", size=10, fill=MUTED)
-    g.text(406, 374, "Σp = Σy on the training rows", size=10, fill=MUTED)
-    g.text(406, 395, "maximum-likelihood score equations of b", size=9.5, fill=MUTED)
-    g.save("claim")
+TEX = SRC / "tex"
+Z = r"z = W_0\,y + A\,\mathrm{std}(y) + b"
+
+
+def tex(g: Svg, x: float, y: float, expr: str, size: float = 11.0, anchor: str = "start", color: str = INK) -> float:
+    """A LaTeX formula typeset by latex and dvisvgm as paths, centered on the x-height of text with baseline y.
+
+    Returns its width. Each formula is cached in tex/ under a hash of its source.
+    """
+    key = "t" + hashlib.md5(f"{expr}|{color}".encode()).hexdigest()[:10]
+    path = TEX / f"{key}.svg"
+    if not path.exists():
+        TEX.mkdir(exist_ok=True)
+        doc = (
+            r"\documentclass[preview,border=0pt]{standalone}\usepackage{amsmath,amssymb,xcolor}\begin{document}"
+            + r"\definecolor{ink}{HTML}{"
+            + color.lstrip("#")
+            + r"}\color{ink}$"
+            + expr
+            + r"$\end{document}"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "f.tex").write_text(doc)
+            subprocess.run(["latex", "-interaction=nonstopmode", "f.tex"], cwd=d, check=True, capture_output=True)
+            subprocess.run(["dvisvgm", "--no-fonts", "--exact-bbox", "-o", str(path), "f.dvi"], cwd=d, check=True, capture_output=True)
+    src = path.read_text()
+    root = re.search(r"<svg[^>]*>", src)
+    assert root is not None
+    attrs = dict(re.findall(r"(\w+)='([^']*)'", root.group(0)))
+    w_pt, h_pt, vb = float(attrs["width"].rstrip("pt")), float(attrs["height"].rstrip("pt")), attrs["viewBox"]
+    inner = src[root.end() : src.rindex("</svg>")]
+    inner = re.sub(r"id='([^']+)'", lambda m: f"id='{key}{m.group(1)}'", inner)
+    inner = re.sub(r"href='#([^']+)'", lambda m: f"href='#{key}{m.group(1)}'", inner)
+    k = size / 10.0
+    w, h = w_pt * k, h_pt * k
+    x0 = {"start": x, "middle": x - w / 2, "end": x - w}[anchor]
+    y0 = y - 0.35 * size - h / 2
+    g.items.append(
+        f'<svg xmlns:xlink="http://www.w3.org/1999/xlink" x="{x0:.2f}" y="{y0:.2f}" width="{w:.2f}" height="{h:.2f}" '
+        f'viewBox="{vb}" overflow="visible">{inner}</svg>'
+    )
+    return w
 
 
 # -------------------------------------------------------------------------------
 # 2. Confidence as a product of the decoder's probabilities
 # -------------------------------------------------------------------------------
 def confidence() -> None:
-    """The claim as a path through the decoder's choices; branch width is probability, q is the product along the path."""
+    """The prediction as a path through the decoder's choices; branch width is probability, q is the product along the path."""
     g = Svg(800, 300)
     g.legend([(HID, "History state"), (DEC, "Chosen token"), (TOK, "Alternatives"), (EMB, "Confidence")])
     steps = D["eventgpt_d"]["steps"]
@@ -171,14 +149,8 @@ def confidence() -> None:
     g.rect(x_prev + 32, y_main - 22, 88, 44, EMB, r=10)
     g.text(x_prev + 76, y_main - 2, f"q = {qt['q']:.2f}", size=12, weight=600, fill="white", anchor="middle")
     g.text(x_prev + 76, y_main + 13, "product, n summed", size=8.5, fill="#D5DEE8", anchor="middle")
-    g.text(
-        400,
-        292,
-        f"q = P(kind) × Σn P(n) P(late | n) P(pdpd | n, late) = {qt['p_kind']:.3f} × {qt['sum_n']:.3f}; width shows probability",
-        size=10,
-        fill=MUTED,
-        anchor="middle",
-    )
+    w = tex(g, 150, 292, r"q = P(\text{kind}) \textstyle\sum_n P(n)\,P(\text{late} \mid n)\,P(\text{pdpd} \mid n, \text{late})", size=10.5)
+    g.text(156 + w, 292, f"= {qt['p_kind']:.3f} \u00d7 {qt['sum_n']:.3f}; width shows probability", size=10, fill=MUTED)
     g.save("confidence")
 
 
@@ -259,7 +231,7 @@ def calibration() -> None:
         ("EventGPT-D", "jev_ce", "#4F5BD5"),
     ]
     g = Svg(780, 330)
-    g.legend([(DEC, "One bin of q; dot size shows the number of claims"), (LINE, "q equal to the share that came true")])
+    g.legend([(DEC, "One bin of q; dot size shows the number of predictions"), (LINE, "q equal to the share that came true")])
     size, gap, x0, y0 = 190.0, 62.0, 64.0, 62.0
     for k, (title, arm, col) in enumerate(panels):
         q, c = z[f"q_{arm}"], z[f"c_{arm}"]
@@ -296,8 +268,284 @@ def calibration() -> None:
     g.save("calibration")
 
 
+# -------------------------------------------------------------------------------
+# The model: what is frozen, what fine-tuning trains, the residual head, the Fisher step
+# -------------------------------------------------------------------------------
+GRAY, DARK = F.GRAY, F.DARK
+FROZEN = "#E4E9EF"
+CX = 235.0
+
+
+def mini_fan(g: Svg, x0: float, x1: float, y_top: float, y_bot: float, n_top: int, n_bot: int, color: str, top_fill: str) -> None:
+    """Fully connected units, every bottom unit to every top unit, in one line color."""
+    tops = [x0 + (x1 - x0) * k / (n_top - 1) for k in range(n_top)]
+    pad = (x1 - x0) * 0.12
+    bots = [x0 + pad + (x1 - x0 - 2 * pad) * k / (n_bot - 1) for k in range(n_bot)]
+    for xb in bots:
+        for xt in tops:
+            g.items.append(
+                f'<line x1="{xb:.1f}" y1="{y_bot}" x2="{xt:.1f}" y2="{y_top}" stroke="{color}" stroke-width="0.5" opacity="0.7"/>'
+            )
+    for x in tops:
+        g.items.append(f'<circle cx="{x:.1f}" cy="{y_top}" r="5" fill="{top_fill}" stroke="{INK}" stroke-width="0.8"/>')
+    for x in bots:
+        g.items.append(f'<circle cx="{x:.1f}" cy="{y_bot}" r="5" fill="{HID}" stroke="{INK}" stroke-width="0.8"/>')
+
+
+def legend_d(g: Svg) -> None:
+    """The three roles a part of EventGPT-D can have."""
+    g.legend([(FROZEN, "Frozen, from EventGPT"), (RES, "Trained by cross-entropy"), (EMB, "Intercept b, solved by Fisher scoring")])
+
+
+def token_decoder(g: Svg) -> None:
+    """The fine-tuned top of the stack, from the history state h to the next-event tokens."""
+    box = F.box
+    cx = CX
+    g.text(cx, 50, "Next-event tokens and q", size=11, anchor="middle", mono=True)
+    g.arrow([(cx, 104), (cx, 58)])
+    g.rect(100, 80, 270, 176, RES_BAND, r=12)
+    g.text(cx - 125, 97, "Token decoder", size=10.5, weight=600, fill=MUTED)
+    g.rect(cx - 105, 106, 210, 34, RES, r=6)
+    g.text(cx, 119, "Residual head", size=10.5, weight=600, anchor="middle")
+    tex(g, cx, 133, Z, size=9, anchor="middle", color=MUTED)
+    box(g, cx, 152, "Final LayerNorm", "white", WARM, h=22)
+    box(g, cx, 184, "Causal self-attention block", RES, "none", note="within the next event", h=30)
+    g.text(cx + 110, 204, "× 2", size=11, weight=600, fill=MUTED)
+    box(g, cx, 226, "Token embeddings + h", FROZEN, "none", w=170, h=20)
+    for y0, y1 in ((152, 140), (184, 174), (226, 214)):
+        g.arrow([(cx, y0), (cx, y1)])
+    g.items.append(f'<circle cx="{cx}" cy="276" r="12" fill="{EMB}"/>')
+    g.text(cx, 280.5, "h", size=12, weight=600, fill="white", anchor="middle")
+    g.arrow([(cx, 264), (cx, 246)])
+    g.items.append(f'<line x1="56" y1="296" x2="414" y2="296" stroke="{WARM}" stroke-width="1.2" stroke-dasharray="5 4"/>')
+    g.text(408, 290, "gradients stop at h", size=9.5, fill=WARM, anchor="end")
+    g.text(cx + 20, 312, "h is computed once and cached", size=9.5, fill=MUTED)
+
+
+def frozen_full(g: Svg) -> None:
+    """The frozen part below h, block by block: the history decoder and the event encoder of EventGPT."""
+    box = F.box
+    cx = CX
+    box(g, cx, 326, "Final LayerNorm", FROZEN, "none", h=22)
+    g.arrow([(cx, 326), (cx, 288)])
+    g.rect(100, 362, 270, 108, HID_BAND, r=12)
+    g.text(cx - 125, 379, "History decoder", size=10.5, weight=600, fill=MUTED)
+    box(g, cx, 390, "Causal multi-head attention", FROZEN, "none", note="over events, temporal RoPE", h=34)
+    box(g, cx, 432, "Feed forward", FROZEN, "none", note="residual blocks, GELU", h=30)
+    g.text(cx + 110, 452, "× 6", size=11, weight=600, fill=MUTED)
+    g.arrow([(cx, 390), (cx, 348)])
+    g.arrow([(cx, 432), (cx, 424)])
+    box(g, cx, 488, F.sub("e", "1") + " to " + F.sub("e", "i") + ", one vector per event", ENC_FILL, "none", w=230, h=22)
+    g.arrow([(cx, 488), (cx, 462)])
+    g.rect(100, 524, 270, 84, F.ENC_BAND, r=12)
+    g.text(cx - 125, 541, "Event encoder", size=10.5, weight=600, fill=MUTED)
+    box(g, cx, 552, "Self-attention block, mean pool", FROZEN, "none", note="bidirectional, within each event", h=34)
+    g.text(cx + 110, 596, "× 2", size=11, weight=600, fill=MUTED)
+    g.arrow([(cx, 552), (cx, 510)])
+    box(g, cx, 628, "Token embedding layer", FROZEN, "none", h=22)
+    g.arrow([(cx, 628), (cx, 586)])
+    box(g, cx, 664, "Tokenized events", TOK, "none", h=22)
+    g.arrow([(cx, 664), (cx, 650)])
+    g.arrow([(cx, 716), (cx, 686)])
+    g.text(cx, 732, "A client's events", size=11, anchor="middle", mono=True)
+
+
+def frozen_compact(g: Svg) -> None:
+    """The frozen part below h as one block."""
+    box = F.box
+    cx = CX
+    box(g, cx, 326, "EventGPT: event encoder, history decoder", FROZEN, "none", note="2 + 6 layers, frozen", w=250, h=36)
+    g.arrow([(cx, 326), (cx, 288)])
+    box(g, cx, 380, "Tokenized events", TOK, "none", h=22)
+    g.arrow([(cx, 380), (cx, 362)])
+    g.arrow([(cx, 430), (cx, 402)])
+    g.text(cx, 446, "A client's events", size=11, anchor="middle", mono=True)
+
+
+def callout_head(g: Svg, ay: float) -> None:
+    """The residual head: frozen W0 beside the trainable A, which starts at zero."""
+    ax, aw, ah = 470.0, 410.0, 232.0
+    g.rect(ax, ay, aw, ah, "white", INK, r=18)
+    mini_fan(g, ax + 28, ax + 188, ay + 44, ay + 104, 7, 6, "#9AA6B2", FROZEN)
+    mini_fan(g, ax + 222, ax + 382, ay + 44, ay + 104, 7, 6, WARM, RES)
+    w = tex(g, ax + 70, ay + 28, "W_0", size=11)
+    g.text(ax + 72 + w, ay + 28, ", frozen", size=10, weight=600)
+    w = tex(g, ax + 245, ay + 28, "A", size=11, color=WARM)
+    g.text(ax + 247 + w, ay + 28, ", zero at the start", size=10, weight=600, fill=WARM)
+    tex(g, ax + 108, ay + 124, r"y \in \mathbb{R}^{384}", size=9.5, anchor="middle", color=MUTED)
+    tex(g, ax + 302, ay + 124, r"\mathrm{std}(y)", size=9.5, anchor="middle", color=MUTED)
+    F.plus(g, ax + 205, ay + 44)
+    tex(g, ax + aw / 2, ay + 150, Z + r",\quad z \in \mathbb{R}^{755}", size=11, anchor="middle")
+    F.lines(
+        g,
+        ax + 24,
+        ay + 178,
+        [
+            "EventGPT's output layer stays frozen. A residual on the",
+            "standardized state starts at zero, so training starts at",
+            "EventGPT zero-shot (Geuter, Cheng and Alvarez-Melis 2026).",
+        ],
+    )
+    F.curve(g, ax, ay + 70, CX + 105, 123)
+
+
+def callout_ce(g: Svg, by: float, bh: float = 196.0) -> None:
+    """Cross-entropy on the true next event of case 244050, with each token's probability before and after."""
+    ax, aw = 470.0, 410.0
+    g.rect(ax, by, aw, bh, "white", INK, r=18)
+    g.text(ax + 24, by + 26, "True next event, case 244050", size=10, weight=600)
+    toks = [("[EVT]", None), ("name=cb_pay", 0), ("dt=101", None), ("n=3", 1), ("late=1", 2), ("pdpd=b2", 3)]
+    x = ax + 24
+    zs, ds = D["truth_steps_zero_shot"], D["truth_steps_d"]
+    for t, k in toks:
+        w = pill_w(t)
+        g.rect(x, by + 40, w, 19, DEC if k is not None else TOK, r=6)
+        g.text(x + w / 2, by + 53.2, t, size=10, anchor="middle", mono=True)
+        if k is not None:
+            g.text(x + w / 2, by + 76, f"{zs[k]['p_chosen']:.2f}", size=9.5, fill=MUTED, anchor="middle")
+            g.text(x + w / 2, by + 91, f"{ds[k]['p_chosen']:.2f}", size=10, weight=600, fill=WARM, anchor="middle")
+        x += w + 5
+    g.text(ax + aw - 18, by + 76, "zero-shot", size=9, fill=MUTED, anchor="end")
+    g.text(ax + aw - 18, by + 91, "trained", size=9, fill=WARM, anchor="end")
+    tex(g, ax + 24, by + 116, r"\mathcal{L} = -\sum_{t} \log p(x_t \mid x_{<t}, h)", size=11)
+    F.lines(
+        g,
+        ax + 24,
+        by + 144,
+        [
+            "It trains the token decoder and the residual head on",
+            "24,000 cases; gradients stop at h, so EventGPT itself",
+            "is unchanged.",
+        ],
+    )
+    g.arrow([(ax, by + 40), (456, by + 40), (456, 199), (372, 199)], MUTED)
+
+
+def callout_fisher(g: Svg, cy0: float, ch: float = 222.0) -> None:
+    """The Fisher step on the intercept b, with the largest score by step."""
+    ax, aw = 470.0, 410.0
+    g.rect(ax, cy0, aw, ch, "white", INK, r=18)
+    tex(g, ax + 24, cy0 + 32, r"s = \textstyle\sum (y - p)", size=11)
+    tex(g, ax + 24, cy0 + 58, r"I = \textstyle\sum \left(\mathrm{diag}(p) - p\,p^{\top}\right)", size=11)
+    tex(g, ax + 24, cy0 + 84, r"b \leftarrow b + I^{+} s", size=11)
+    log = D["fisher_log"][:5]
+    bx, base = ax + 250.0, cy0 + 92
+    for k, v in enumerate(log):
+        hgt = max(1.0, 62 * v / log[0])
+        g.rect(bx + k * 28, base - hgt, 18, hgt, RES if k == 0 else EMB, r=3)
+        g.text(bx + k * 28 + 9, base + 12, str(k), size=8.5, fill=MUTED, anchor="middle")
+        g.text(bx + k * 28 + 9, base - hgt - 4, f"{v:.0f}" if v >= 10 else f"{v:.1f}", size=8.5, fill=INK, anchor="middle")
+    g.text(bx + 64, cy0 + 18, "largest score by step", size=9, fill=MUTED, anchor="middle")
+    F.lines(
+        g,
+        ax + 24,
+        cy0 + 136,
+        [
+            "After training, Fisher scoring solves for b alone. In",
+            "three steps the predicted probabilities of every token",
+            "sum to its observed count on the training rows: the",
+            "maximum-likelihood fit of an intercept.",
+        ],
+    )
+    g.arrow([(ax, cy0 + 100), (444, cy0 + 100), (444, 132), (342, 132)], MUTED)
+
+
+def callout_q(g: Svg, qy: float, qh: float = 176.0) -> None:
+    """The confidence q: the model's own probability of the event it writes, summed over n."""
+    ax, aw = 470.0, 410.0
+    g.rect(ax, qy, aw, qh, "white", INK, r=18)
+    toks = ["[EVT]", "name=cb_pay", "dt=101", "n=3", "late=1", "pdpd=b2"]
+    x = ax + 24
+    for t in toks:
+        w = pill_w(t)
+        g.rect(x, qy + 22, w, 19, TOK if t in ("[EVT]", "dt=101") else DEC, r=6)
+        g.text(x + w / 2, qy + 35.2, t, size=10, anchor="middle", mono=True)
+        x += w + 5
+    expr = r"q = P(\text{kind}) \textstyle\sum_n P(n)\,P(\text{late} \mid n)\,P(\text{pdpd} \mid n, \text{late})"
+    tex(g, ax + 24, qy + 72, expr, size=11)
+    g.text(ax + 24, qy + 98, f"= {D['q_terms_d']['q']:.2f} for case 244050", size=10.5, weight=600)
+    F.lines(
+        g,
+        ax + 24,
+        qy + 130,
+        [
+            "The confidence is the model's own probability of the",
+            "event it writes, summed over n, which is not judged.",
+            "There is no separate confidence head.",
+        ],
+    )
+    g.arrow([(ax, qy + 60), (452, qy + 60), (452, 40), (CX + 84, 40)], MUTED)
+
+
+def callout_history(g: Svg, hy: float, hh: float = 250.0) -> None:
+    """The frozen half: the case's history read once into h, which fine-tuning reuses."""
+    ax, aw = 470.0, 410.0
+    g.rect(ax, hy, aw, hh, "white", INK, r=18)
+    g.text(ax + 24, hy + 30, f"Case 244050: {D['case']['n_events']} events before the cut", size=10, weight=600)
+    rows = [[t for t in e if t != "[EVT]"] for e in D["case"]["last_events"][-3:]]
+    for r, row in enumerate(rows):
+        x = ax + 24
+        for t in row:
+            if x + pill_w(t) > ax + aw - 20:
+                break
+            x += g.pill(x, hy + 50 + r * 30, t) + 5
+    g.text(ax + 24, hy + 158, "the last three, oldest first", size=9.5, fill=MUTED)
+    F.lines(
+        g,
+        ax + 24,
+        hy + 196,
+        [
+            "EventGPT reads the whole history once. Its state h at",
+            "the last event before the cut is cached, so fine-tuning",
+            "runs only the token decoder: one cached h per case.",
+        ],
+    )
+    g.arrow([(ax, hy + 60), (452, hy + 60), (452, 416), (372, 416)], MUTED)
+
+
+def model() -> None:
+    """EventGPT-D as one stack with all three callouts."""
+    g = Svg(900, 790)
+    legend_d(g)
+    g.rect(40, 66, 390, 690, "white", LINE, r=16)
+    g.text(52, 742, "EventGPT-D", size=13, weight=700)
+    token_decoder(g)
+    frozen_full(g)
+    callout_head(g, 66.0)
+    callout_ce(g, 318.0)
+    callout_fisher(g, 534.0)
+    g.save("model")
+
+
+def architecture() -> None:
+    """The stack with the residual head: what is frozen and what fine-tuning trains."""
+    g = Svg(900, 790)
+    legend_d(g)
+    g.rect(40, 66, 390, 690, "white", LINE, r=16)
+    g.text(52, 742, "EventGPT-D", size=13, weight=700)
+    token_decoder(g)
+    frozen_full(g)
+    callout_head(g, 66.0)
+    callout_q(g, 314.0)
+    callout_history(g, 506.0)
+    g.save("architecture")
+
+
+def training() -> None:
+    """Training in two steps: cross-entropy on the true next event, then the Fisher step on the intercept."""
+    g = Svg(900, 486)
+    legend_d(g)
+    g.rect(40, 66, 390, 400, "white", LINE, r=16)
+    g.text(52, 452, "EventGPT-D", size=13, weight=700)
+    token_decoder(g)
+    frozen_compact(g)
+    callout_ce(g, 66.0, 186.0)
+    callout_fisher(g, 268.0, 198.0)
+    g.save("training")
+
+
 if __name__ == "__main__":
     import sys
 
-    for name in sys.argv[1:] or ["claim", "confidence", "fisher", "calibration"]:
+    for name in sys.argv[1:] or ["model", "architecture", "training", "confidence", "fisher", "calibration"]:
         globals()[name]()
