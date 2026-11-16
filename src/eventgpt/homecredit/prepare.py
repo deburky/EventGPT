@@ -1,9 +1,9 @@
 """Build EventGPT token streams from the Home Credit - Credit Risk Model Stability competition data.
 
 A "client" is one application (case_id), and its stream is every dated record the competition attaches to the
-case, in time order, ending at the decision date. The stream opens with a profile event and then merges:
+case dated on or before the decision date, in time order. The stream opens with a profile event and then merges:
 
-    profile   [EVT] name=profile dt=140 sex inc edu lang fam mar age ctype chan npay loan ann incamt
+    profile   [EVT] name=profile dt=140 sex inc edu lang fam mar age incamt
     app       [EVT] name=app dt=<b> status ctype chan rej canc pos bid tenor pamt dpd dpdtol     one per previous application
     cb_open   [EVT] name=cb_open dt=<b> st purpose cls inst per camt lim ninst                   one per bureau contract start
     cb_close  [EVT] name=cb_close dt=<b> cdpd ovmax novd                                          one per bureau contract closure
@@ -14,8 +14,12 @@ case, in time order, ending at the decision date. The stream opens with a profil
 
 The bureau's monthly payment table holds one row per contract and month (188M rows); like the geolocation
 pings of MBD they are thinned to one event per case and month, which keeps the count of contracts paying,
-the number late, the worst days past due and the overdue amount. Months after the decision date are left out
-(scheduled instalments, or a spill-over month from the bureau's refresh lag). Every date is a day, so the
+the number late, the worst days past due and the overdue amount. Every kind is cut at the decision date: for
+cb_pay that drops scheduled instalments and a spill-over month from the bureau's refresh lag, and for tax, app,
+cb_open, dep and card it drops records dated after the decision. The profile event is stamped at the case's first
+event and carries the applicant, with age at the decision date in five-year bands; the requested loan's terms
+(ctype chan npay loan ann of static_0) are left out, since they describe the application, made around the decision
+date. Tax registry a has no record dated on or before the decision, so src=a does not occur. Every date is a day, so the
 time gaps are multiples of 86,400 seconds; month-level records are stamped on the first of the month.
 
 Categorical values are kept as the competition supplies them (masked labels included); the "not available"
@@ -64,7 +68,7 @@ PROFILE = KINDS.index("profile")
 
 # field order per kind: categorical keys first, numeric keys after; each gets a slot after [EVT] name dt
 FIELDS: dict[str, list[str]] = {
-    "profile": ["sex", "inc", "edu", "lang", "fam", "mar", "age", "ctype", "chan", "npay", "loan", "ann", "incamt"],
+    "profile": ["sex", "inc", "edu", "lang", "fam", "mar", "age", "incamt"],  # no loan terms: see build_events
     "app": ["status", "ctype", "chan", "rej", "canc", "pos", "bid", "tenor", "pamt", "dpd", "dpdtol"],
     "cb_open": ["st", "purpose", "cls", "inst", "per", "camt", "lim", "ninst"],
     "cb_close": ["cdpd", "ovmax", "novd"],
@@ -144,7 +148,8 @@ def build_events(con: duckdb.DuckDBPyConnection, max_cases: int | None, seed: in
                 "dpd": "a.actualdpd_943P",
                 "dpdtol": "a.maxdpdtolerance_577P",
             },
-            f"{src('train_applprev_1_*.parquet')} a JOIN cases c USING (case_id) WHERE a.creationdate_885D IS NOT NULL",
+            f"{src('train_applprev_1_*.parquet')} a JOIN cases c USING (case_id) WHERE a.creationdate_885D IS NOT NULL "
+            "AND TRY_CAST(a.creationdate_885D AS DATE) <= c.dd",
         ),
         _select(
             "cb_open",
@@ -159,7 +164,8 @@ def build_events(con: duckdb.DuckDBPyConnection, max_cases: int | None, seed: in
                 "lim": "a.credlmt_935A",
                 "ninst": "a.numberofinstls_320L",
             },
-            f"{src('train_credit_bureau_a_1_*.parquet')} a JOIN cases c USING (case_id) WHERE a.dateofcredstart_739D IS NOT NULL",
+            f"{src('train_credit_bureau_a_1_*.parquet')} a JOIN cases c USING (case_id) WHERE a.dateofcredstart_739D IS NOT NULL "
+            "AND TRY_CAST(a.dateofcredstart_739D AS DATE) <= c.dd",
         ),
         _select(
             "cb_open",
@@ -174,7 +180,8 @@ def build_events(con: duckdb.DuckDBPyConnection, max_cases: int | None, seed: in
                 "lim": "a.credlmt_230A",
                 "ninst": "a.numberofinstls_229L",
             },
-            f"{src('train_credit_bureau_a_1_*.parquet')} a JOIN cases c USING (case_id) WHERE a.dateofcredstart_181D IS NOT NULL",
+            f"{src('train_credit_bureau_a_1_*.parquet')} a JOIN cases c USING (case_id) WHERE a.dateofcredstart_181D IS NOT NULL "
+            "AND TRY_CAST(a.dateofcredstart_181D AS DATE) <= c.dd",
         ),
         _select(
             "cb_close",
@@ -204,38 +211,47 @@ def build_events(con: duckdb.DuckDBPyConnection, max_cases: int | None, seed: in
             "tax",
             day.format(d="TRY_CAST(a.recorddate_4527225D AS DATE)"),
             {"src": "'a'", "tamt": "a.amount_4527230A"},
-            f"{src('train_tax_registry_a_1.parquet')} a JOIN cases c USING (case_id) WHERE a.recorddate_4527225D IS NOT NULL",
+            f"{src('train_tax_registry_a_1.parquet')} a JOIN cases c USING (case_id) WHERE a.recorddate_4527225D IS NOT NULL "
+            "AND TRY_CAST(a.recorddate_4527225D AS DATE) <= c.dd",
         ),
         _select(
             "tax",
             day.format(d="TRY_CAST(a.deductiondate_4917603D AS DATE)"),
             {"src": "'b'", "tamt": "a.amount_4917619A"},
-            f"{src('train_tax_registry_b_1.parquet')} a JOIN cases c USING (case_id) WHERE a.deductiondate_4917603D IS NOT NULL",
+            f"{src('train_tax_registry_b_1.parquet')} a JOIN cases c USING (case_id) WHERE a.deductiondate_4917603D IS NOT NULL "
+            "AND TRY_CAST(a.deductiondate_4917603D AS DATE) <= c.dd",
         ),
         _select(
             "tax",
             day.format(d="TRY_CAST(a.processingdate_168D AS DATE)"),
             {"src": "'c'", "tamt": "a.pmtamount_36A"},
-            f"{src('train_tax_registry_c_1.parquet')} a JOIN cases c USING (case_id) WHERE a.processingdate_168D IS NOT NULL",
+            f"{src('train_tax_registry_c_1.parquet')} a JOIN cases c USING (case_id) WHERE a.processingdate_168D IS NOT NULL "
+            "AND TRY_CAST(a.processingdate_168D AS DATE) <= c.dd",
         ),
         _select(
             "dep",
             day.format(d="TRY_CAST(a.openingdate_313D AS DATE)"),
             {"closed": "(a.contractenddate_991D IS NOT NULL)::INT", "damt": "a.amount_416A"},
-            f"{src('train_deposit_1.parquet')} a JOIN cases c USING (case_id) WHERE a.openingdate_313D IS NOT NULL",
+            f"{src('train_deposit_1.parquet')} a JOIN cases c USING (case_id) WHERE a.openingdate_313D IS NOT NULL "
+            "AND TRY_CAST(a.openingdate_313D AS DATE) <= c.dd",
         ),
         _select(
             "card",
             day.format(d="TRY_CAST(a.openingdate_857D AS DATE)"),
             {},
-            f"{src('train_debitcard_1.parquet')} a JOIN cases c USING (case_id) WHERE a.openingdate_857D IS NOT NULL",
+            f"{src('train_debitcard_1.parquet')} a JOIN cases c USING (case_id) WHERE a.openingdate_857D IS NOT NULL "
+            "AND TRY_CAST(a.openingdate_857D AS DATE) <= c.dd",
         ),
     ]
     con.execute("CREATE OR REPLACE TABLE events_raw AS " + "\nUNION ALL\n".join(parts))
-    # the profile event is stamped at the case's first event, or the day before the decision for a case without any
+    # the profile event is stamped at the case's first event, or the day before the decision for a case without any;
+    # the requested loan's terms are read but not written (FIELDS), being known only at the application, around the
+    # decision date. Age is taken at the decision date in five-year bands: a function of the birth date, and the
+    # first event's date is no anchor, since about 0.5% of cases have a first event dated before age 20
+    stamp = f"coalesce(f.t, {day.format(d='c.dd - INTERVAL 1 DAY')})"
     profile = _select(
         "profile",
-        f"coalesce(f.t, {day.format(d='c.dd - INTERVAL 1 DAY')})",
+        stamp,
         {
             "sex": "p.sex_738L",
             "inc": "p.incometype_1044T",
