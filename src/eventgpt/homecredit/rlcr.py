@@ -504,9 +504,23 @@ def fisher_intercept(model: Any, g: Grammar, ctx: torch.Tensor, truth: torch.Ten
 
 
 def train(
-    model: Any, g: Grammar, data: dict[str, torch.Tensor], arm: str, epochs: int, group: int, bsz: int, seed: int
+    model: Any,
+    g: Grammar,
+    data: dict[str, torch.Tensor],
+    arm: str,
+    epochs: int,
+    group: int,
+    bsz: int,
+    seed: int,
+    select: str = "reward",
+    check_every: int = 25,
 ) -> tuple[ConfidenceTokens | None, list[dict[str, float]]]:
-    """Train an arm (text and jev by the RLCR reward, jev_ce by cross-entropy); the epoch with the best validation reward is kept."""
+    """Train an arm (text and jev by the RLCR reward, jev_ce by the negative log-likelihood of the true next event).
+
+    With select="reward" the epoch with the best validation reward is kept. With select="nll" (jev_ce only) the
+    validation negative log-likelihood is checked every check_every steps and at each epoch's end, and the checkpoint
+    with the lowest is kept, so the kept model is chosen by the quantity it is trained on.
+    """
     torch.manual_seed(seed)
     tr_idx, va_idx, rng = split(len(data["ctx"]), seed)
     for p in model.parameters():
@@ -527,6 +541,19 @@ def train(
     opt = torch.optim.AdamW(groups, weight_decay=0.0)
     best, best_state, log = -float("inf"), None, []
     va = torch.from_numpy(va_idx)
+    by_nll = select == "nll" and arm == "jev_ce"
+    step = 0
+
+    def check_nll() -> None:
+        """Keep the current state if its validation negative log-likelihood is the lowest so far."""
+        nonlocal best, best_state
+        with torch.no_grad():
+            v_nll = float(true_ce(model, g, data["ctx"][va], data["truth"][va]))
+        if -v_nll > best:
+            best = -v_nll
+            best_state = [p.detach().clone() for p in gen_params + extra]
+        log.append({"step": step, "val_nll": v_nll})
+
     for ep in range(epochs):
         t0 = time.time()
         stats: dict[str, float] = {"loss": 0.0, "reward": 0.0, "c": 0.0, "q": 0.0}
@@ -539,6 +566,9 @@ def train(
                 loss.backward()
                 opt.step()
                 stats["loss"] += loss.item() / len(batches)
+                step += 1
+                if by_nll and step % check_every == 0:
+                    check_nll()
                 continue
             ctx = data["ctx"][bt].repeat_interleave(group, 0)
             dt = data["dt"][bt].repeat_interleave(group, 0)
@@ -575,10 +605,16 @@ def train(
         }
         log.append(row)
         print(f"    {arm} epoch {ep + 1}: " + ", ".join(f"{k} {v:.4f}" for k, v in row.items() if k != "epoch"), flush=True)
+        if by_nll:
+            check_nll()
+            continue
         if v_reward > best:
             best = v_reward
             best_state = [p.detach().clone() for p in gen_params + extra]
     assert best_state is not None
+    if by_nll:
+        kept = max((r for r in log if "val_nll" in r), key=lambda r: -r["val_nll"])
+        print(f"    {arm}: kept step {kept['step']} (validation NLL {kept['val_nll']:.4f})", flush=True)
     with torch.no_grad():
         for p, s_ in zip(gen_params + extra, best_state, strict=True):
             p.copy_(s_)
@@ -627,6 +663,13 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--arms", nargs="+", default=["native", "jev_ce"], choices=ARMS, help="default: EventGPT and EventGPT-D")
     p.add_argument("--no-fisher", dest="fisher", action="store_false", help="skip the Fisher scoring of the intercept after jev_ce")
+    p.add_argument(
+        "--select",
+        choices=["reward", "nll"],
+        default="reward",
+        help="jev_ce: keep the best epoch by validation reward, or the best checkpoint by validation NLL",
+    )
+    p.add_argument("--check-every", type=int, default=25, help="with --select nll: steps between validation checks")
     p.add_argument("--reuse", action="store_true", help="load a trained arm from <out>/<arm>.pt instead of training it")
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
@@ -684,7 +727,7 @@ def main() -> None:
             assert not [k for k in missing.missing_keys if k.startswith(("tok_blocks", "ln_f", "head.res"))]
             print(f"  {arm}: loaded {saved}", flush=True)
         elif arm != "native":
-            conf, logs[arm] = train(model, g, tr_t, arm, a.epochs, a.group, a.rows, a.seed)
+            conf, logs[arm] = train(model, g, tr_t, arm, a.epochs, a.group, a.rows, a.seed, a.select, a.check_every)
             keep = ("tok_blocks", "ln_f", "head.res")
             torch.save(
                 {

@@ -39,12 +39,16 @@ def brier_index(c: np.ndarray, q: np.ndarray) -> float:
 def adjusted_brier_index(c: np.ndarray, q: np.ndarray, base_rate: float | None = None) -> float:
     """Brier index against the base-rate forecast, in percent: 50 for always predicting the base rate."""
     r = float(np.mean(c)) if base_rate is None else base_rate
+    if r <= 0.0 or r >= 1.0:
+        return float("nan")
     return float(100.0 - 50.0 * math.sqrt(brier(c, q) / (r * (1.0 - r))))
 
 
 def brier_skill(c: np.ndarray, q: np.ndarray, base_rate: float | None = None) -> float:
     """1 - Brier / Brier of the base-rate forecast."""
     r = float(np.mean(c)) if base_rate is None else base_rate
+    if r <= 0.0 or r >= 1.0:
+        return float("nan")
     return float(1.0 - brier(c, q) / (r * (1.0 - r)))
 
 
