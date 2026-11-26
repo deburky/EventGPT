@@ -21,6 +21,7 @@ The module depends only on numpy, pandas and torch, so other projects can use it
     table = HeadFeatures(names).transform(out.attentions, query, attrs)
 
     AttentionRecorder.flat_blocks(model.hist_blocks)          # EventGPT and its flat GPT
+    AttentionRecorder.sdpa(blocks)                            # any block calling F.scaled_dot_product_attention
     AttentionRecorder(modules, read=..., prepare=...)        # any other attention module
 
 Key attributes can come from the input tokens alone: token_attributes gives one 0/1 attribute per vocabulary token
@@ -42,6 +43,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 Reader = Callable[[nn.Module, tuple[Any, ...], dict[str, Any], Any], torch.Tensor | None]
@@ -73,9 +75,15 @@ class AttentionRecorder:
         self._store: list[torch.Tensor | None] = [None] * len(self.modules)
         self._handles: list[Any] = []
         self._fastpath: bool | None = None
+        self._sdpa: Callable[..., torch.Tensor] | None = None  # the original F.scaled_dot_product_attention while patched
+        self._active: int | None = None  # index of the module whose forward is running, for the sdpa recorder
+        self._index = {id(m): i for i, m in enumerate(self.modules)}
+        self._captured: dict[int, torch.Tensor] = {}
 
     def __enter__(self) -> AttentionRecorder:
         """Install the hooks."""
+        if self._sdpa is not None:
+            self._patch_sdpa()
         for i, m in enumerate(self.modules):
             if self.setup is not None:
                 self.setup(m)
@@ -94,6 +102,9 @@ class AttentionRecorder:
                 self.teardown(m)
         if self._fastpath is not None:
             torch.backends.mha.set_fastpath_enabled(self._fastpath)
+        if self._sdpa is not None:
+            F.scaled_dot_product_attention = self._sdpa
+        self._active = None
 
     def _hook(self, i: int) -> Callable[[nn.Module, tuple[Any, ...], dict[str, Any], Any], None]:
         """The forward hook that stores module i's weights."""
@@ -154,6 +165,81 @@ class AttentionRecorder:
             return w if isinstance(w, torch.Tensor) else None
 
         return cls(blocks, read=read, setup=setup, teardown=teardown)
+
+    @classmethod
+    def sdpa(cls, modules: Iterable[nn.Module]) -> AttentionRecorder:
+        """Modules that compute attention with F.scaled_dot_product_attention and keep no weights of their own.
+
+        While the context is open, F.scaled_dot_product_attention is wrapped: when it is called inside the forward of
+        one of `modules`, the wrapper also computes softmax(q k^T * scale + mask) from the same q, k, attn_mask,
+        is_causal, scale and enable_gqa it was given, and stores it for that module; the attention itself is still
+        computed by the original function, so outputs do not change. The query and key are taken after whatever the
+        block does to them (norms, rotary positions), which a recomputation from the block's input could get wrong.
+
+        The block must call it through the module attribute (F.scaled_dot_product_attention or
+        torch.nn.functional.scaled_dot_product_attention), not a name imported before the context opened. One call per
+        module and forward is expected; with several, the last is kept. Dropout is not applied to the stored weights.
+        """
+
+        def prepare(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
+            """Mark this module as the one running."""
+            rec._active = rec._index[id(m)]
+            return args, kwargs
+
+        def read(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any], output: Any) -> torch.Tensor | None:
+            """The weights the wrapper captured during this forward."""
+            rec._active = None
+            return rec._captured.pop(rec._index[id(m)], None)
+
+        rec = cls(modules, read=read, prepare=prepare)
+        rec._sdpa = F.scaled_dot_product_attention
+        return rec
+
+    def _patch_sdpa(self) -> None:
+        """Replace F.scaled_dot_product_attention by a wrapper that also records the weights of the active module."""
+        original = self._sdpa
+        assert original is not None
+
+        def wrapper(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+            """Record, then attend with the original function."""
+            if self._active is not None:
+                names = ("attn_mask", "dropout_p", "is_causal", "scale", "enable_gqa")
+                given = dict(zip(names, args, strict=False)) | kwargs
+                self._captured[self._active] = sdpa_weights(
+                    query,
+                    key,
+                    given.get("attn_mask"),
+                    bool(given.get("is_causal", False)),
+                    given.get("scale"),
+                    bool(given.get("enable_gqa", False)),
+                )
+            return original(query, key, value, *args, **kwargs)
+
+        F.scaled_dot_product_attention = wrapper
+
+
+def sdpa_weights(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    is_causal: bool = False,
+    scale: float | None = None,
+    enable_gqa: bool = False,
+) -> torch.Tensor:
+    """The (b, heads, t_q, t_k) weights F.scaled_dot_product_attention uses for the same arguments, in float32.
+
+    A bool mask keeps keys where True, a float mask is added to the scores; rows with no allowed key are zero (where
+    the fused kernel would give NaN or an arbitrary average).
+    """
+    lq, lk = query.size(-2), key.size(-2)
+    if enable_gqa and key.size(-3) != query.size(-3):
+        key = key.repeat_interleave(query.size(-3) // key.size(-3), dim=-3)
+    s = (query.float() @ key.float().transpose(-1, -2)) * (query.size(-1) ** -0.5 if scale is None else scale)
+    if is_causal:
+        s = s.masked_fill(~torch.ones(lq, lk, dtype=torch.bool, device=s.device).tril(), float("-inf"))
+    if attn_mask is not None:
+        s = s.masked_fill(~attn_mask, float("-inf")) if attn_mask.dtype == torch.bool else s + attn_mask.float()
+    return torch.nan_to_num(s.softmax(-1))
 
 
 def stack_layers(attentions: Sequence[Any] | np.ndarray | torch.Tensor) -> np.ndarray:

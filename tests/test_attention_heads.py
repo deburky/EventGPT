@@ -11,7 +11,7 @@ import pytest
 import torch
 from torch import nn
 
-from eventgpt.feature_engineering import AttentionRecorder, HeadFeatures, group_tokens, head_summaries, token_attributes
+from eventgpt.feature_engineering import AttentionRecorder, HeadFeatures, group_tokens, head_summaries, sdpa_weights, token_attributes
 from eventgpt.models.flat import Block, GPTConfig
 
 
@@ -134,6 +134,55 @@ def test_custom_module_with_a_reader() -> None:
     assert attn.shape == (1, 3, 1, 4, 4)
     table = HeadFeatures(["x"]).transform(attn, np.array([3, 3, 3]), np.ones((3, 4, 1)))
     assert np.allclose(table["L1H1_x"], 1.0) and np.allclose(table["L1H1_focus"], np.log(4))
+
+
+def test_sdpa_recorder_matches_the_blocks_own_storage() -> None:
+    """Blocks recorded through F.scaled_dot_product_attention give the same per-head weights as their own storage.
+
+    Checked for a causal block and for an explicit mask with rotary positions; outputs are unchanged and F is restored.
+    """
+    torch.manual_seed(0)
+    original = torch.nn.functional.scaled_dot_product_attention
+    blocks = nn.ModuleList([Block(GPTConfig(vocab_size=10, n_head=4, d_model=16, dropout=0.0)) for _ in range(2)]).eval()
+    x = torch.randn(2, 7, 16)
+    mask = torch.rand(2, 1, 7, 7) > 0.3
+    mask |= torch.eye(7, dtype=torch.bool)
+    pos = torch.arange(7).expand(2, 7)
+
+    def run(**kw: Any) -> torch.Tensor:
+        """Both blocks in sequence."""
+        h = x
+        for blk in blocks:
+            h = blk(h, **kw)
+        return h
+
+    for kw in ({}, {"attn_mask": mask, "pos": pos}):
+        with torch.no_grad():
+            plain = run(**kw)
+            with AttentionRecorder.sdpa(blocks) as rec:
+                out = run(**kw)
+                got = rec.weights()
+            with AttentionRecorder.flat_blocks(blocks) as ref_rec:
+                run(**kw)
+                ref = ref_rec.weights()
+        assert torch.equal(out, plain)
+        assert got.shape == (2, 2, 4, 7, 7)
+        assert np.allclose(got, ref, atol=1e-6)
+    assert torch.nn.functional.scaled_dot_product_attention is original
+
+
+def test_sdpa_weights_follow_the_kernel() -> None:
+    """Weights times values equal the kernel's output for a float mask with a custom scale and for grouped heads."""
+    torch.manual_seed(1)
+    q, k, v = torch.randn(2, 4, 5, 8), torch.randn(2, 4, 6, 8), torch.randn(2, 4, 6, 8)
+    bias = torch.randn(2, 1, 5, 6)
+    w = sdpa_weights(q, k, bias, scale=0.3)
+    assert torch.allclose(w @ v, torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=bias, scale=0.3), atol=1e-5)
+    k2, v2 = k[:, :2], v[:, :2]
+    w2 = sdpa_weights(q, k2, is_causal=True, enable_gqa=True)
+    ref = torch.nn.functional.scaled_dot_product_attention(q, k2, v2, is_causal=True, enable_gqa=True)
+    assert torch.allclose(w2 @ v2.repeat_interleave(2, dim=1), ref, atol=1e-5)
+    assert np.allclose(np.triu(w2[0, 0].numpy(), 1), 0.0)
 
 
 # -------------------------------------------------------------------------------
