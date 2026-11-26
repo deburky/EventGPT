@@ -6,10 +6,11 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 from torch import nn
 
-from eventgpt.feature_engineering import AttentionRecorder, HeadFeatures, head_summaries
+from eventgpt.feature_engineering import AttentionRecorder, HeadFeatures, group_tokens, head_summaries, token_attributes
 from eventgpt.models.flat import Block, GPTConfig
 
 
@@ -132,3 +133,68 @@ def test_custom_module_with_a_reader() -> None:
     assert attn.shape == (1, 3, 1, 4, 4)
     table = HeadFeatures(["x"]).transform(attn, np.array([3, 3, 3]), np.ones((3, 4, 1)))
     assert np.allclose(table["L1H1_x"], 1.0) and np.allclose(table["L1H1_focus"], np.log(4))
+
+
+# -------------------------------------------------------------------------------
+# Linking to the data
+# -------------------------------------------------------------------------------
+def test_group_tokens_collects_each_events_tokens() -> None:
+    """Tokens are grouped by their slot, in order, padded with 0."""
+    tokens = np.array([[5, 6, 7, 8, 0]])
+    slot = np.array([[1, 1, 2, 2, 0]])
+    out = group_tokens(tokens, slot, 3)
+    assert out.shape == (1, 3, 2)
+    assert out[0].tolist() == [[0, 0], [5, 6], [7, 8]]
+
+
+def test_token_attributes_name_count_and_base() -> None:
+    """One attribute per token, the most frequent first, base shares over the keys up to the query."""
+    names = ["[PAD]", "late=0", "late=1", "tax"]
+    keys = np.array([[[1, 0], [2, 3], [2, 0], [0, 0]]])  # keys: late=0 / late=1 + tax / late=1 / empty
+    attrs, got, base = token_attributes(keys, names, top=2)
+    assert got == ["late=1", "late=0"]
+    assert attrs[0, :, 0].tolist() == [0, 1, 1, 0] and attrs[0, :, 1].tolist() == [1, 0, 0, 0]
+    assert np.allclose(base[0], [2 / 3, 1 / 3])  # three non-empty keys
+    _, _, base_q = token_attributes(keys, names, include=["tax"], query=np.array([1]))
+    assert np.allclose(base_q[0], [1 / 2])  # keys 0 and 1 only
+    attrs1, got1, _ = token_attributes(np.array([[1, 2, 2]]), names, top=None)  # one token per key
+    assert got1 == ["late=1", "late=0"] and attrs1.shape == (1, 3, 2)
+
+
+def test_tokens_to_enrichment_end_to_end() -> None:
+    """A head that always attends to the late=1 key shows enrichment above 1 on late=1 and below 1 elsewhere."""
+    names = ["[PAD]", "late=0", "late=1"]
+    rng = np.random.default_rng(2)
+    keys = rng.integers(1, 3, size=(40, 6))
+    attn = np.full((1, 40, 1, 6, 6), 1e-9)
+    for r in range(40):
+        hits = np.flatnonzero(keys[r] == 2)
+        attn[0, r, 0, 5, hits if len(hits) else [5]] = 1.0
+    attn /= attn.sum(-1, keepdims=True)
+    query = np.full(40, 5)
+    attrs, got, base = token_attributes(keys, names, query=query)
+    enr = HeadFeatures(got).enrichment(attn, query, attrs, base)
+    assert enr.loc["L1H1", "late=1"] > 1.5 and enr.loc["L1H1", "late=0"] < 0.5
+
+
+def test_match_joins_on_an_id() -> None:
+    """match(on=...) aligns rows by id whatever their order, and warns about rows without a partner."""
+    rng = np.random.default_rng(3)
+    feats = pd.DataFrame({"case_id": np.arange(20), "L1H1_late": rng.random(20)})
+    ref = pd.DataFrame({"case_id": np.arange(25)[::-1], "n_late": 0.0, "label": "x"})
+    known = ref["case_id"] < 20
+    ref.loc[known, "n_late"] = 2 * feats.set_index("case_id").loc[ref.loc[known, "case_id"], "L1H1_late"].to_numpy()
+    with pytest.warns(UserWarning, match="5 reference rows"):
+        got = HeadFeatures.match(feats, ref, on="case_id")
+    assert got["L1H1_late"][0] == ("n_late", 1.0)
+
+
+def test_query_rows_alone_give_the_same_features() -> None:
+    """Passing only the query rows (query None) gives the same table as the full weights."""
+    rng = np.random.default_rng(4)
+    attn = rng.dirichlet(np.ones(5), size=(2, 8, 3, 5))
+    query = rng.integers(0, 5, size=8)
+    attrs = rng.random((8, 5, 2))
+    hf = HeadFeatures(["a", "b"])
+    rows = attn[:, np.arange(8), :, query, :].transpose(1, 0, 2, 3)
+    assert np.allclose(hf.transform(attn, query, attrs).to_numpy(), hf.transform(rows, None, attrs).to_numpy())

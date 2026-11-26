@@ -23,6 +23,10 @@ The module depends only on numpy, pandas and torch, so other projects can use it
     AttentionRecorder.flat_blocks(model.hist_blocks)          # EventGPT and its flat GPT
     AttentionRecorder(modules, read=..., prepare=...)        # any other attention module
 
+Key attributes can come from the input tokens alone: token_attributes gives one 0/1 attribute per vocabulary token
+("this key contains late=2"), named from the vocabulary, with group_tokens collecting an event's tokens into its key
+for models that attend over events. HeadFeatures.match(table, reference, on="case_id") joins a reference table by id.
+
 Interpretation needs care (Jain and Wallace, 2019): a summary that correlates with an engineered feature can follow
 from attention spread evenly over the keys, so enrichment, which compares a head's mass on an attribute with the
 attribute's share among the keys, says more about what a head looks for than a correlation does.
@@ -30,7 +34,8 @@ attribute's share among the keys, says more about what a head looks for than a c
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+import warnings
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from types import TracebackType
 from typing import Any
 
@@ -161,21 +166,91 @@ def stack_layers(attentions: Sequence[Any] | np.ndarray | torch.Tensor) -> np.nd
 
 
 # -------------------------------------------------------------------------------
+# Key attributes from tokens
+# -------------------------------------------------------------------------------
+def group_tokens(tokens: np.ndarray, slot: np.ndarray, n_slots: int, pad: int = 0) -> np.ndarray:
+    """(b, n_slots, m) the token ids of each key slot, padded with `pad`, from tokens (b, T) and the slot of each (b, T).
+
+    For a model that attends over events (EventGPT's history), slot is each token's event; for one that attends over
+    tokens, keys are the tokens themselves and no grouping is needed.
+    """
+    tokens, slot = np.asarray(tokens), np.asarray(slot)
+    valid = tokens != pad
+    counts = np.zeros((len(tokens), n_slots), dtype=np.int64)
+    for r in range(len(tokens)):
+        np.add.at(counts[r], slot[r][valid[r]], 1)
+    out = np.full((len(tokens), n_slots, max(int(counts.max()), 1)), pad, dtype=tokens.dtype)
+    fill = np.zeros_like(counts)
+    for r in range(len(tokens)):
+        for tok, k in zip(tokens[r][valid[r]], slot[r][valid[r]], strict=True):
+            out[r, k, fill[r, k]] = tok
+            fill[r, k] += 1
+    return out
+
+
+def token_attributes(
+    keys: np.ndarray,
+    names: Mapping[int, str] | Sequence[str],
+    top: int | None = 50,
+    include: Iterable[str] | None = None,
+    query: np.ndarray | None = None,
+    pad: int = 0,
+) -> tuple[np.ndarray, list[str], np.ndarray]:
+    """0/1 key attributes "the key contains token X", one per token, named from the vocabulary.
+
+    Args:
+        keys: (b, t) one token id per key, or (b, t, m) the token ids of each key padded with `pad`.
+        names: token id to its name (a mapping, or a sequence indexed by id).
+        top: keep the `top` tokens contained in the most keys (None keeps every token); ignored with `include`.
+        include: names of the tokens to keep instead.
+        query: (b,) each row's query position; the base shares then count keys up to it, the ones a causal head sees.
+        pad: the padding id, never an attribute.
+
+    Returns:
+        attrs (b, t, A), the attribute names, and base (b, A): each row's share of its non-empty keys (up to the query
+        position when given) that contain the token, for HeadFeatures.enrichment.
+    """
+    k = np.asarray(keys)
+    k = k[..., None] if k.ndim == 2 else k
+    flat = np.sort(k.reshape(-1, k.shape[-1]), 1)
+    first = np.ones_like(flat, dtype=bool)
+    first[:, 1:] = flat[:, 1:] != flat[:, :-1]
+    ids, cnt = np.unique(flat[first & (flat != pad)], return_counts=True)
+    name_of = {int(i): str(names[int(i)]) for i in ids}
+    if include is not None:
+        wanted = set(include)
+        chosen = [int(i) for i in ids if name_of[int(i)] in wanted]
+    else:
+        order = np.argsort(-cnt, kind="stable")
+        chosen = [int(ids[j]) for j in (order if top is None else order[:top])]
+    attrs = np.stack([(k == i).any(-1) for i in chosen], -1).astype(np.float64)
+    seen = (k != pad).any(-1)
+    if query is not None:
+        seen = seen & (np.arange(k.shape[1])[None, :] <= np.asarray(query)[:, None])
+    base = (attrs * seen[..., None]).sum(1) / np.clip(seen.sum(1, keepdims=True), 1, None)
+    return attrs, [name_of[i] for i in chosen], base
+
+
+# -------------------------------------------------------------------------------
 # Features
 # -------------------------------------------------------------------------------
-def head_summaries(attn: np.ndarray, query: np.ndarray, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def head_summaries(attn: np.ndarray, query: np.ndarray | None, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Attention-weighted key attributes and focus of every head at one query position per row.
 
     Args:
-        attn: (layers, b, heads, t, t) weights; row q of the last two axes is query position q.
-        query: (b,) the query position of each row.
+        attn: (layers, b, heads, t, t) weights, row q of the last two axes being query position q; or, with query
+            None, only the query rows, (layers, b, heads, t), to save memory over many rows.
+        query: (b,) the query position of each row, or None.
         attrs: (b, t, A) the attributes of every key position; give 0 to keys that should count as none of them.
 
     Returns:
         summaries (b, layers, heads, A) and focus (b, layers, heads), the entropy of each head's weights in nats.
     """
-    rows = np.arange(attn.shape[1])
-    w = attn[:, rows, :, query, :]  # (b, layers, heads, t): numpy moves the advanced-index axis to the front
+    if query is None:
+        w = np.asarray(attn).transpose(1, 0, 2, 3)  # (b, layers, heads, t)
+    else:
+        rows = np.arange(attn.shape[1])
+        w = attn[:, rows, :, query, :]  # (b, layers, heads, t): numpy moves the advanced-index axis to the front
     summ = np.einsum("blht,bta->blha", w, attrs)
     focus = -(w * np.log(np.clip(w, 1e-12, 1.0))).sum(-1)
     return summ, focus
@@ -187,13 +262,13 @@ class HeadFeatures:
     def __init__(self, names: Sequence[str]) -> None:
         self.names = list(names)
 
-    def summaries(self, attn: Any, query: np.ndarray, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """head_summaries on weights given stacked or per layer."""
+    def summaries(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """head_summaries on weights given stacked or per layer (query None: only the query rows, see head_summaries)."""
         a = stack_layers(attn)
         assert attrs.shape[-1] == len(self.names), f"{attrs.shape[-1]} attributes for {len(self.names)} names"
-        return head_summaries(a, np.asarray(query), attrs)
+        return head_summaries(a, None if query is None else np.asarray(query), attrs)
 
-    def transform(self, attn: Any, query: np.ndarray, attrs: np.ndarray) -> pd.DataFrame:
+    def transform(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> pd.DataFrame:
         """One column per layer, head and attribute (L{layer}H{head}_{name}) and per head its focus (_focus)."""
         summ, focus = self.summaries(attn, query, attrs)
         _, n_layers, n_heads, _ = summ.shape
@@ -207,7 +282,7 @@ class HeadFeatures:
                 data.append(focus[:, ly, h])
         return pd.DataFrame(np.stack(data, 1), columns=cols)
 
-    def enrichment(self, attn: Any, query: np.ndarray, attrs: np.ndarray, base: np.ndarray) -> pd.DataFrame:
+    def enrichment(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray, base: np.ndarray) -> pd.DataFrame:
         """Per head (rows L{layer}H{head}) and 0/1 attribute: mean attention mass over its mean share among the keys.
 
         `base` (b, A) is each row's share of keys with the attribute, over the keys the heads can attend to; 1 means no
@@ -220,9 +295,21 @@ class HeadFeatures:
         return pd.DataFrame(ratio.reshape(n_layers * n_heads, -1), index=index, columns=self.names)
 
     @staticmethod
-    def match(features: pd.DataFrame, reference: pd.DataFrame, top: int = 3) -> dict[str, list[tuple[str, float]]]:
-        """For each feature column, the reference columns with the largest absolute Spearman correlation, rows aligned."""
-        ref = reference.rank(pct=True)
+    def match(features: pd.DataFrame, reference: pd.DataFrame, top: int = 3, on: str | None = None) -> dict[str, list[tuple[str, float]]]:
+        """For each feature column, the reference columns with the largest absolute Spearman correlation.
+
+        Rows are taken as aligned, or, with `on`, joined on that id column of both tables (an inner join; a warning
+        says how many rows of either table found no partner). Only numeric reference columns are compared.
+        """
+        if on is not None:
+            joined = features.merge(reference, on=on, how="inner", suffixes=("", "__ref"))
+            lost = (len(features) - len(joined), len(reference) - len(joined))
+            if any(lost):
+                warnings.warn(f"match on {on!r}: {lost[0]} feature rows and {lost[1]} reference rows have no partner", stacklevel=2)
+            feat_cols = [c for c in features.columns if c != on]
+            ref_cols = [c if c not in features.columns else f"{c}__ref" for c in reference.columns if c != on]
+            features, reference = joined[feat_cols], joined[ref_cols]
+        ref = reference.select_dtypes("number").rank(pct=True)
         out = {}
         for c in features.columns:
             r = ref.corrwith(features[c].rank(pct=True)).dropna()
