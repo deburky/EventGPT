@@ -66,7 +66,8 @@ def test_table_enrichment_and_matches() -> None:
     assert enr.shape == (6, 2) and enr.index[0] == "L1H1"
     assert np.isclose(enr.loc["L2H3", "tax"], summ[:, 1, 2, 1].mean() / base[:, 1].mean())
     ref = pd.DataFrame({"copy": table["L2H3_tax"] * 3 + 1, "noise": rng.random(30)})
-    assert HeadFeatures.match(table[["L2H3_tax"]], ref)["L2H3_tax"][0] == ("copy", 1.0)
+    name, r = HeadFeatures.match(table[["L2H3_tax"]], ref)["L2H3_tax"][0]
+    assert name == "copy" and r == pytest.approx(1.0)
 
 
 # -------------------------------------------------------------------------------
@@ -237,7 +238,8 @@ def test_match_joins_on_an_id() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # 5 extra reference rows: no warning
         got = HeadFeatures.match(feats, ref, on="case_id")
-    assert got["L1H1_late"][0] == ("n_late", 1.0)
+    name, r = got["L1H1_late"][0]
+    assert name == "n_late" and r == pytest.approx(1.0)
     with pytest.warns(UserWarning, match="3 of 20 feature rows"):
         HeadFeatures.match(feats, ref[ref["case_id"] >= 3], on="case_id")
 
@@ -251,3 +253,15 @@ def test_query_rows_alone_give_the_same_features() -> None:
     hf = HeadFeatures(["a", "b"])
     rows = attn[:, np.arange(8), :, query, :].transpose(1, 0, 2, 3)
     assert np.allclose(hf.transform(attn, query, attrs).to_numpy(), hf.transform(rows, None, attrs).to_numpy())
+
+
+def test_nested_sdpa_recorders_both_record_and_restore() -> None:
+    """A recorder created before another opens still chains to it: both record, and the original comes back."""
+    original = torch.nn.functional.scaled_dot_product_attention
+    blk = Block(GPTConfig(vocab_size=10, n_head=4, d_model=16, dropout=0.0)).eval()
+    inner = AttentionRecorder.sdpa([blk])  # created before the outer recorder patches the function
+    with AttentionRecorder.sdpa([blk]) as outer, inner, torch.no_grad():
+        blk(torch.randn(1, 5, 16))
+        a, b = outer.weights(), inner.weights()
+    assert a.shape == b.shape == (1, 1, 4, 5, 5) and np.allclose(a, b)
+    assert torch.nn.functional.scaled_dot_product_attention is original
