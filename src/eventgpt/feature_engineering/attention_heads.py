@@ -298,14 +298,15 @@ class HeadFeatures:
     def match(features: pd.DataFrame, reference: pd.DataFrame, top: int = 3, on: str | None = None) -> dict[str, list[tuple[str, float]]]:
         """For each feature column, the reference columns with the largest absolute Spearman correlation.
 
-        Rows are taken as aligned, or, with `on`, joined on that id column of both tables (an inner join; a warning
-        says how many rows of either table found no partner). Only numeric reference columns are compared.
+        Rows are taken as aligned, or, with `on`, joined on that id column of both tables. The reference may hold
+        more rows than the features (a whole dataset against a scored sample); a warning is given only when feature
+        rows find no partner in it. Only numeric reference columns are compared.
         """
         if on is not None:
             joined = features.merge(reference, on=on, how="inner", suffixes=("", "__ref"))
-            lost = (len(features) - len(joined), len(reference) - len(joined))
-            if any(lost):
-                warnings.warn(f"match on {on!r}: {lost[0]} feature rows and {lost[1]} reference rows have no partner", stacklevel=2)
+            lost = len(features) - len(joined)
+            if lost:
+                warnings.warn(f"match on {on!r}: {lost} of {len(features)} feature rows have no partner in the reference", stacklevel=2)
             feat_cols = [c for c in features.columns if c != on]
             ref_cols = [c if c not in features.columns else f"{c}__ref" for c in reference.columns if c != on]
             features, reference = joined[feat_cols], joined[ref_cols]

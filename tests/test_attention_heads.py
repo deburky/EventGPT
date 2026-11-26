@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -178,15 +179,18 @@ def test_tokens_to_enrichment_end_to_end() -> None:
 
 
 def test_match_joins_on_an_id() -> None:
-    """match(on=...) aligns rows by id whatever their order, and warns about rows without a partner."""
+    """match(on=...) aligns rows by id whatever their order; extra reference rows are fine, missing ones warn."""
     rng = np.random.default_rng(3)
     feats = pd.DataFrame({"case_id": np.arange(20), "L1H1_late": rng.random(20)})
     ref = pd.DataFrame({"case_id": np.arange(25)[::-1], "n_late": 0.0, "label": "x"})
     known = ref["case_id"] < 20
     ref.loc[known, "n_late"] = 2 * feats.set_index("case_id").loc[ref.loc[known, "case_id"], "L1H1_late"].to_numpy()
-    with pytest.warns(UserWarning, match="5 reference rows"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # 5 extra reference rows: no warning
         got = HeadFeatures.match(feats, ref, on="case_id")
     assert got["L1H1_late"][0] == ("n_late", 1.0)
+    with pytest.warns(UserWarning, match="3 of 20 feature rows"):
+        HeadFeatures.match(feats, ref[ref["case_id"] >= 3], on="case_id")
 
 
 def test_query_rows_alone_give_the_same_features() -> None:
