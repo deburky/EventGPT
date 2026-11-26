@@ -5,8 +5,9 @@ from eventgpt.feature_engineering.attention_heads import (
     HeadFeatures,
     group_tokens,
     head_summaries,
+    sdpa_weights,
     stack_layers,
     token_attributes,
 )
 
-__all__ = ["AttentionRecorder", "HeadFeatures", "group_tokens", "head_summaries", "stack_layers", "token_attributes"]
+__all__ = ["AttentionRecorder", "HeadFeatures", "group_tokens", "head_summaries", "sdpa_weights", "stack_layers", "token_attributes"]
