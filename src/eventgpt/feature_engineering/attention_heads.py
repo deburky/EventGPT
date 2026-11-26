@@ -75,14 +75,16 @@ class AttentionRecorder:
         self._store: list[torch.Tensor | None] = [None] * len(self.modules)
         self._handles: list[Any] = []
         self._fastpath: bool | None = None
-        self._sdpa: Callable[..., torch.Tensor] | None = None  # the original F.scaled_dot_product_attention while patched
+        self._wrap_sdpa = False  # set by AttentionRecorder.sdpa
+        self._sdpa: Callable[..., torch.Tensor] | None = None  # the F.scaled_dot_product_attention found on entering
         self._active: int | None = None  # index of the module whose forward is running, for the sdpa recorder
         self._index = {id(m): i for i, m in enumerate(self.modules)}
         self._captured: dict[int, torch.Tensor] = {}
 
     def __enter__(self) -> AttentionRecorder:
         """Install the hooks."""
-        if self._sdpa is not None:
+        if self._wrap_sdpa:  # taken now, not at construction, so nested or reused recorders restore what they found
+            self._sdpa = F.scaled_dot_product_attention
             self._patch_sdpa()
         for i, m in enumerate(self.modules):
             if self.setup is not None:
@@ -104,6 +106,7 @@ class AttentionRecorder:
             torch.backends.mha.set_fastpath_enabled(self._fastpath)
         if self._sdpa is not None:
             F.scaled_dot_product_attention = self._sdpa
+            self._sdpa = None
         self._active = None
 
     def _hook(self, i: int) -> Callable[[nn.Module, tuple[Any, ...], dict[str, Any], Any], None]:
@@ -179,6 +182,8 @@ class AttentionRecorder:
         The block must call it through the module attribute (F.scaled_dot_product_attention or
         torch.nn.functional.scaled_dot_product_attention), not a name imported before the context opened. One call per
         module and forward is expected; with several, the last is kept. Dropout is not applied to the stored weights.
+        The wrapper is process-wide while the context is open: other models calling the function pass through it, but
+        only calls inside one of `modules` are recorded, and outputs never change.
         """
 
         def prepare(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
@@ -192,7 +197,7 @@ class AttentionRecorder:
             return rec._captured.pop(rec._index[id(m)], None)
 
         rec = cls(modules, read=read, prepare=prepare)
-        rec._sdpa = F.scaled_dot_product_attention
+        rec._wrap_sdpa = True
         return rec
 
     def _patch_sdpa(self) -> None:
@@ -203,7 +208,7 @@ class AttentionRecorder:
         def wrapper(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
             """Record, then attend with the original function."""
             if self._active is not None:
-                names = ("attn_mask", "dropout_p", "is_causal", "scale", "enable_gqa")
+                names = ("attn_mask", "dropout_p", "is_causal", "scale")  # the positional ones; enable_gqa is keyword-only
                 given = dict(zip(names, args, strict=False)) | kwargs
                 self._captured[self._active] = sdpa_weights(
                     query,
