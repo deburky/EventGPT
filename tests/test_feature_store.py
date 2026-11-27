@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -132,3 +133,108 @@ def test_table_layout_matches_a_column_by_column_build() -> None:
             data.append(-(wt * np.log(wt)).sum(-1))
     assert list(table.columns) == cols
     assert np.allclose(table.to_numpy(), np.stack(data, 1))
+
+
+# -------------------------------------------------------------------------------
+# Review: weighting, valid keys, shapes
+# -------------------------------------------------------------------------------
+def test_counts_and_field_means_follow_uneven_weights() -> None:
+    """With uneven weights the count is the weighted share times the keys seen, and the field mean is weighted."""
+    w = np.array([[[[0.7, 0.2, 0.1, 0.0]]]])  # (layers, b, heads, t): 3 keys seen
+    attrs = np.array([[[1.0], [0.0], [1.0], [1.0]]])  # attribute on keys 0, 2 and the unseen key 3
+    counts = HeadFeatures(["late"], counts=True).transform(w, None, attrs)
+    assert np.isclose(counts["L1H1_late_count"].iat[0], (0.7 + 0.1) * 3)  # 2.4, not the raw 2
+    keys = np.array([[[1], [2], [4], [2]]])  # amt_bin 3, 7, none, 7
+    fv = field_attributes(keys, NAMES, ["amt_bin"])
+    table = HeadFeatures([], fields=["amt_bin"]).transform(w, None, np.zeros((1, 4, 0)), fields=fv)
+    assert np.isclose(table["L1H1_amt_bin_mean"].iat[0], (0.7 * 3 + 0.2 * 7) / 0.9)  # 3.89, not the plain mean 5
+
+
+def test_counts_use_only_valid_keys_for_share_and_number() -> None:
+    """A key marked invalid adds to neither the share nor the number of keys, even with weight on it."""
+    w = np.array([[[[0.5, 0.25, 0.25]]]])
+    attrs = np.array([[[0.0], [0.0], [1.0]]])  # only the invalid key 2 has the attribute
+    valid = np.array([[True, True, False]])
+    table = HeadFeatures(["late"], counts=True).transform(w, None, attrs, valid=valid)
+    assert table["L1H1_late_count"].iat[0] == 0.0
+
+
+def test_one_key_sequences() -> None:
+    """Weights of one-key sequences, (layers, b, heads, 1, 1), give one row each, with or without a query."""
+    w = np.ones((2, 3, 4, 1, 1))
+    attrs = np.ones((3, 1, 1))
+    for q in (None, np.zeros(3, dtype=int)):
+        table = HeadFeatures(["a"]).transform(w, q, attrs)
+        assert table.shape == (3, 2 * 4 * 2) and np.allclose(table.filter(like="_a"), 1.0)
+
+
+# -------------------------------------------------------------------------------
+# Review: the store
+# -------------------------------------------------------------------------------
+def test_a_write_stopped_part_way_leaves_no_chunk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When writing a chunk fails part-way, no chunk file is left behind and the store reopens and resumes."""
+    store = HeadFeatureStore(tmp_path, chunk_rows=10)
+    store.add([1], pd.DataFrame({"x": [1.0]}))
+    store.flush()
+    real = pd.DataFrame.to_parquet
+
+    def stopped(self: pd.DataFrame, path: Any, *args: Any, **kwargs: Any) -> None:
+        """Write a truncated file where asked, then fail, like a process stopped during the write."""
+        Path(path).write_bytes(b"PAR1 truncated")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", stopped)
+    store.add([2], pd.DataFrame({"x": [2.0]}))
+    with pytest.raises(KeyboardInterrupt):
+        store.flush()
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", real)
+    again = HeadFeatureStore(tmp_path)  # a partial chunk-*.parquet would fail to open here
+    assert again.has(1) and not again.has(2)
+    again.add([2], pd.DataFrame({"x": [2.0]}))
+    assert again.read([1, 2])["x"].tolist() == [1.0, 2.0]
+
+
+def test_two_stores_counting_the_same_chunks_keep_both(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two stores that see the same existing chunks when they write still write separate chunks."""
+    a, b = HeadFeatureStore(tmp_path), HeadFeatureStore(tmp_path)
+    a.add(["a1", "a2"], pd.DataFrame({"x": [1.0, 2.0]}))
+    b.add(["b1"], pd.DataFrame({"x": [3.0]}))
+    real_glob = Path.glob
+    monkeypatch.setattr(Path, "glob", lambda self, pattern: iter([]))  # both see no chunk yet, as when writing at once
+    a.flush()
+    b.flush()
+    monkeypatch.setattr(Path, "glob", real_glob)
+    assert len(list(tmp_path.glob("chunk-*.parquet"))) == 2
+    assert HeadFeatureStore(tmp_path).read(["b1", "a2", "a1"])["x"].tolist() == [3.0, 2.0, 1.0]
+
+
+def test_store_ids_repeated_tuples_and_numpy_ints(tmp_path: Path) -> None:
+    """A repeated id in one batch keeps its first row; tuple ids round-trip; numpy and Python ints are one id."""
+    store = HeadFeatureStore(tmp_path)
+    store.add([("c1", 1), ("c1", 1), ("c2", 3)], pd.DataFrame({"x": [1.0, 9.0, 2.0]}))
+    store.add([np.int64(7)], pd.DataFrame({"x": [5.0]}))
+    store.flush()
+    again = HeadFeatureStore(tmp_path)
+    assert again.has(("c1", 1)) and again.has(7) and not again.has(("c1", 2))
+    assert again.read([("c2", 3), ("c1", 1), 7])["x"].tolist() == [2.0, 1.0, 5.0]
+    assert len(again.read()) == 3
+
+
+def test_store_chunks_never_exceed_chunk_rows(tmp_path: Path) -> None:
+    """One batch larger than chunk_rows is split into chunks of at most chunk_rows."""
+    store = HeadFeatureStore(tmp_path, chunk_rows=3)
+    store.add(list(range(8)), pd.DataFrame({"x": np.arange(8.0)}))
+    store.flush()
+    sizes = sorted(len(pd.read_parquet(p)) for p in tmp_path.glob("chunk-*.parquet"))
+    assert sizes == [2, 3, 3]
+    assert HeadFeatureStore(tmp_path).read(list(range(8)))["x"].tolist() == list(range(8))
+
+
+def test_store_reads_chunks_from_the_earlier_format(tmp_path: Path) -> None:
+    """Chunks written with a row_id column (the first version) are read with the new ones."""
+    pd.DataFrame({"row_id": [0, 1], "x": [1.0, 2.0]}).to_parquet(tmp_path / "chunk-00000.parquet", index=False)
+    store = HeadFeatureStore(tmp_path)
+    assert store.has(1) and store.has(np.int64(0))
+    store.add([1, 2], pd.DataFrame({"x": [9.0, 3.0]}))  # 1 is stored already
+    assert store.read([2, 1, 0])["x"].tolist() == [3.0, 2.0, 1.0]
+    assert store.columns() == ["x"]

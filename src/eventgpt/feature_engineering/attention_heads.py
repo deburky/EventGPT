@@ -40,6 +40,9 @@ attribute's share among the keys, says more about what a head looks for than a c
 
 from __future__ import annotations
 
+import os
+import time
+import uuid
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -49,6 +52,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -478,9 +482,10 @@ def field_attributes(
 def query_rows(attn: Any, query: np.ndarray | None) -> np.ndarray:
     """(b, layers, heads, t) the weights of each row's query position, from any of the shapes HeadFeatures takes."""
     a = stack_layers(attn)
-    if a.ndim == 5 and a.shape[3] == 1 and a.shape[4] > 1:  # query rows from a recorder with `query` set
+    if a.ndim == 5 and a.shape[3] == 1:  # query rows from a recorder with `query` set, or one-key sequences
         a, query = a[:, :, :, 0, :], None
     if query is None:
+        assert a.ndim == 4, f"(layers, b, heads, Q, t) with Q > 1: use flatten_queries first, got shape {a.shape}"
         return np.asarray(a).transpose(1, 0, 2, 3)
     rows = np.arange(a.shape[1])
     return a[:, rows, :, np.asarray(query), :]  # numpy moves the advanced-index axis to the front
@@ -512,8 +517,10 @@ class HeadFeatures:
     """Attention-weighted summaries of named key attributes, for every layer and head, as a table.
 
     `counts` turns the summaries of the named attributes (all with True) into attention-weighted counts: the share
-    times the number of keys the head saw (keys with nonzero weight, or the `valid` keys given to transform), so a
-    head reports how many late payments it reads and not only their share; the columns are named _{name}_count.
+    among the keys the head saw times their number, so a head reports how many late payments it reads and not only
+    their share; the columns are named _{name}_count. A key is seen when its weight is nonzero (masked, padded and,
+    for a causal head, later keys have none) and, when transform gets `valid`, when it is marked real; both the share
+    and the number then use the seen keys only.
     `fields` adds, for each ordinal field of a FieldValues given to transform, the attention-weighted mean value over
     the keys that have the field (_{field}_mean, NaN when the head puts no weight on such keys).
     """
@@ -553,8 +560,14 @@ class HeadFeatures:
         assert attrs.shape[-1] == len(self.names), f"{attrs.shape[-1]} attributes for {len(self.names)} names"
         summ = np.einsum("blht,bta->blha", w, attrs)
         focus = -(w * np.log(np.clip(w, 1e-12, 1.0))).sum(-1)
+        # counts: the share among the keys seen, times their number; a key is seen when the head gives it weight (a
+        # zero weight is a masked, padded or, for a causal head, later key) and, with `valid`, when it is real
         seen = (w > 0) if valid is None else ((w > 0) & np.asarray(valid, dtype=bool)[:, None, None, :])
         n_seen = seen.sum(-1)  # (b, layers, heads)
+        ws = w * seen
+        with np.errstate(invalid="ignore", divide="ignore"):
+            share_seen = np.einsum("blht,bta->blha", ws, attrs) / ws.sum(-1, keepdims=True)
+        share_seen = np.nan_to_num(share_seen)
         means = None
         if self.fields:
             assert fields is not None, "HeadFeatures(fields=...) needs transform(..., fields=field_attributes(...))"
@@ -567,7 +580,7 @@ class HeadFeatures:
         scaled = summ.copy()
         is_count = np.array([name in self.counts for name in self.names], dtype=bool)
         if is_count.any():
-            scaled[..., is_count] = summ[..., is_count] * n_seen[..., None]
+            scaled[..., is_count] = share_seen[..., is_count] * n_seen[..., None]
         block = np.concatenate([scaled, *([means] if means is not None else []), focus[..., None]], -1)
         return pd.DataFrame(block.reshape(b, -1), columns=self._columns(n_layers, n_heads, means is not None))
 
@@ -629,6 +642,15 @@ class HeadFeatures:
 # -------------------------------------------------------------------------------
 # Storing features over a large dataset
 # -------------------------------------------------------------------------------
+def _key(x: Any) -> str:
+    """A stable text key for a row id: numbers, strings and tuples of them, numpy scalars as their Python values."""
+    if isinstance(x, tuple):
+        return "(" + ", ".join(_key(v) for v in x) + ("," if len(x) == 1 else "") + ")"
+    if isinstance(x, np.generic):
+        x = x.item()
+    return repr(x)
+
+
 class HeadFeatureStore:
     """Feature tables saved to a directory in chunks, by row id, so an extraction over a large dataset can resume.
 
@@ -641,19 +663,37 @@ class HeadFeatureStore:
         store.flush()
         features = store.read(all_ids)          # in the order of all_ids
 
-    Each chunk is a parquet file with a row_id column; a run stopped part-way loses at most the rows not yet flushed.
-    Rows added again are ignored, so a batch interrupted after a flush can simply be redone.
+    Row ids may be any numbers, strings or tuples of them, such as (client, month); numpy scalars count as their
+    Python values. Each chunk is a parquet file of at most chunk_rows rows, written to a temporary file and renamed when
+    complete, so a run stopped during a write leaves no partial chunk, and named uniquely, so two stores writing to the
+    same directory do not overwrite each other. A run stopped part-way loses at most the rows not yet flushed; rows
+    added again, within a batch or across runs, are ignored, so an interrupted batch can simply be redone.
     """
 
     def __init__(self, directory: str | Path, chunk_rows: int = 20_000) -> None:
         self.dir = Path(directory)
         self.dir.mkdir(parents=True, exist_ok=True)
+        assert chunk_rows > 0, "chunk_rows must be positive"
         self.chunk_rows = chunk_rows
         self._buffer: list[pd.DataFrame] = []
         self._buffered = 0
-        self._done: set[Any] = set()
-        for part in sorted(self.dir.glob("chunk-*.parquet")):
-            self._done.update(pd.read_parquet(part, columns=["row_id"])["row_id"].tolist())
+        self._done: set[str] = set()
+        for part in self._chunks():
+            self._done.update(self._keys(part))
+
+    def _chunks(self) -> list[Path]:
+        """The complete chunk files, oldest first."""
+        return sorted(self.dir.glob("chunk-*.parquet"))
+
+    @staticmethod
+    def _keys(part: Path, table: pd.DataFrame | None = None) -> list[str]:
+        """The row keys of a chunk (its row_key column, or the row_id column of chunks from earlier versions)."""
+        if table is None:
+            col = "row_key" if "row_key" in pq.read_schema(part).names else "row_id"
+            table = pd.read_parquet(part, columns=[col])
+        if "row_key" in table.columns:
+            return table["row_key"].tolist()
+        return [_key(v) for v in table["row_id"].tolist()]
 
     def __enter__(self) -> HeadFeatureStore:
         """The store itself; leaving the context flushes it."""
@@ -665,52 +705,80 @@ class HeadFeatureStore:
 
     def has(self, row_id: Any) -> bool:
         """Whether the row is saved or buffered."""
-        return row_id in self._done
+        return _key(row_id) in self._done
 
     def has_all(self, ids: Iterable[Any]) -> bool:
         """Whether every one of these rows is saved or buffered."""
-        return all(i in self._done for i in ids)
+        return all(_key(i) in self._done for i in ids)
 
     def add(self, ids: Sequence[Any], table: pd.DataFrame) -> None:
-        """Buffer a batch's rows (in the table's order), skipping rows already stored; writes a chunk when full."""
+        """Buffer a batch's rows (in the table's order), skipping rows already stored or repeated; writes full chunks."""
         assert len(ids) == len(table), f"{len(ids)} ids for {len(table)} rows"
-        keep = np.array([i not in self._done for i in ids], dtype=bool)
-        if not keep.any():
+        keys = [_key(i) for i in ids]
+        keep, seen = [], set()
+        for k in keys:
+            keep.append(k not in self._done and k not in seen)
+            seen.add(k)
+        mask = np.array(keep, dtype=bool)
+        if not mask.any():
             return
-        part = table.reset_index(drop=True)[keep].copy()
-        part.insert(0, "row_id", np.asarray(ids, dtype=object)[keep].tolist())
+        part = table.reset_index(drop=True)[mask].copy()
+        new = [k for k, ok in zip(keys, keep, strict=True) if ok]
+        part.insert(0, "row_key", new)
         self._buffer.append(part)
         self._buffered += len(part)
-        self._done.update(part["row_id"].tolist())
-        if self._buffered >= self.chunk_rows:
-            self.flush()
+        self._done.update(new)
+        while self._buffered >= self.chunk_rows:
+            self._write(self.chunk_rows)
+
+    def _write(self, n: int) -> None:
+        """Write the first n buffered rows as a new chunk: to a temporary file first, then renamed."""
+        buffered = pd.concat(self._buffer, ignore_index=True)
+        head, rest = buffered.iloc[:n], buffered.iloc[n:]
+        name = f"chunk-{time.time_ns():020d}-{os.getpid()}-{uuid.uuid4().hex[:8]}.parquet"
+        tmp = self.dir / f".{name}.tmp"
+        head.to_parquet(tmp, index=False)
+        os.replace(tmp, self.dir / name)
+        self._buffer = [rest] if len(rest) else []
+        self._buffered = len(rest)
 
     def flush(self) -> None:
-        """Write the buffered rows as a new chunk."""
-        if not self._buffer:
-            return
-        n = len(list(self.dir.glob("chunk-*.parquet")))
-        pd.concat(self._buffer, ignore_index=True).to_parquet(self.dir / f"chunk-{n:05d}.parquet", index=False)
-        self._buffer, self._buffered = [], 0
+        """Write every buffered row, in chunks of at most chunk_rows."""
+        while self._buffered:
+            self._write(min(self.chunk_rows, self._buffered))
 
     def columns(self) -> list[str]:
-        """The stored feature columns, without row_id."""
-        first = sorted(self.dir.glob("chunk-*.parquet"))
-        assert first, f"no chunks in {self.dir}"
-        return [c for c in pd.read_parquet(first[0]).columns if c != "row_id"]
+        """The stored feature columns, without the row id."""
+        parts = self._chunks()
+        assert parts, f"no chunks in {self.dir}"
+        return [c for c in pq.read_schema(parts[0]).names if c not in ("row_key", "row_id")]
 
     def read(self, ids: Sequence[Any] | None = None, columns: Sequence[str] | None = None) -> pd.DataFrame:
-        """Every stored row, or these rows in this order (all must be stored), without the row_id column.
+        """Every stored row, or these rows in this order (all must be stored), without the row id.
 
-        `columns` reads only those feature columns, which keeps memory small when a store holds thousands of them.
+        With `ids`, each chunk is filtered as it is read, so the memory follows the rows asked for and not the store;
+        `columns` reads only those feature columns. A row stored twice is read from its oldest chunk.
         """
         self.flush()
-        cols = None if columns is None else ["row_id", *columns]
-        parts = [pd.read_parquet(p, columns=cols) for p in sorted(self.dir.glob("chunk-*.parquet"))]
+        parts = self._chunks()
         assert parts, f"no chunks in {self.dir}"
-        table = pd.concat(parts, ignore_index=True).drop_duplicates("row_id", keep="first").set_index("row_id")
-        if ids is None:
+        wanted = None if ids is None else [_key(i) for i in ids]
+        want = None if wanted is None else set(wanted)
+        got: list[pd.DataFrame] = []
+        taken: set[str] = set()
+        for part in parts:
+            id_col = "row_key" if "row_key" in pq.read_schema(part).names else "row_id"
+            t = pd.read_parquet(part, columns=None if columns is None else [id_col, *columns])
+            keys = self._keys(part, t)
+            mask = np.array([k not in taken and (want is None or k in want) for k in keys], dtype=bool)
+            if mask.any():
+                t = t.drop(columns=[id_col])[mask]
+                t.index = pd.Index([k for k, m in zip(keys, mask, strict=True) if m], name="row_key")
+                taken.update(t.index)
+                got.append(t)
+        table = pd.concat(got) if got else pd.DataFrame(columns=list(columns or []))
+        if wanted is None:
             return table.reset_index(drop=True)
-        missing = [i for i in ids if i not in table.index]
+        missing = [i for i, k in zip(ids or [], wanted, strict=True) if k not in table.index]
         assert not missing, f"{len(missing)} rows not stored, e.g. {missing[:3]}"
-        return table.loc[list(ids)].reset_index(drop=True)
+        return table.loc[wanted].reset_index(drop=True)
