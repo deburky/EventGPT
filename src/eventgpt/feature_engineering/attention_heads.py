@@ -675,10 +675,20 @@ class HeadFeatureStore:
         pd.concat(self._buffer, ignore_index=True).to_parquet(self.dir / f"chunk-{n:05d}.parquet", index=False)
         self._buffer, self._buffered = [], 0
 
-    def read(self, ids: Sequence[Any] | None = None) -> pd.DataFrame:
-        """Every stored row, or these rows in this order (all must be stored), without the row_id column."""
+    def columns(self) -> list[str]:
+        """The stored feature columns, without row_id."""
+        first = sorted(self.dir.glob("chunk-*.parquet"))
+        assert first, f"no chunks in {self.dir}"
+        return [c for c in pd.read_parquet(first[0]).columns if c != "row_id"]
+
+    def read(self, ids: Sequence[Any] | None = None, columns: Sequence[str] | None = None) -> pd.DataFrame:
+        """Every stored row, or these rows in this order (all must be stored), without the row_id column.
+
+        `columns` reads only those feature columns, which keeps memory small when a store holds thousands of them.
+        """
         self.flush()
-        parts = [pd.read_parquet(p) for p in sorted(self.dir.glob("chunk-*.parquet"))]
+        cols = None if columns is None else ["row_id", *columns]
+        parts = [pd.read_parquet(p, columns=cols) for p in sorted(self.dir.glob("chunk-*.parquet"))]
         assert parts, f"no chunks in {self.dir}"
         table = pd.concat(parts, ignore_index=True).drop_duplicates("row_id", keep="first").set_index("row_id")
         if ids is None:
