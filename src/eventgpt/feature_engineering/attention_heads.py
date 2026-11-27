@@ -24,6 +24,11 @@ The module depends only on numpy, pandas and torch, so other projects can use it
     AttentionRecorder.sdpa(blocks)                            # any block calling F.scaled_dot_product_attention
     AttentionRecorder(modules, read=..., prepare=...)        # any other attention module
 
+Counts and ordinal fields: HeadFeatures(names, counts=True) gives attention-weighted counts (share times the keys the
+head saw) instead of shares, and HeadFeatures(names, fields=["amt_bin"]) with field_attributes adds the
+attention-weighted mean of an ordinal field. HeadFeatureStore saves the tables of a long extraction in chunks by row
+id, so a stopped run resumes.
+
 Key attributes can come from the input tokens alone: token_attributes gives one 0/1 attribute per vocabulary token
 ("this key contains late=2"), named from the vocabulary, with group_tokens collecting an event's tokens into its key
 for models that attend over events. HeadFeatures.match(table, reference, on="case_id") joins a reference table by id.
@@ -37,6 +42,8 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
 from typing import Any
 
@@ -389,9 +396,74 @@ def token_attributes(
     return attrs, [name_of[i] for i in chosen], base
 
 
+@dataclass
+class FieldValues:
+    """Numeric values of ordinal fields at every key: values and presence (b, t, F), and the field names."""
+
+    values: np.ndarray
+    present: np.ndarray
+    names: list[str]
+
+
+def field_attributes(
+    keys: np.ndarray,
+    names: Mapping[int, str] | Sequence[str],
+    fields: Sequence[str],
+    values: Mapping[str, Mapping[str, float]] | None = None,
+    pad: int = 0,
+) -> FieldValues:
+    """The value of each ordinal field at every key, read from tokens named field=value.
+
+    Args:
+        keys: (b, t) one token id per key, or (b, t, m) the token ids of each key padded with `pad`.
+        names: token id to its name (a mapping, or a sequence indexed by id).
+        fields: the fields to read, such as ["amt_bin", "dt"].
+        values: per field, values for non-numeric tokens, e.g. {"amt_bin": {"zero": -1}}; a value that is neither a
+            number nor listed leaves the field absent at that key.
+        pad: the padding id.
+
+    Returns:
+        FieldValues: a key's value is the mean of its tokens' values for the field (most keys have one), and present
+        says whether the key has the field at all. HeadFeatures(fields=...) turns them into attention-weighted means.
+    """
+    k = np.asarray(keys)
+    k = k[..., None] if k.ndim == 2 else k
+    ids = np.unique(k[k != pad])
+    lookup = {int(i): str(names[int(i)]) for i in ids}
+    size = int(ids.max()) + 1 if len(ids) else 1
+    vals = np.full((len(fields), size), np.nan)
+    for i, name in lookup.items():
+        f, _, v = name.partition("=")
+        if f in fields:
+            mapped = (values or {}).get(f, {})
+            try:
+                vals[list(fields).index(f), i] = float(mapped[v]) if v in mapped else float(v)
+            except ValueError:
+                pass
+    safe = np.where(k == pad, 0, k)
+    per_token = vals[:, safe]  # (F, b, t, m)
+    per_token[:, k == pad] = np.nan
+    finite = ~np.isnan(per_token)
+    n = finite.sum(-1)
+    present = n > 0
+    mean = np.where(finite, per_token, 0.0).sum(-1) / np.maximum(n, 1)  # 0 where absent; present says which
+    return FieldValues(mean.transpose(1, 2, 0), present.transpose(1, 2, 0), list(fields))
+
+
 # -------------------------------------------------------------------------------
 # Features
 # -------------------------------------------------------------------------------
+def query_rows(attn: Any, query: np.ndarray | None) -> np.ndarray:
+    """(b, layers, heads, t) the weights of each row's query position, from any of the shapes HeadFeatures takes."""
+    a = stack_layers(attn)
+    if a.ndim == 5 and a.shape[3] == 1 and a.shape[4] > 1:  # query rows from a recorder with `query` set
+        a, query = a[:, :, :, 0, :], None
+    if query is None:
+        return np.asarray(a).transpose(1, 0, 2, 3)
+    rows = np.arange(a.shape[1])
+    return a[:, rows, :, np.asarray(query), :]  # numpy moves the advanced-index axis to the front
+
+
 def head_summaries(attn: np.ndarray, query: np.ndarray | None, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Attention-weighted key attributes and focus of every head at one query position per row.
 
@@ -415,10 +487,21 @@ def head_summaries(attn: np.ndarray, query: np.ndarray | None, attrs: np.ndarray
 
 
 class HeadFeatures:
-    """Attention-weighted summaries of named key attributes, for every layer and head, as a table."""
+    """Attention-weighted summaries of named key attributes, for every layer and head, as a table.
 
-    def __init__(self, names: Sequence[str]) -> None:
+    `counts` turns the summaries of the named attributes (all with True) into attention-weighted counts: the share
+    times the number of keys the head saw (keys with nonzero weight, or the `valid` keys given to transform), so a
+    head reports how many late payments it reads and not only their share; the columns are named _{name}_count.
+    `fields` adds, for each ordinal field of a FieldValues given to transform, the attention-weighted mean value over
+    the keys that have the field (_{field}_mean, NaN when the head puts no weight on such keys).
+    """
+
+    def __init__(self, names: Sequence[str], counts: bool | Sequence[str] = False, fields: Sequence[str] = ()) -> None:
         self.names = list(names)
+        self.counts = set(self.names) if counts is True else set(counts or [])
+        unknown = self.counts - set(self.names)
+        assert not unknown, f"counts for attributes not in names: {sorted(unknown)}"
+        self.fields = list(fields)
 
     def summaries(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """head_summaries on weights given stacked or per layer (query None: only the query rows, see head_summaries).
@@ -426,22 +509,53 @@ class HeadFeatures:
         Weights recorded with AttentionRecorder.query set, (layers, b, heads, 1, t), are the query rows already; they
         are used as such and `query` is not needed.
         """
-        a = stack_layers(attn)
         assert attrs.shape[-1] == len(self.names), f"{attrs.shape[-1]} attributes for {len(self.names)} names"
-        if a.ndim == 5 and a.shape[3] == 1 and a.shape[4] > 1:  # query rows from a recorder with `query` set
-            return head_summaries(a[:, :, :, 0, :], None, attrs)
-        return head_summaries(a, None if query is None else np.asarray(query), attrs)
+        w = query_rows(attn, query)
+        return np.einsum("blht,bta->blha", w, attrs), -(w * np.log(np.clip(w, 1e-12, 1.0))).sum(-1)
 
-    def transform(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> pd.DataFrame:
-        """One column per layer, head and attribute (L{layer}H{head}_{name}) and per head its focus (_focus)."""
-        summ, focus = self.summaries(attn, query, attrs)
+    def transform(
+        self,
+        attn: Any,
+        query: np.ndarray | None,
+        attrs: np.ndarray,
+        fields: FieldValues | None = None,
+        valid: np.ndarray | None = None,
+    ) -> pd.DataFrame:
+        """The feature table: per layer and head, its attributes, fields and focus.
+
+        Columns are L{layer}H{head}_{name} (or _{name}_count), _{field}_mean and _focus. `valid` (b, t) bool marks
+        the real keys, for counts; without it a key counts as seen when its weight is nonzero, which excludes padding
+        and masked keys.
+        """
+        w = query_rows(attn, query)
+        assert attrs.shape[-1] == len(self.names), f"{attrs.shape[-1]} attributes for {len(self.names)} names"
+        summ = np.einsum("blht,bta->blha", w, attrs)
+        focus = -(w * np.log(np.clip(w, 1e-12, 1.0))).sum(-1)
+        seen = (w > 0) if valid is None else ((w > 0) & np.asarray(valid, dtype=bool)[:, None, None, :])
+        n_seen = seen.sum(-1)  # (b, layers, heads)
+        means = None
+        if self.fields:
+            assert fields is not None, "HeadFeatures(fields=...) needs transform(..., fields=field_attributes(...))"
+            idx = [fields.names.index(f) for f in self.fields]
+            p = fields.present[..., idx].astype(np.float64)
+            mass = np.einsum("blht,btf->blhf", w, p)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                means = np.where(mass > 0, np.einsum("blht,btf->blhf", w, fields.values[..., idx] * p) / mass, np.nan)
         _, n_layers, n_heads, _ = summ.shape
         cols, data = [], []
         for ly in range(n_layers):
             for h in range(n_heads):
                 for a, name in enumerate(self.names):
-                    cols.append(f"L{ly + 1}H{h + 1}_{name}")
-                    data.append(summ[:, ly, h, a])
+                    if name in self.counts:
+                        cols.append(f"L{ly + 1}H{h + 1}_{name}_count")
+                        data.append(summ[:, ly, h, a] * n_seen[:, ly, h])
+                    else:
+                        cols.append(f"L{ly + 1}H{h + 1}_{name}")
+                        data.append(summ[:, ly, h, a])
+                if means is not None:
+                    for j, f in enumerate(self.fields):
+                        cols.append(f"L{ly + 1}H{h + 1}_{f}_mean")
+                        data.append(means[:, ly, h, j])
                 cols.append(f"L{ly + 1}H{h + 1}_focus")
                 data.append(focus[:, ly, h])
         return pd.DataFrame(np.stack(data, 1), columns=cols)
@@ -492,3 +606,83 @@ class HeadFeatures:
             best = r.abs().sort_values(ascending=False).head(top).index
             out[c] = [(str(k), float(r[k])) for k in best]
         return out
+
+
+# -------------------------------------------------------------------------------
+# Storing features over a large dataset
+# -------------------------------------------------------------------------------
+class HeadFeatureStore:
+    """Feature tables saved to a directory in chunks, by row id, so an extraction over a large dataset can resume.
+
+        store = HeadFeatureStore("features/", chunk_rows=20_000)
+        for ids, batch in batches:
+            if store.has_all(ids):              # already extracted in an earlier run
+                continue
+            ...                                 # record attention, build the table
+            store.add(ids, table)
+        store.flush()
+        features = store.read(all_ids)          # in the order of all_ids
+
+    Each chunk is a parquet file with a row_id column; a run stopped part-way loses at most the rows not yet flushed.
+    Rows added again are ignored, so a batch interrupted after a flush can simply be redone.
+    """
+
+    def __init__(self, directory: str | Path, chunk_rows: int = 20_000) -> None:
+        self.dir = Path(directory)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.chunk_rows = chunk_rows
+        self._buffer: list[pd.DataFrame] = []
+        self._buffered = 0
+        self._done: set[Any] = set()
+        for part in sorted(self.dir.glob("chunk-*.parquet")):
+            self._done.update(pd.read_parquet(part, columns=["row_id"])["row_id"].tolist())
+
+    def __enter__(self) -> HeadFeatureStore:
+        """The store itself; leaving the context flushes it."""
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
+        """Write what is buffered, also when the extraction stopped with an error."""
+        self.flush()
+
+    def has(self, row_id: Any) -> bool:
+        """Whether the row is saved or buffered."""
+        return row_id in self._done
+
+    def has_all(self, ids: Iterable[Any]) -> bool:
+        """Whether every one of these rows is saved or buffered."""
+        return all(i in self._done for i in ids)
+
+    def add(self, ids: Sequence[Any], table: pd.DataFrame) -> None:
+        """Buffer a batch's rows (in the table's order), skipping rows already stored; writes a chunk when full."""
+        assert len(ids) == len(table), f"{len(ids)} ids for {len(table)} rows"
+        keep = np.array([i not in self._done for i in ids], dtype=bool)
+        if not keep.any():
+            return
+        part = table.reset_index(drop=True)[keep].copy()
+        part.insert(0, "row_id", np.asarray(ids, dtype=object)[keep].tolist())
+        self._buffer.append(part)
+        self._buffered += len(part)
+        self._done.update(part["row_id"].tolist())
+        if self._buffered >= self.chunk_rows:
+            self.flush()
+
+    def flush(self) -> None:
+        """Write the buffered rows as a new chunk."""
+        if not self._buffer:
+            return
+        n = len(list(self.dir.glob("chunk-*.parquet")))
+        pd.concat(self._buffer, ignore_index=True).to_parquet(self.dir / f"chunk-{n:05d}.parquet", index=False)
+        self._buffer, self._buffered = [], 0
+
+    def read(self, ids: Sequence[Any] | None = None) -> pd.DataFrame:
+        """Every stored row, or these rows in this order (all must be stored), without the row_id column."""
+        self.flush()
+        parts = [pd.read_parquet(p) for p in sorted(self.dir.glob("chunk-*.parquet"))]
+        assert parts, f"no chunks in {self.dir}"
+        table = pd.concat(parts, ignore_index=True).drop_duplicates("row_id", keep="first").set_index("row_id")
+        if ids is None:
+            return table.reset_index(drop=True)
+        missing = [i for i in ids if i not in table.index]
+        assert not missing, f"{len(missing)} rows not stored, e.g. {missing[:3]}"
+        return table.loc[list(ids)].reset_index(drop=True)
