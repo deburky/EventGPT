@@ -68,7 +68,11 @@ class AttentionIntervention:
                                       weight_gradients() and grad_rollout()
 
     Interventions apply on every forward inside the context until changed. Dropout is not applied by the explicit
-    paths (knockout, weight_gradients); use them in evaluation mode.
+    paths (knockout, weight_gradients); use them in evaluation mode. Selected modules may be nested (a block and its
+    attention submodule): each call is handled for the innermost selected module running. One attention call per
+    module and forward is expected: with several, every call is intervened, but gradients() and weight_gradients()
+    keep the last one's. The patch is process-wide and not thread-safe: do not run models in other threads while the
+    context is open.
     """
 
     def __init__(self, modules: Iterable[nn.Module], gradients: bool = False, weight_gradients: bool = False, record: bool = False) -> None:
@@ -88,7 +92,8 @@ class AttentionIntervention:
         self._means: dict[int, torch.Tensor] = {}
         self._out: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
         self._w: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
-        self._active: int | None = None
+        self._active: int | None = None  # the innermost selected module whose forward is running
+        self._stack: list[int] = []  # the running selected modules, outermost first, so leaving one restores its caller
         self._sdpa: Callable[..., torch.Tensor] | None = None
         self._handles: list[Any] = []
 
@@ -98,7 +103,8 @@ class AttentionIntervention:
         F.scaled_dot_product_attention = self._wrapper
         for m in self.modules:
             self._handles.append(m.register_forward_pre_hook(self._enter_module))
-            self._handles.append(m.register_forward_hook(self._leave_module))
+            # always_call: the mark is cleared even when the forward raises and the caller catches the error
+            self._handles.append(m.register_forward_hook(self._leave_module, always_call=True))
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
@@ -110,14 +116,18 @@ class AttentionIntervention:
             F.scaled_dot_product_attention = self._sdpa
             self._sdpa = None
         self._active = None
+        self._stack = []
 
     def _enter_module(self, m: nn.Module, args: tuple[Any, ...]) -> None:
-        """Mark module m as running."""
-        self._active = self._index[id(m)]
+        """Mark module m as running, on top of any selected module that called it."""
+        self._stack.append(self._index[id(m)])
+        self._active = self._stack[-1]
 
     def _leave_module(self, m: nn.Module, args: tuple[Any, ...], output: Any) -> None:
-        """Clear the mark."""
-        self._active = None
+        """Clear the mark; the calling selected module, if any, is running again."""
+        if self._stack:
+            self._stack.pop()
+        self._active = self._stack[-1] if self._stack else None
 
     def ablate(self, heads: Mapping[int, Sequence[int]], mode: str = "zero") -> None:
         """Ablate these heads ({module index: [head, ...]}) on the following passes; {} ablates none."""
@@ -169,7 +179,7 @@ class AttentionIntervention:
                 w = w + eps
             if self.record:
                 self._used[i] = w.detach().float().cpu()
-            y = (w @ v.float()).to(query.dtype)
+            y = (w @ v.to(w.dtype)).to(query.dtype)  # in the weights' precision: float32, or float64 inputs' own
         else:
             y = original(query, key, value, *args, **kwargs)
         if self.collect_means:

@@ -80,7 +80,8 @@ class AttentionRecorder:
         self._fastpath: bool | None = None
         self._wrap_sdpa = False  # set by AttentionRecorder.sdpa
         self._sdpa: Callable[..., torch.Tensor] | None = None  # the F.scaled_dot_product_attention found on entering
-        self._active: int | None = None  # index of the module whose forward is running, for the sdpa recorder
+        self._active: int | None = None  # index of the innermost recorded module whose forward is running (sdpa)
+        self._stack: list[int] = []  # the running recorded modules, outermost first, so nesting restores the parent
         self._index = {id(m): i for i, m in enumerate(self.modules)}
         self._captured: dict[int, torch.Tensor] = {}
         self._keep_outputs = False  # set by AttentionRecorder.sdpa(outputs=True)
@@ -98,7 +99,8 @@ class AttentionRecorder:
                 self.setup(m)
             if self.prepare is not None:
                 self._handles.append(m.register_forward_pre_hook(self.prepare, with_kwargs=True))
-            self._handles.append(m.register_forward_hook(self._hook(i), with_kwargs=True))
+            # always_call: the hook runs even when the forward raises, so a caught error leaves no module marked running
+            self._handles.append(m.register_forward_hook(self._hook(i), with_kwargs=True, always_call=True))
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
@@ -115,6 +117,7 @@ class AttentionRecorder:
             F.scaled_dot_product_attention = self._sdpa
             self._sdpa = None
         self._active = None
+        self._stack = []
 
     def _hook(self, i: int) -> Callable[[nn.Module, tuple[Any, ...], dict[str, Any], Any], None]:
         """The forward hook that stores module i's weights."""
@@ -123,7 +126,8 @@ class AttentionRecorder:
             """Store the weights the reader returns."""
             w = self.read(module, args, kwargs, output)
             if w is not None:
-                self._store[i] = self._rows(w).detach().float().cpu()
+                rows_done = self._wrap_sdpa and self.query is not None  # the sdpa wrapper computed only the query rows
+                self._store[i] = (w if rows_done else self._rows(w)).detach().float().cpu()
             y = self._captured_out.pop(i, None)
             if y is not None:
                 self._out_store[i] = self._rows(y).detach().float().cpu()
@@ -149,7 +153,8 @@ class AttentionRecorder:
     def outputs(self) -> np.ndarray:
         """(layers, b, heads, t, head_dim) per-head attention outputs of the last pass (AttentionRecorder.sdpa(outputs=True)).
 
-        Each is weights @ values before the heads are merged and projected; the store is cleared.
+        Each is the function's own result before the heads are merged and projected: weights @ values, with dropout
+        applied when the module ran with dropout_p > 0, while weights() are kept without dropout. The store is cleared.
         """
         assert self._keep_outputs, "outputs are recorded by AttentionRecorder.sdpa(modules, outputs=True)"
         missing = [i for i, y in enumerate(self._out_store) if y is None]
@@ -171,8 +176,8 @@ class AttentionRecorder:
             return args, kwargs | {"need_weights": True, "average_attn_weights": False}
 
         def read(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any], output: Any) -> torch.Tensor | None:
-            """The weights are the second output."""
-            return output[1]
+            """The weights are the second output (none when the forward raised)."""
+            return output[1] if output is not None else None
 
         rec = cls((m for m in model.modules() if isinstance(m, nn.MultiheadAttention)), read=read, prepare=prepare)
         rec._fastpath = torch.backends.mha.get_fastpath_enabled()
@@ -217,17 +222,22 @@ class AttentionRecorder:
         recorder sees nothing or the weights before the intervention; use AttentionIntervention(record=True) instead.
 
         With `outputs`, the function's own result for each module, per head (b, heads, t, head_dim), is kept as well;
-        read it with outputs().
+        read it with outputs(). With `query` set, only those rows of the weights are computed, so the memory is
+        linear in the sequence length. The patch is not thread-safe: do not run models in other threads while it is
+        open.
         """
 
         def prepare(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
-            """Mark this module as the one running."""
-            rec._active = rec._index[id(m)]
+            """Mark this module as the one running, on top of any recorded module that called it."""
+            rec._stack.append(rec._index[id(m)])
+            rec._active = rec._stack[-1]
             return args, kwargs
 
         def read(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any], output: Any) -> torch.Tensor | None:
-            """The weights the wrapper captured during this forward."""
-            rec._active = None
+            """The weights the wrapper captured during this forward; the calling module, if any, is running again."""
+            if rec._stack:
+                rec._stack.pop()
+            rec._active = rec._stack[-1] if rec._stack else None
             return rec._captured.pop(rec._index[id(m)], None)
 
         rec = cls(modules, read=read, prepare=prepare)
@@ -253,6 +263,7 @@ class AttentionRecorder:
                     bool(given.get("is_causal", False)),
                     given.get("scale"),
                     bool(given.get("enable_gqa", False)),
+                    rows=self.query,
                 )
             y = original(query, key, value, *args, **kwargs)
             if active is not None and self._keep_outputs:
@@ -269,20 +280,37 @@ def sdpa_weights(
     is_causal: bool = False,
     scale: float | None = None,
     enable_gqa: bool = False,
+    rows: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """The (b, heads, t_q, t_k) weights F.scaled_dot_product_attention uses for the same arguments, in float32.
+    """The (b, heads, t_q, t_k) weights F.scaled_dot_product_attention uses for the same arguments.
 
     A bool mask keeps keys where True, a float mask is added to the scores; rows with no allowed key are zero (where
-    the fused kernel would give NaN or an arbitrary average).
+    the fused kernel would give NaN or an arbitrary average). The result is float32, or the inputs' precision when it
+    is higher. With `rows` (b,), only those query rows are computed, giving (b, heads, 1, t_k) without building the
+    full matrix.
     """
-    lq, lk = query.size(-2), key.size(-2)
+    dt = torch.promote_types(query.dtype, torch.float32)
+    b, lq, lk = query.size(0), query.size(-2), key.size(-2)
     if enable_gqa and key.size(-3) != query.size(-3):
         key = key.repeat_interleave(query.size(-3) // key.size(-3), dim=-3)
-    s = (query.float() @ key.float().transpose(-1, -2)) * (query.size(-1) ** -0.5 if scale is None else scale)
-    if is_causal:
-        s = s.masked_fill(~torch.ones(lq, lk, dtype=torch.bool, device=s.device).tril(), float("-inf"))
+    r = None if rows is None else rows.to(query.device).long()
+    ar = torch.arange(b, device=query.device)
+    q = query if r is None else query[ar, :, r].unsqueeze(2)
+    s = (q.to(dt) @ key.to(dt).transpose(-1, -2)) * (query.size(-1) ** -0.5 if scale is None else scale)
+    if is_causal:  # key j is allowed for query i when j <= i (top-left alignment, as in PyTorch)
+        keys = torch.arange(lk, device=s.device)
+        if r is None:
+            allowed = keys[None, :] <= torch.arange(lq, device=s.device)[:, None]
+        else:
+            allowed = (keys[None, :] <= r[:, None])[:, None, None, :]
+        s = s.masked_fill(~allowed, float("-inf"))
     if attn_mask is not None:
-        s = s.masked_fill(~attn_mask, float("-inf")) if attn_mask.dtype == torch.bool else s + attn_mask.float()
+        m = attn_mask.to(s.device)
+        if r is not None:
+            while m.dim() < 4:
+                m = m.unsqueeze(0)
+            m = m.expand(b, m.size(1), lq, lk)[ar, :, r].unsqueeze(2)
+        s = s.masked_fill(~m, float("-inf")) if m.dtype == torch.bool else s + m.to(dt)
     return torch.nan_to_num(s.softmax(-1))
 
 
