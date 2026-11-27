@@ -408,3 +408,51 @@ def test_explicit_path_keeps_double_precision() -> None:
         got = mod()
     ref = ((q @ k.transpose(-1, -2)) * 4**-0.5).masked_fill(keys[:, None, None, :], float("-inf")).softmax(-1) @ v
     assert got.dtype == torch.float64 and torch.allclose(got, ref, atol=1e-12, rtol=0)
+
+
+# -------------------------------------------------------------------------------
+# Several queries per sequence
+# -------------------------------------------------------------------------------
+def test_several_queries_per_sequence_match_the_full_weights() -> None:
+    """A (b, Q) query keeps Q rows per sequence, for flat blocks and for the sdpa recorder, equal to the full weights."""
+    from eventgpt.feature_engineering import flatten_queries
+
+    torch.manual_seed(0)
+    blocks = nn.ModuleList([Block(GPTConfig(vocab_size=10, n_head=4, d_model=16, dropout=0.0)) for _ in range(2)]).eval()
+    x = torch.randn(3, 7, 16)
+    q = torch.tensor([[6, 2, 0], [3, 5, 5], [4, 1, 6]])
+    mask = torch.rand(3, 1, 7, 7) > 0.3
+    mask |= torch.eye(7, dtype=torch.bool)
+    for make, kw in ((AttentionRecorder.flat_blocks, {}), (AttentionRecorder.sdpa, {}), (AttentionRecorder.sdpa, {"attn_mask": mask})):
+        with torch.no_grad(), make(blocks) as rec:
+            h = x
+            for b in blocks:
+                h = b(h, **kw)
+            full = rec.weights()
+            rec.query = q
+            h = x
+            for b in blocks:
+                h = b(h, **kw)
+            rows = rec.weights()
+        assert rows.shape == (2, 3, 4, 3, 7)
+        for i in range(3):
+            for j in range(3):
+                assert np.allclose(rows[:, i, :, j], full[:, i, :, int(q[i, j])], atol=1e-6)
+        flat, seq, qi = flatten_queries(rows, n_queries=[3, 2, 1])
+        assert flat.shape == (2, 6, 4, 7) and seq.tolist() == [0, 0, 0, 1, 1, 2] and qi.tolist() == [0, 1, 2, 0, 1, 0]
+        assert np.allclose(flat[:, 4], full[:, 1, :, 5], atol=1e-6)
+
+
+def test_sdpa_weights_take_several_rows() -> None:
+    """sdpa_weights with (b, Q) rows equals the full weights at those rows, causal and with a float mask."""
+    torch.manual_seed(2)
+    q, k = torch.randn(2, 3, 6, 4), torch.randn(2, 3, 6, 4)
+    r = torch.tensor([[5, 0], [2, 4]])
+    bias = torch.randn(2, 1, 6, 6)
+    for kw in ({"is_causal": True}, {"attn_mask": bias}):
+        full = sdpa_weights(q, k, **kw)
+        part = sdpa_weights(q, k, rows=r, **kw)
+        assert part.shape == (2, 3, 2, 6)
+        for i in range(2):
+            for j in range(2):
+                assert torch.allclose(part[i, :, j], full[i, :, int(r[i, j])], atol=1e-6)
