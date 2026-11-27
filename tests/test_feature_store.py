@@ -93,6 +93,10 @@ def test_store_chunks_resumes_and_reads_in_order(tmp_path: Path) -> None:
     assert len(pd.concat([pd.read_parquet(p) for p in tmp_path.glob("chunk-*.parquet")])) == 10
     with pytest.raises(AssertionError):
         again.read(["missing"])
+    assert again.columns() == ["x"]
+    both = HeadFeatureStore(tmp_path / "two")
+    both.add(["a", "b"], pd.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]}))
+    assert both.read(["b"], columns=["y"]).to_dict("list") == {"y": [4.0]}
 
 
 def test_store_flushes_when_the_extraction_fails(tmp_path: Path) -> None:
