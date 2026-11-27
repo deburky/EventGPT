@@ -1,10 +1,17 @@
-"""Features engineered from trained models, reusable outside EventGPT (they depend only on numpy, pandas and torch)."""
+"""Features engineered from trained models, reusable outside EventGPT.
+
+They depend only on numpy, pandas and torch; HeadFeatureStore also needs pyarrow to write parquet.
+"""
 
 from eventgpt.feature_engineering.attention_heads import (
     AttentionRecorder,
+    FieldValues,
     HeadFeatures,
+    HeadFeatureStore,
+    field_attributes,
     group_tokens,
     head_summaries,
+    query_rows,
     sdpa_weights,
     stack_layers,
     token_attributes,
@@ -14,12 +21,16 @@ from eventgpt.feature_engineering.interventions import AttentionIntervention, dr
 __all__ = [
     "AttentionIntervention",
     "AttentionRecorder",
+    "FieldValues",
+    "HeadFeatureStore",
     "HeadFeatures",
     "drop_events",
+    "field_attributes",
     "grad_rollout",
     "group_tokens",
     "head_summaries",
     "occlusion",
+    "query_rows",
     "rollout",
     "sdpa_weights",
     "stack_layers",
