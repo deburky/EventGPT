@@ -59,6 +59,9 @@ class AttentionRecorder:
     `read(module, args, kwargs, output)` returns a module's weights after its forward pass; `prepare(module, args,
     kwargs)`, if given, rewrites its inputs before it (for instance to ask for the weights); `setup` and `teardown` run
     on each module when the context opens and closes. Use as a context manager; weights() returns the last pass.
+
+    Set `query` to a (b,) tensor of query positions before a forward pass to keep only those rows of the weights,
+    (b, heads, 1, t) per module, which saves memory over long sequences.
     """
 
     def __init__(
@@ -80,6 +83,10 @@ class AttentionRecorder:
         self._active: int | None = None  # index of the module whose forward is running, for the sdpa recorder
         self._index = {id(m): i for i, m in enumerate(self.modules)}
         self._captured: dict[int, torch.Tensor] = {}
+        self._keep_outputs = False  # set by AttentionRecorder.sdpa(outputs=True)
+        self._captured_out: dict[int, torch.Tensor] = {}
+        self._out_store: list[torch.Tensor | None] = [None] * len(self.modules)
+        self.query: torch.Tensor | None = None
 
     def __enter__(self) -> AttentionRecorder:
         """Install the hooks."""
@@ -116,9 +123,19 @@ class AttentionRecorder:
             """Store the weights the reader returns."""
             w = self.read(module, args, kwargs, output)
             if w is not None:
-                self._store[i] = w.detach().float().cpu()
+                self._store[i] = self._rows(w).detach().float().cpu()
+            y = self._captured_out.pop(i, None)
+            if y is not None:
+                self._out_store[i] = self._rows(y).detach().float().cpu()
 
         return hook
+
+    def _rows(self, x: torch.Tensor) -> torch.Tensor:
+        """The query rows of (b, heads, t, ...) when `query` is set, kept as a length-1 axis."""
+        if self.query is None:
+            return x
+        q = self.query.to(x.device).long()
+        return x[torch.arange(x.size(0), device=x.device), :, q].unsqueeze(2)
 
     def weights(self) -> np.ndarray:
         """(layers, b, heads, t, t) weights of the last forward pass, in module order; the store is cleared."""
@@ -127,6 +144,18 @@ class AttentionRecorder:
         out = np.stack([w.numpy() for w in self._store if w is not None])
         self._store = [None] * len(self.modules)
         assert out.ndim == 5, f"expected per-head weights (layers, b, heads, t, t), got shape {out.shape}"
+        return out
+
+    def outputs(self) -> np.ndarray:
+        """(layers, b, heads, t, head_dim) per-head attention outputs of the last pass (AttentionRecorder.sdpa(outputs=True)).
+
+        Each is weights @ values before the heads are merged and projected; the store is cleared.
+        """
+        assert self._keep_outputs, "outputs are recorded by AttentionRecorder.sdpa(modules, outputs=True)"
+        missing = [i for i, y in enumerate(self._out_store) if y is None]
+        assert not missing, f"modules {missing} recorded no outputs; run a forward pass inside the context"
+        out = np.stack([y.numpy() for y in self._out_store if y is not None])
+        self._out_store = [None] * len(self.modules)
         return out
 
     @classmethod
@@ -170,7 +199,7 @@ class AttentionRecorder:
         return cls(blocks, read=read, setup=setup, teardown=teardown)
 
     @classmethod
-    def sdpa(cls, modules: Iterable[nn.Module]) -> AttentionRecorder:
+    def sdpa(cls, modules: Iterable[nn.Module], outputs: bool = False) -> AttentionRecorder:
         """Modules that compute attention with F.scaled_dot_product_attention and keep no weights of their own.
 
         While the context is open, F.scaled_dot_product_attention is wrapped: when it is called inside the forward of
@@ -184,6 +213,9 @@ class AttentionRecorder:
         module and forward is expected; with several, the last is kept. Dropout is not applied to the stored weights.
         The wrapper is process-wide while the context is open: other models calling the function pass through it, but
         only calls inside one of `modules` are recorded, and outputs never change.
+
+        With `outputs`, the function's own result for each module, per head (b, heads, t, head_dim), is kept as well;
+        read it with outputs().
         """
 
         def prepare(m: nn.Module, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
@@ -198,6 +230,7 @@ class AttentionRecorder:
 
         rec = cls(modules, read=read, prepare=prepare)
         rec._wrap_sdpa = True
+        rec._keep_outputs = outputs
         return rec
 
     def _patch_sdpa(self) -> None:
@@ -207,10 +240,11 @@ class AttentionRecorder:
 
         def wrapper(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
             """Record, then attend with the original function."""
-            if self._active is not None:
+            active = self._active
+            if active is not None:
                 names = ("attn_mask", "dropout_p", "is_causal", "scale")  # the positional ones; enable_gqa is keyword-only
                 given = dict(zip(names, args, strict=False)) | kwargs
-                self._captured[self._active] = sdpa_weights(
+                self._captured[active] = sdpa_weights(
                     query,
                     key,
                     given.get("attn_mask"),
@@ -218,7 +252,10 @@ class AttentionRecorder:
                     given.get("scale"),
                     bool(given.get("enable_gqa", False)),
                 )
-            return original(query, key, value, *args, **kwargs)
+            y = original(query, key, value, *args, **kwargs)
+            if active is not None and self._keep_outputs:
+                self._captured_out[active] = y
+            return y
 
         F.scaled_dot_product_attention = wrapper
 
@@ -384,6 +421,17 @@ class HeadFeatures:
         n_layers, n_heads, _ = ratio.shape
         index = [f"L{ly + 1}H{h + 1}" for ly in range(n_layers) for h in range(n_heads)]
         return pd.DataFrame(ratio.reshape(n_layers * n_heads, -1), index=index, columns=self.names)
+
+    def coverage(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> pd.DataFrame:
+        """Per head (rows L{layer}H{head}): mean attention mass on keys carrying at least one of the attributes.
+
+        The rest of a head's weight falls on keys the feature columns do not describe.
+        """
+        summ, _ = self.summaries(attn, query, (np.asarray(attrs) > 0).any(-1, keepdims=True).repeat(len(self.names), -1).astype(np.float64))
+        mass = summ[..., 0].mean(0)
+        n_layers, n_heads = mass.shape
+        index = [f"L{ly + 1}H{h + 1}" for ly in range(n_layers) for h in range(n_heads)]
+        return pd.DataFrame({"coverage": mass.reshape(-1)}, index=index)
 
     @staticmethod
     def match(features: pd.DataFrame, reference: pd.DataFrame, top: int = 3, on: str | None = None) -> dict[str, list[tuple[str, float]]]:
