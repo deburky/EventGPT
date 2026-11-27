@@ -105,3 +105,30 @@ def test_store_flushes_when_the_extraction_fails(tmp_path: Path) -> None:
         store.add(["a", "b"], pd.DataFrame({"x": [1.0, 2.0]}))
         raise RuntimeError("stopped")
     assert HeadFeatureStore(tmp_path).has_all(["a", "b"])
+
+
+def test_table_layout_matches_a_column_by_column_build() -> None:
+    """Names, order and values equal a reference that builds every column one at a time."""
+    rng = np.random.default_rng(5)
+    w = rng.dirichlet(np.ones(6), size=(3, 7, 4))  # (layers, b, heads, t) query rows
+    attrs = rng.integers(0, 2, size=(7, 6, 3)).astype(float)
+    keys = rng.integers(1, 3, size=(7, 6))
+    fv = field_attributes(keys, NAMES, ["amt_bin"])
+    hf = HeadFeatures(["a", "b", "c"], counts=["b"], fields=["amt_bin"])
+    table = hf.transform(w, None, attrs, fields=fv)
+    rows = w.transpose(1, 0, 2, 3)
+    cols, data = [], []
+    for ly in range(3):
+        for h in range(4):
+            wt = rows[:, ly, h]
+            for a, name in enumerate(["a", "b", "c"]):
+                share = (wt * attrs[..., a]).sum(-1)
+                cols.append(f"L{ly + 1}H{h + 1}_{name}_count" if name == "b" else f"L{ly + 1}H{h + 1}_{name}")
+                data.append(share * (wt > 0).sum(-1) if name == "b" else share)
+            p = fv.present[..., 0]
+            cols.append(f"L{ly + 1}H{h + 1}_amt_bin_mean")
+            data.append((wt * fv.values[..., 0] * p).sum(-1) / (wt * p).sum(-1))
+            cols.append(f"L{ly + 1}H{h + 1}_focus")
+            data.append(-(wt * np.log(wt)).sum(-1))
+    assert list(table.columns) == cols
+    assert np.allclose(table.to_numpy(), np.stack(data, 1))

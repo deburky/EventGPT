@@ -541,24 +541,20 @@ class HeadFeatures:
             mass = np.einsum("blht,btf->blhf", w, p)
             with np.errstate(invalid="ignore", divide="ignore"):
                 means = np.where(mass > 0, np.einsum("blht,btf->blhf", w, fields.values[..., idx] * p) / mass, np.nan)
-        _, n_layers, n_heads, _ = summ.shape
-        cols, data = [], []
-        for ly in range(n_layers):
-            for h in range(n_heads):
-                for a, name in enumerate(self.names):
-                    if name in self.counts:
-                        cols.append(f"L{ly + 1}H{h + 1}_{name}_count")
-                        data.append(summ[:, ly, h, a] * n_seen[:, ly, h])
-                    else:
-                        cols.append(f"L{ly + 1}H{h + 1}_{name}")
-                        data.append(summ[:, ly, h, a])
-                if means is not None:
-                    for j, f in enumerate(self.fields):
-                        cols.append(f"L{ly + 1}H{h + 1}_{f}_mean")
-                        data.append(means[:, ly, h, j])
-                cols.append(f"L{ly + 1}H{h + 1}_focus")
-                data.append(focus[:, ly, h])
-        return pd.DataFrame(np.stack(data, 1), columns=cols)
+        b, n_layers, n_heads, _ = summ.shape
+        scaled = summ.copy()
+        is_count = np.array([name in self.counts for name in self.names], dtype=bool)
+        if is_count.any():
+            scaled[..., is_count] = summ[..., is_count] * n_seen[..., None]
+        block = np.concatenate([scaled, *([means] if means is not None else []), focus[..., None]], -1)
+        return pd.DataFrame(block.reshape(b, -1), columns=self._columns(n_layers, n_heads, means is not None))
+
+    def _columns(self, n_layers: int, n_heads: int, with_fields: bool) -> list[str]:
+        """Column names in the order transform lays the values out: per layer and head, attributes, fields, focus."""
+        per_head = [f"{n}_count" if n in self.counts else n for n in self.names]
+        per_head += [f"{f}_mean" for f in self.fields] if with_fields else []
+        per_head += ["focus"]
+        return [f"L{ly + 1}H{h + 1}_{c}" for ly in range(n_layers) for h in range(n_heads) for c in per_head]
 
     def enrichment(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray, base: np.ndarray) -> pd.DataFrame:
         """Per head (rows L{layer}H{head}) and 0/1 attribute: mean attention mass over its mean share among the keys.
