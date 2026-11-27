@@ -68,7 +68,9 @@ class AttentionRecorder:
     on each module when the context opens and closes. Use as a context manager; weights() returns the last pass.
 
     Set `query` to a (b,) tensor of query positions before a forward pass to keep only those rows of the weights,
-    (b, heads, 1, t) per module, which saves memory over long sequences.
+    (b, heads, 1, t) per module, which saves memory over long sequences. A (b, Q) tensor keeps Q rows per sequence,
+    (b, heads, Q, t): with a causal model one pass over a sequence then gives the attention at Q cut-offs at once
+    (every row only sees keys up to its query), and flatten_queries makes one row per query for HeadFeatures.
     """
 
     def __init__(
@@ -142,11 +144,13 @@ class AttentionRecorder:
         return hook
 
     def _rows(self, x: torch.Tensor) -> torch.Tensor:
-        """The query rows of (b, heads, t, ...) when `query` is set, kept as a length-1 axis."""
+        """The query rows of (b, heads, t, ...) when `query` is set: (b, heads, Q, ...), Q = 1 for a (b,) query."""
         if self.query is None:
             return x
         q = self.query.to(x.device).long()
-        return x[torch.arange(x.size(0), device=x.device), :, q].unsqueeze(2)
+        q2 = q[:, None] if q.dim() == 1 else q
+        ar = torch.arange(x.size(0), device=x.device)[:, None]
+        return x[ar, :, q2].movedim(1, 2)  # indexing gives (b, Q, heads, ...)
 
     def weights(self) -> np.ndarray:
         """(layers, b, heads, t, t) weights of the last forward pass, in module order; the store is cleared."""
@@ -293,32 +297,50 @@ def sdpa_weights(
 
     A bool mask keeps keys where True, a float mask is added to the scores; rows with no allowed key are zero (where
     the fused kernel would give NaN or an arbitrary average). The result is float32, or the inputs' precision when it
-    is higher. With `rows` (b,), only those query rows are computed, giving (b, heads, 1, t_k) without building the
-    full matrix.
+    is higher. With `rows` (b,) or (b, Q), only those query rows are computed, giving (b, heads, Q, t_k) without
+    building the full matrix.
     """
     dt = torch.promote_types(query.dtype, torch.float32)
     b, lq, lk = query.size(0), query.size(-2), key.size(-2)
     if enable_gqa and key.size(-3) != query.size(-3):
         key = key.repeat_interleave(query.size(-3) // key.size(-3), dim=-3)
     r = None if rows is None else rows.to(query.device).long()
-    ar = torch.arange(b, device=query.device)
-    q = query if r is None else query[ar, :, r].unsqueeze(2)
+    r = r[:, None] if r is not None and r.dim() == 1 else r  # (b, Q)
+    ar = torch.arange(b, device=query.device)[:, None]
+    q = query if r is None else query[ar, :, r].movedim(1, 2)  # (b, heads, Q, d)
     s = (q.to(dt) @ key.to(dt).transpose(-1, -2)) * (query.size(-1) ** -0.5 if scale is None else scale)
     if is_causal:  # key j is allowed for query i when j <= i (top-left alignment, as in PyTorch)
         keys = torch.arange(lk, device=s.device)
         if r is None:
             allowed = keys[None, :] <= torch.arange(lq, device=s.device)[:, None]
         else:
-            allowed = (keys[None, :] <= r[:, None])[:, None, None, :]
+            allowed = (keys[None, None, :] <= r[:, :, None])[:, None]  # (b, 1, Q, t_k)
         s = s.masked_fill(~allowed, float("-inf"))
     if attn_mask is not None:
         m = attn_mask.to(s.device)
         if r is not None:
             while m.dim() < 4:
                 m = m.unsqueeze(0)
-            m = m.expand(b, m.size(1), lq, lk)[ar, :, r].unsqueeze(2)
+            m = m.expand(b, m.size(1), lq, lk)[ar, :, r].movedim(1, 2)
         s = s.masked_fill(~m, float("-inf")) if m.dtype == torch.bool else s + m.to(dt)
     return torch.nan_to_num(s.softmax(-1))
+
+
+def flatten_queries(weights: Any, n_queries: np.ndarray | Sequence[int] | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """One row per query from weights recorded with a (b, Q) query: (layers, N, heads, t), and each row's sequence and query.
+
+    `n_queries` (b,) keeps only the first n_queries[i] queries of sequence i, for sequences padded to Q queries. The
+    rows come sequence by sequence, queries in order; index per-sequence arrays (keys, attributes) with the returned
+    sequence index to match them.
+    """
+    w = stack_layers(weights)
+    assert w.ndim == 5, f"expected (layers, b, heads, Q, t), got shape {w.shape}"
+    b, q = w.shape[1], w.shape[3]
+    n = np.full(b, q) if n_queries is None else np.asarray(n_queries, dtype=int)
+    assert (n <= q).all(), "n_queries above the recorded queries"
+    seq = np.repeat(np.arange(b), n)
+    qi = np.concatenate([np.arange(k) for k in n]) if len(n) else np.zeros(0, dtype=int)
+    return w[:, seq, :, qi, :].transpose(1, 0, 2, 3), seq, qi  # indexing gives (N, layers, heads, t)
 
 
 def stack_layers(attentions: Sequence[Any] | np.ndarray | torch.Tensor) -> np.ndarray:
