@@ -212,7 +212,9 @@ class AttentionRecorder:
         torch.nn.functional.scaled_dot_product_attention), not a name imported before the context opened. One call per
         module and forward is expected; with several, the last is kept. Dropout is not applied to the stored weights.
         The wrapper is process-wide while the context is open: other models calling the function pass through it, but
-        only calls inside one of `modules` are recorded, and outputs never change.
+        only calls inside one of `modules` are recorded, and outputs never change. Do not open it inside or around an
+        AttentionIntervention on the same modules: the two wrap the same function, and depending on the order the
+        recorder sees nothing or the weights before the intervention; use AttentionIntervention(record=True) instead.
 
         With `outputs`, the function's own result for each module, per head (b, heads, t, head_dim), is kept as well;
         read it with outputs().
@@ -391,9 +393,15 @@ class HeadFeatures:
         self.names = list(names)
 
     def summaries(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """head_summaries on weights given stacked or per layer (query None: only the query rows, see head_summaries)."""
+        """head_summaries on weights given stacked or per layer (query None: only the query rows, see head_summaries).
+
+        Weights recorded with AttentionRecorder.query set, (layers, b, heads, 1, t), are the query rows already; they
+        are used as such and `query` is not needed.
+        """
         a = stack_layers(attn)
         assert attrs.shape[-1] == len(self.names), f"{attrs.shape[-1]} attributes for {len(self.names)} names"
+        if a.ndim == 5 and a.shape[3] == 1 and a.shape[4] > 1:  # query rows from a recorder with `query` set
+            return head_summaries(a[:, :, :, 0, :], None, attrs)
         return head_summaries(a, None if query is None else np.asarray(query), attrs)
 
     def transform(self, attn: Any, query: np.ndarray | None, attrs: np.ndarray) -> pd.DataFrame:

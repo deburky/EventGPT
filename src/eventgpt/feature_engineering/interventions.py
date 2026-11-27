@@ -27,6 +27,8 @@ AttentionRecorder says where each head looks. The tools here change what the hea
 
 Like AttentionRecorder.sdpa, the intervention wraps F.scaled_dot_product_attention while the context is open, so it
 works for any block that calls it through the module attribute; outside the chosen modules calls pass through.
+Do not nest it with AttentionRecorder.sdpa on the same modules (the recorder would see nothing, or the weights before
+the intervention); record=True keeps the weights the intervened heads actually used.
 """
 
 from __future__ import annotations
@@ -60,6 +62,8 @@ class AttentionIntervention:
                                       `position_weight` (b, t) when set) for mode="mean"
         gradients=True                a zero offset on each module's output as a gradient handle, for
                                       mean_ablation_estimate()
+        record=True                   attention computed explicitly and its weights kept, knockouts included, for
+                                      weights() (ablation acts on head outputs, so it does not change them)
         weight_gradients=True         attention computed explicitly with a zero offset on the weights, for
                                       weight_gradients() and grad_rollout()
 
@@ -67,11 +71,12 @@ class AttentionIntervention:
     paths (knockout, weight_gradients); use them in evaluation mode.
     """
 
-    def __init__(self, modules: Iterable[nn.Module], gradients: bool = False, weight_gradients: bool = False) -> None:
+    def __init__(self, modules: Iterable[nn.Module], gradients: bool = False, weight_gradients: bool = False, record: bool = False) -> None:
         self.modules = list(modules)
         assert self.modules, "no attention modules to intervene on"
         self._index = {id(m): i for i, m in enumerate(self.modules)}
-        self.gradients, self.explicit = gradients, weight_gradients
+        self.gradients, self.explicit, self.record = gradients, weight_gradients, record
+        self._used: dict[int, torch.Tensor] = {}
         self._ablate: dict[int, list[int]] = {}
         self._mode = "zero"
         self._keys: torch.Tensor | None = None
@@ -149,7 +154,7 @@ class AttentionIntervention:
             bool(given.get("enable_gqa", False)),
         )
         knock = self._keys is not None and (self._knock_heads is None or i in self._knock_heads)
-        if self.explicit or knock:
+        if self.explicit or knock or self.record:
             w = sdpa_weights(query, key, mask, causal, scale, gqa)
             v = value.repeat_interleave(query.size(-3) // value.size(-3), dim=-3) if gqa and value.size(-3) != query.size(-3) else value
             if knock:
@@ -162,6 +167,8 @@ class AttentionIntervention:
                 eps = torch.zeros_like(w, requires_grad=True)
                 self._w[i] = (w.detach(), eps)
                 w = w + eps
+            if self.record:
+                self._used[i] = w.detach().float().cpu()
             y = (w @ v.float()).to(query.dtype)
         else:
             y = original(query, key, value, *args, **kwargs)
@@ -203,6 +210,15 @@ class AttentionIntervention:
                 delta = delta * position_weight.to(y.device).float()[:, None, :, None]
             out.append((eps.grad.float() * delta).sum((2, 3)).cpu().numpy())
         return np.stack(out, 1)
+
+    def weights(self) -> np.ndarray:
+        """(modules, b, heads, t, t) attention weights the modules used on the last pass, knockouts included (record=True)."""
+        assert self.record, "construct with record=True"
+        missing = [i for i in range(len(self.modules)) if i not in self._used]
+        assert not missing, f"modules {missing} recorded no weights; run a forward pass inside the context"
+        out = np.stack([self._used[i].numpy() for i in range(len(self.modules))])
+        self._used = {}
+        return out
 
     def weight_gradients(self) -> tuple[np.ndarray, np.ndarray]:
         """(modules, b, heads, t, t) attention weights and the gradient of the backpropagated output with respect to them."""
