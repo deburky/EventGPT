@@ -230,3 +230,46 @@ def test_drop_events_and_occlusion() -> None:
     assert d["seven"].tolist() == [-5.0, 0.0]
     assert d["nine"].tolist() == [-2.0, -2.0]
     assert calls == [2, 1, 2]
+
+
+def test_record_keeps_the_weights_used_with_a_knockout() -> None:
+    """record=True gives the weights after the knockout (none on removed keys, rows summing to 1) and the same output."""
+    torch.manual_seed(0)
+    blk = Block(GPTConfig(vocab_size=10, n_head=4, d_model=16, dropout=0.0)).eval()
+    x = torch.randn(2, 6, 16)
+    keys = torch.zeros(2, 6, dtype=torch.bool)
+    keys[:, 0] = True
+    with torch.no_grad():
+        with AttentionIntervention([blk]) as iv:
+            iv.knockout(keys)
+            plain = blk(x)
+        with AttentionIntervention([blk], record=True) as iv:
+            iv.knockout(keys)
+            recorded = blk(x)
+            w = iv.weights()
+    assert w.shape == (1, 2, 4, 6, 6)
+    assert np.allclose(w[..., 1:, 0], 0.0) and np.allclose(w[..., 1:, :].sum(-1), 1.0, atol=1e-5)
+    assert torch.allclose(recorded, plain, atol=1e-6)
+
+
+def test_head_features_take_query_rows_from_the_recorder() -> None:
+    """Weights recorded with `query` set give the same features as the full weights read at those positions."""
+    torch.manual_seed(0)
+    blocks = nn.ModuleList([Block(GPTConfig(vocab_size=10, n_head=4, d_model=16, dropout=0.0)) for _ in range(2)]).eval()
+    x = torch.randn(3, 6, 16)
+    q = torch.tensor([5, 3, 4])
+    with torch.no_grad(), AttentionRecorder.flat_blocks(blocks) as rec:
+        h = x
+        for b in blocks:
+            h = b(h)
+        full = rec.weights()
+        rec.query = q
+        h = x
+        for b in blocks:
+            h = b(h)
+        rows = rec.weights()
+    attrs = np.random.default_rng(0).random((3, 6, 2))
+    hf = HeadFeatures(["a", "b"])
+    ref = hf.transform(full, q.numpy(), attrs).to_numpy()
+    assert np.allclose(hf.transform(rows, None, attrs).to_numpy(), ref)
+    assert np.allclose(hf.transform(rows, q.numpy(), attrs).to_numpy(), ref)
