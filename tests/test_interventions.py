@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 import torch
 from torch import nn
 
@@ -190,6 +191,7 @@ def test_weight_gradients_and_grad_rollout() -> None:
         w, g = iv.weight_gradients()
     assert torch.allclose(out, plain, atol=1e-5)
     assert w.shape == g.shape == (2, 3, 4, 6, 6)
+    assert np.abs(g[:, :, :, -1]).max() > 0  # the read-out query row has a gradient: the capture is not empty
     readout = np.zeros((3, 6))
     readout[:, -1] = 1.0
     imp = grad_rollout(w, g, readout)
@@ -273,3 +275,136 @@ def test_head_features_take_query_rows_from_the_recorder() -> None:
     ref = hf.transform(full, q.numpy(), attrs).to_numpy()
     assert np.allclose(hf.transform(rows, None, attrs).to_numpy(), ref)
     assert np.allclose(hf.transform(rows, q.numpy(), attrs).to_numpy(), ref)
+
+
+# -------------------------------------------------------------------------------
+# Nesting, errors, query rows and precision
+# -------------------------------------------------------------------------------
+class Heads(nn.Module):
+    """Attention of the input with itself over 2 heads, through F.scaled_dot_product_attention."""
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """X (b, 2, t, d) as query, key and value."""
+        return torch.nn.functional.scaled_dot_product_attention(x, x, x)
+
+
+class Parent(nn.Module):
+    """Calls its child, then attention of its own."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.child = Heads()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """The child's output attended again."""
+        y = self.child(x)
+        return torch.nn.functional.scaled_dot_product_attention(y, y, y)
+
+
+class Fails(nn.Module):
+    """Raises inside its forward."""
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Always raises."""
+        raise RuntimeError("boom")
+
+
+def test_nested_selected_modules_keep_the_parent_intervened() -> None:
+    """After a selected child returns, the selected parent's own attention call is still intervened and recorded."""
+    torch.manual_seed(0)
+    parent = Parent()
+    x = torch.randn(2, 2, 5, 4)
+    with torch.no_grad():
+        plain = parent(x)
+        with AttentionIntervention([parent, parent.child]) as iv:  # parent is module 0, child module 1
+            iv.ablate({0: [0, 1]})
+            ablated = parent(x)
+    assert torch.allclose(ablated, torch.zeros_like(ablated)) and not torch.allclose(plain, ablated)
+    with torch.no_grad(), AttentionRecorder.sdpa([parent, parent.child]) as rec:
+        parent(x)
+        w = rec.weights()
+    y = torch.nn.functional.scaled_dot_product_attention(x, x, x)
+    assert np.allclose(w[0], sdpa_weights(y, y).numpy(), atol=1e-6)  # the parent's call, after the child's
+    assert np.allclose(w[1], sdpa_weights(x, x).numpy(), atol=1e-6)
+
+
+def test_a_failed_forward_leaves_no_module_marked() -> None:
+    """When a selected module raises and the error is caught, later calls outside it are not intervened or recorded."""
+    torch.manual_seed(0)
+    bad, x = Fails(), torch.randn(2, 2, 5, 4)
+    plain = torch.nn.functional.scaled_dot_product_attention(x, x, x)
+    with AttentionIntervention([bad]) as iv:
+        iv.ablate({0: [0, 1]})
+        with pytest.raises(RuntimeError):
+            bad(x)
+        after = torch.nn.functional.scaled_dot_product_attention(x, x, x)
+    assert torch.equal(after, plain)
+    rec = AttentionRecorder.sdpa([bad])
+    with rec:
+        with pytest.raises(RuntimeError):
+            bad(x)
+        torch.nn.functional.scaled_dot_product_attention(x, x, x)
+    assert rec._captured == {} and rec._active is None
+
+
+def test_sdpa_recorder_computes_only_the_query_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With query set, the sdpa recorder builds only (b, heads, 1, t) rows, equal to the full weights, causal and masked."""
+    import eventgpt.feature_engineering.attention_heads as ah
+
+    built: list[tuple[int, ...]] = []
+    real = ah.sdpa_weights
+
+    def spy(*args: Any, **kwargs: Any) -> torch.Tensor:
+        """Record the shape of every weight matrix the recorder computes."""
+        w = real(*args, **kwargs)
+        built.append(tuple(w.shape))
+        return w
+
+    monkeypatch.setattr(ah, "sdpa_weights", spy)
+    torch.manual_seed(0)
+    blocks = nn.ModuleList([Block(GPTConfig(vocab_size=10, n_head=4, d_model=16, dropout=0.0)) for _ in range(2)]).eval()
+    x = torch.randn(3, 7, 16)
+    q = torch.tensor([6, 2, 4])
+    mask = torch.rand(3, 1, 7, 7) > 0.3
+    mask |= torch.eye(7, dtype=torch.bool)
+    for kw in ({}, {"attn_mask": mask}):
+        with torch.no_grad(), AttentionRecorder.sdpa(blocks) as rec:
+            h = x
+            for b in blocks:
+                h = b(h, **kw)
+            full = rec.weights()
+            rec.query = q
+            built.clear()
+            h = x
+            for b in blocks:
+                h = b(h, **kw)
+            rows = rec.weights()
+        assert built == [(3, 4, 1, 7)] * 2  # never the full (3, 4, 7, 7) matrix
+        assert rows.shape == (2, 3, 4, 1, 7)
+        assert np.allclose(rows[:, :, :, 0], full[:, np.arange(3), :, q.numpy()].transpose(1, 0, 2, 3), atol=1e-6)
+
+
+class FixedQKV(nn.Module):
+    """Attention of fixed query, key and value tensors."""
+
+    def __init__(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> None:
+        super().__init__()
+        self.q, self.k, self.v = q, k, v
+
+    def forward(self) -> torch.Tensor:
+        """The attention call an intervention acts on."""
+        return torch.nn.functional.scaled_dot_product_attention(self.q, self.k, self.v)
+
+
+def test_explicit_path_keeps_double_precision() -> None:
+    """With float64 inputs the knockout output matches attention computed in float64 with the keys masked."""
+    torch.manual_seed(0)
+    q, k, v = (torch.randn(2, 2, 5, 4, dtype=torch.float64) for _ in range(3))
+    keys = torch.zeros(2, 5, dtype=torch.bool)
+    keys[:, 1] = True
+    mod = FixedQKV(q, k, v)
+    with torch.no_grad(), AttentionIntervention([mod]) as iv:
+        iv.knockout(keys)
+        got = mod()
+    ref = ((q @ k.transpose(-1, -2)) * 4**-0.5).masked_fill(keys[:, None, None, :], float("-inf")).softmax(-1) @ v
+    assert got.dtype == torch.float64 and torch.allclose(got, ref, atol=1e-12, rtol=0)
