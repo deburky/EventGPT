@@ -122,9 +122,10 @@ def records(
 ) -> Iterator[list[dict[str, str]]]:
     """The PutRecord records of a table of a record id, a timestamp and features (store names), in time order.
 
-    Rows come oldest first, so each record id's last write is its latest state, which is what the online store
-    keeps on AWS (by event time) and on emulators that keep the last write. The timestamp is written as event_time in
-    UTC (2022-02-28T00:00:00Z); missing values are left out of the record, as SageMaker allows.
+    Rows come oldest first. The online store keeps each record id's latest event time, so the order does not change
+    what it holds, but a store that keeps the last write instead (oblako before 0.7.4) holds the same state. The
+    timestamp is written as event_time in UTC (2022-02-28T00:00:00Z); missing values are left out of the record, as
+    SageMaker allows.
     """
     feats = [c for c in table.columns if c not in (record_id, timestamp)] if columns is None else list(columns)
     names = sagemaker_names(feats)
