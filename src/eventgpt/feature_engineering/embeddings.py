@@ -100,7 +100,7 @@ class OutputRecorder:
 def _array(x: Any) -> np.ndarray:
     """A float64 numpy array from a tensor (any dtype or device) or an array."""
     if isinstance(x, torch.Tensor):
-        x = x.detach().to("cpu", torch.float64).numpy()
+        x = x.detach().cpu().to(torch.float64).numpy()  # to the CPU first: MPS has no float64
     return np.asarray(x, dtype=np.float64)
 
 
