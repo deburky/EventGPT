@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -134,3 +135,105 @@ def test_embeddings_go_through_the_store(tmp_path: Path) -> None:
         store.add(["a", "b", "c"], emb.transform(hidden(), np.array([1, 2, 3])))
     back = HeadFeatureStore(tmp_path).read(["c", "a"], columns=["h_0", "h_3"])
     assert back.to_numpy().tolist() == [[230.0, 233.0], [10.0, 13.0]]
+
+
+# -------------------------------------------------------------------------------
+# Review: recorder, pooling, fingerprints, meta
+# -------------------------------------------------------------------------------
+def test_recorder_forgets_skipped_modules_and_keeps_its_copy() -> None:
+    """With root, a module skipped in a pass gives no output; a later in-place change leaves the recording as it was."""
+
+    class Gate(nn.Module):
+        """Runs its inner layer only when asked."""
+
+        def __init__(self) -> None:
+            """One linear layer behind the gate."""
+            super().__init__()
+            self.inner = nn.Linear(3, 3)
+
+        def forward(self, x: torch.Tensor, run: bool) -> torch.Tensor:
+            """The layer's output, or x unchanged."""
+            return self.inner(x) if run else x
+
+    g = Gate()
+    with OutputRecorder(g.inner, root=g) as rec:
+        y = g(torch.ones(2, 3), run=True)
+        kept = rec.output().clone()
+        y.data.add_(5.0)  # an in-place change after the hook ran
+        assert torch.equal(rec.output(), kept)
+        g(torch.ones(2, 3), run=False)
+        with pytest.raises(AssertionError, match="no output of module 0"):
+            rec.output()
+
+
+def test_pool_checks_its_mode_and_query_counts() -> None:
+    """An unknown pool override and n_queries of the wrong length are refused instead of giving other rows."""
+    emb = EmbeddingFeatures()
+    with pytest.raises(AssertionError, match="unknown pool"):
+        emb.transform(hidden(), np.zeros(3, dtype=int), pool=cast(Any, "max"))
+    with pytest.raises(AssertionError, match="2 counts for 3 sequences"):
+        emb.transform(hidden(), np.zeros((3, 2), dtype=int), n_queries=[1, 2])
+
+
+def test_fingerprint_sees_shapes_extra_state_and_config() -> None:
+    """Equal values in another shape, non-tensor extra state and a config each change the fingerprint."""
+
+    class Shaped(nn.Module):
+        """One buffer of a given shape, with optional extra state."""
+
+        def __init__(self, shape: tuple[int, ...], extra: object = None) -> None:
+            """A buffer of the values 0 to 5 in this shape."""
+            super().__init__()
+            self.register_buffer("w", torch.arange(6.0).reshape(shape))
+            self.extra = extra
+
+        def get_extra_state(self) -> object:
+            """The extra state, kept in the state dict."""
+            return self.extra
+
+        def set_extra_state(self, state: object) -> None:
+            """Restore the extra state."""
+            self.extra = state
+
+    a, b = Shaped((2, 3)), Shaped((3, 2))
+    assert model_fingerprint(a) != model_fingerprint(b)
+    assert model_fingerprint(Shaped((2, 3), {"time_pos": True})) != model_fingerprint(Shaped((2, 3), {"time_pos": False}))
+    assert model_fingerprint(a, {"context": 2048}) != model_fingerprint(a, {"context": 1024}) != model_fingerprint(a)
+
+
+def test_meta_with_paths_and_a_store_opened_without_meta_is_read_only(tmp_path: Path) -> None:
+    """Paths in meta are saved as text; a store with a meta opened without one reads but does not add."""
+    meta = {"checkpoint": Path("runs/x.pt")}
+    with HeadFeatureStore(tmp_path, meta=meta) as store:
+        store.add([1], pd.DataFrame({"x": [1.0]}))
+    assert HeadFeatureStore(tmp_path, meta=meta).meta == {"checkpoint": "runs/x.pt"}
+    plain = HeadFeatureStore(tmp_path)
+    assert plain.read_only and plain.read([1])["x"].tolist() == [1.0]
+    with pytest.raises(ValueError, match="open it with that meta"):
+        plain.add([2], pd.DataFrame({"x": [2.0]}))
+
+
+def test_two_stores_starting_at_once_keep_one_meta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When another store saves its meta between the check and the write, this store compares with it and refuses."""
+    real_link = __import__("os").link
+
+    def other_first(src: str, dst: str) -> None:
+        """Another store's meta lands first, then this link is tried."""
+        Path(dst).write_text('{"model": "other"}')
+        real_link(src, dst)
+
+    monkeypatch.setattr("eventgpt.feature_engineering.attention_heads.os.link", other_first)
+    with pytest.raises(ValueError, match=r"meta differs in \['model'\]"):
+        HeadFeatureStore(tmp_path, meta={"model": "mine"})
+    assert HeadFeatureStore(tmp_path).meta == {"model": "other"} and not list(tmp_path.glob(".*.tmp"))
+
+
+def test_batches_with_other_columns_or_types_are_refused(tmp_path: Path) -> None:
+    """A batch with a missing column or another type than the stored ones is refused, before or after a flush."""
+    store = HeadFeatureStore(tmp_path)
+    store.add([1], pd.DataFrame({"x": np.float32([1.0]), "y": np.float32([1.0])}))
+    with pytest.raises(ValueError, match=r"\['y'\]"):
+        store.add([2], pd.DataFrame({"x": np.float32([2.0])}))
+    store.flush()
+    with pytest.raises(ValueError, match=r"\['x'\]"):
+        HeadFeatureStore(tmp_path).add([3], pd.DataFrame({"x": np.float64([3.0]), "y": np.float32([3.0])}))

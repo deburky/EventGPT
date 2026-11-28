@@ -39,21 +39,32 @@ class OutputRecorder:
     """The outputs of one or more modules in the last forward pass, by forward hooks.
 
     A module returning a tuple (as many transformer layers do) is read at `index`, its hidden states by default.
-    Outputs are detached and moved to the CPU, so recording does not keep the graph or device memory.
+    Outputs are copied to the CPU, so recording keeps neither the graph nor device memory, and a later in-place change
+    to the output does not change the recording. With `root` (the model called), every forward pass of root starts by
+    forgetting the last pass, so a module the pass skips gives no output rather than an earlier batch's. Hooks see
+    every call of a module, so use one recorder for one forward pass at a time.
     """
 
-    def __init__(self, modules: nn.Module | Sequence[nn.Module], index: int = 0) -> None:
+    def __init__(self, modules: nn.Module | Sequence[nn.Module], index: int = 0, root: nn.Module | None = None) -> None:
         self.modules = [modules] if isinstance(modules, nn.Module) else list(modules)
         assert self.modules, "no modules to record"
         self.index = index
+        self.root = root
         self._out: list[torch.Tensor | None] = [None] * len(self.modules)
         self._hooks: list[Any] = []
 
     def __enter__(self) -> OutputRecorder:
         """Register a forward hook on every module."""
+        self.clear()
+        if self.root is not None:
+            self._hooks.append(self.root.register_forward_pre_hook(lambda m, args: self.clear()))
         for i, m in enumerate(self.modules):
             self._hooks.append(m.register_forward_hook(self._hook(i)))
         return self
+
+    def clear(self) -> None:
+        """Forget the recorded outputs."""
+        self._out = [None] * len(self.modules)
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:
         """Remove the hooks, also when the forward pass failed."""
@@ -68,14 +79,14 @@ class OutputRecorder:
             """Keep the output (or its element at index) of the latest call."""
             y = output[self.index] if isinstance(output, (tuple, list)) else output
             assert isinstance(y, torch.Tensor), f"module {type(m).__name__} gave {type(y).__name__}, not a tensor"
-            self._out[i] = y.detach().cpu()
+            self._out[i] = y.detach().to("cpu", copy=True)
 
         return keep
 
     def output(self, i: int = 0) -> torch.Tensor:
         """Module i's output in the last forward pass."""
         y = self._out[i]
-        assert y is not None, "no forward pass recorded"
+        assert y is not None, f"no output of module {i} in the last forward pass"
         return y
 
     def outputs(self) -> list[torch.Tensor]:
@@ -136,6 +147,7 @@ class EmbeddingFeatures:
         assert h.ndim == 3, f"expected hidden states (b, t, d), got shape {h.shape}"
         b, t, _ = h.shape
         how = pool or self.pool_by
+        assert how in ("query", "mean", "last"), f"unknown pool {how!r}"
         v = np.ones((b, t), dtype=bool) if valid is None else _array(valid).astype(bool)
         assert v.shape == (b, t), f"valid has shape {v.shape}, expected {(b, t)}"
         if how == "mean":
@@ -153,6 +165,7 @@ class EmbeddingFeatures:
             return h[np.arange(b), q]
         assert q.ndim == 2 and len(q) == b, f"query has shape {q.shape}, expected (b,) or (b, Q)"
         n = np.full(b, q.shape[1]) if n_queries is None else np.asarray(n_queries, dtype=int)
+        assert n.shape == (b,), f"n_queries has {n.size} counts for {b} sequences"
         assert (n <= q.shape[1]).all(), "n_queries above the given queries"
         seq = np.repeat(np.arange(b), n)
         qi = np.concatenate([np.arange(k) for k in n]) if len(n) else np.zeros(0, dtype=int)
