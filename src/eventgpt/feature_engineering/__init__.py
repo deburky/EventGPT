@@ -1,6 +1,7 @@
 """Features engineered from trained models, reusable outside EventGPT.
 
-They depend only on numpy, pandas and torch; HeadFeatureStore also needs pyarrow to write parquet.
+They depend only on numpy, pandas and torch; HeadFeatureStore also needs pyarrow to write parquet,
+and feature_view needs Feast.
 """
 
 from eventgpt.feature_engineering.attention_heads import (
@@ -19,6 +20,7 @@ from eventgpt.feature_engineering.attention_heads import (
     token_attributes,
 )
 from eventgpt.feature_engineering.embeddings import EmbeddingFeatures, OutputRecorder
+from eventgpt.feature_engineering.feast_views import feature_view, meta_tags
 from eventgpt.feature_engineering.interventions import AttentionIntervention, drop_events, grad_rollout, occlusion, rollout
 
 __all__ = [
@@ -29,11 +31,13 @@ __all__ = [
     "HeadFeatureStore",
     "HeadFeatures",
     "drop_events",
+    "feature_view",
     "field_attributes",
     "flatten_queries",
     "grad_rollout",
     "group_tokens",
     "head_summaries",
+    "meta_tags",
     "model_fingerprint",
     "OutputRecorder",
     "occlusion",
