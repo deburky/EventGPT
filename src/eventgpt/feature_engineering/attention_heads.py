@@ -27,7 +27,7 @@ The module depends only on numpy, pandas and torch, so other projects can use it
 Counts and ordinal fields: HeadFeatures(names, counts=True) gives attention-weighted counts (share times the keys the
 head saw) instead of shares, and HeadFeatures(names, fields=["amt_bin"]) with field_attributes adds the
 attention-weighted mean of an ordinal field. HeadFeatureStore saves the tables of a long extraction in chunks by row
-id, so a stopped run resumes.
+id, so a stopped run resumes, and records in its meta what produced them (model_fingerprint).
 
 Key attributes can come from the input tokens alone: token_attributes gives one 0/1 attribute per vocabulary token
 ("this key contains late=2"), named from the vocabulary, with group_tokens collecting an event's tokens into its key
@@ -40,6 +40,8 @@ attribute's share among the keys, says more about what a head looks for than a c
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import time
 import uuid
@@ -642,6 +644,20 @@ class HeadFeatures:
 # -------------------------------------------------------------------------------
 # Storing features over a large dataset
 # -------------------------------------------------------------------------------
+def model_fingerprint(model: nn.Module) -> str:
+    """A short hash of a model's parameters and buffers (names, dtypes, shapes, values), to record in a store's meta.
+
+    Two models give the same fingerprint exactly when their state dicts are equal, so it tells a retrained or
+    fine-tuned checkpoint from the one a store was built with.
+    """
+    h = hashlib.sha256()
+    for name, t in sorted(model.state_dict().items()):
+        t = t.detach().cpu().contiguous().reshape(-1)
+        h.update(f"{name}|{t.dtype}|{tuple(t.shape)}|".encode())
+        h.update(t.view(torch.uint8).numpy().tobytes())
+    return h.hexdigest()[:16]
+
+
 def _key(x: Any) -> str:
     """A stable text key for a row id: numbers, strings and tuples of them, numpy scalars as their Python values."""
     if isinstance(x, tuple):
@@ -668,18 +684,45 @@ class HeadFeatureStore:
     complete, so a run stopped during a write leaves no partial chunk, and named uniquely, so two stores writing to the
     same directory do not overwrite each other. A run stopped part-way loses at most the rows not yet flushed; rows
     added again, within a batch or across runs, are ignored, so an interrupted batch can simply be redone.
+
+    `meta` records what produced the features, saved as store.json with the first store that gives it:
+
+        meta = {"model": model_fingerprint(model), "checkpoint": path, "attributes": names}
+        store = HeadFeatureStore("features/", meta=meta)
+
+    Reopening the directory with a different meta raises ValueError, so rows from a retrained model or another
+    attribute list never mix with the stored ones; opening it without meta reads the saved one as store.meta.
     """
 
-    def __init__(self, directory: str | Path, chunk_rows: int = 20_000) -> None:
+    def __init__(self, directory: str | Path, chunk_rows: int = 20_000, meta: Mapping[str, Any] | None = None) -> None:
         self.dir = Path(directory)
         self.dir.mkdir(parents=True, exist_ok=True)
         assert chunk_rows > 0, "chunk_rows must be positive"
         self.chunk_rows = chunk_rows
+        self.meta = self._meta(meta)
         self._buffer: list[pd.DataFrame] = []
         self._buffered = 0
         self._done: set[str] = set()
         for part in self._chunks():
             self._done.update(self._keys(part))
+
+    def _meta(self, meta: Mapping[str, Any] | None) -> dict[str, Any]:
+        """The saved meta, after checking it against the given one; the given one is saved when none is."""
+        path = self.dir / "store.json"
+        saved = json.loads(path.read_text()) if path.exists() else None
+        given = None if meta is None else json.loads(json.dumps(dict(meta)))  # as it reads back: tuples become lists
+        if saved is None:
+            if given is not None:
+                if self._chunks():
+                    raise ValueError(f"{self.dir} has chunks without meta; give it no meta or use a new directory")
+                tmp = self.dir / f".store-{uuid.uuid4().hex[:8]}.json.tmp"
+                tmp.write_text(json.dumps(given, indent=1, sort_keys=True))
+                os.replace(tmp, path)
+            return given or {}
+        if given is not None and given != saved:
+            diff = sorted(k for k in saved.keys() | given.keys() if saved.get(k) != given.get(k))
+            raise ValueError(f"{self.dir} holds features from another setup: meta differs in {diff}")
+        return dict(saved)
 
     def _chunks(self) -> list[Path]:
         """The complete chunk files, oldest first."""
