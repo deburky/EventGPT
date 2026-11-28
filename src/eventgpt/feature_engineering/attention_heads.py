@@ -43,6 +43,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import shutil
 import time
 import uuid
 import warnings
@@ -54,6 +56,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 import torch.nn.functional as F
@@ -343,6 +346,7 @@ def flatten_queries(weights: Any, n_queries: np.ndarray | Sequence[int] | None =
     assert w.ndim == 5, f"expected (layers, b, heads, Q, t), got shape {w.shape}"
     b, q = w.shape[1], w.shape[3]
     n = np.full(b, q) if n_queries is None else np.asarray(n_queries, dtype=int)
+    assert n.shape == (b,), f"n_queries has {n.size} counts for {b} sequences"
     assert (n <= q).all(), "n_queries above the recorded queries"
     seq = np.repeat(np.arange(b), n)
     qi = np.concatenate([np.arange(k) for k in n]) if len(n) else np.zeros(0, dtype=int)
@@ -644,17 +648,46 @@ class HeadFeatures:
 # -------------------------------------------------------------------------------
 # Storing features over a large dataset
 # -------------------------------------------------------------------------------
-def model_fingerprint(model: nn.Module) -> str:
-    """A short hash of a model's parameters and buffers (names, dtypes, shapes, values), to record in a store's meta.
+def to_sql_names(columns: Sequence[str]) -> list[str]:
+    """Column names as plain SQL identifiers: lower case, other characters as _, a leading digit escaped with _.
+
+    Redshift folds identifiers to lower case, quoted ones too, and Feast writes feature names into its Redshift SQL
+    unquoted, so a name such as L1H1_s11=22 must become l1h1_s11_22 there. Two names that would become one, and names
+    above Redshift's 127 characters, are refused. The names keep their order, so zip them with the originals to map
+    back.
+    """
+    out = []
+    for c in columns:
+        n = re.sub(r"[^a-z0-9_]", "_", c.lower())
+        out.append(f"_{n}" if n[:1].isdigit() else n)
+    seen: dict[str, str] = {}
+    for c, n in zip(columns, out, strict=True):
+        if seen.setdefault(n, c) != c:
+            raise ValueError(f"columns {seen[n]!r} and {c!r} both become {n!r}")
+    long = [n for n in out if len(n.encode()) > 127]
+    if long:
+        raise ValueError(f"{len(long)} names above 127 characters, e.g. {long[0]!r}")
+    return out
+
+
+def model_fingerprint(model: nn.Module, config: Mapping[str, Any] | None = None) -> str:
+    """A short hash of a model's state dict (names, dtypes, shapes, values) and of `config`, for a store's meta.
 
     Two models give the same fingerprint exactly when their state dicts are equal, so it tells a retrained or
-    fine-tuned checkpoint from the one a store was built with.
+    fine-tuned checkpoint from the one a store was built with. Settings that change the outputs without changing the
+    weights (a time encoding switched off, a context length) are not in the state dict: give them as config. Non-tensor
+    extra state is hashed by its repr. Fingerprint the model as it is used for extraction, not while it trains.
     """
     h = hashlib.sha256()
-    for name, t in sorted(model.state_dict().items()):
-        t = t.detach().cpu().contiguous().reshape(-1)
-        h.update(f"{name}|{t.dtype}|{tuple(t.shape)}|".encode())
-        h.update(t.view(torch.uint8).numpy().tobytes())
+    for name, v in sorted(model.state_dict().items()):
+        if isinstance(v, torch.Tensor):
+            t = v.detach().cpu().contiguous()
+            h.update(f"{name}|{t.dtype}|{tuple(t.shape)}|".encode())
+            h.update(t.reshape(-1).view(torch.uint8).numpy().tobytes())
+        else:
+            h.update(f"{name}|extra|{v!r}|".encode())
+    if config:
+        h.update(json.dumps(dict(config), sort_keys=True, default=str).encode())
     return h.hexdigest()[:16]
 
 
@@ -691,7 +724,9 @@ class HeadFeatureStore:
         store = HeadFeatureStore("features/", meta=meta)
 
     Reopening the directory with a different meta raises ValueError, so rows from a retrained model or another
-    attribute list never mix with the stored ones; opening it without meta reads the saved one as store.meta.
+    attribute list never mix with the stored ones. Opening a store that has a meta without giving one reads the
+    saved meta as store.meta and makes the store read-only, since the new rows' origin is unknown. Values that are not
+    JSON (paths) are saved as their text.
     """
 
     def __init__(self, directory: str | Path, chunk_rows: int = 20_000, meta: Mapping[str, Any] | None = None) -> None:
@@ -699,9 +734,12 @@ class HeadFeatureStore:
         self.dir.mkdir(parents=True, exist_ok=True)
         assert chunk_rows > 0, "chunk_rows must be positive"
         self.chunk_rows = chunk_rows
+        self.read_only = False
         self.meta = self._meta(meta)
+        self._schema: list[tuple[str, str]] | None = None
         self._buffer: list[pd.DataFrame] = []
         self._buffered = 0
+        self._written = 0
         self._done: set[str] = set()
         for part in self._chunks():
             self._done.update(self._keys(part))
@@ -710,16 +748,24 @@ class HeadFeatureStore:
         """The saved meta, after checking it against the given one; the given one is saved when none is."""
         path = self.dir / "store.json"
         saved = json.loads(path.read_text()) if path.exists() else None
-        given = None if meta is None else json.loads(json.dumps(dict(meta)))  # as it reads back: tuples become lists
+        given = None if meta is None else json.loads(json.dumps(dict(meta), default=str))  # as it reads back
         if saved is None:
-            if given is not None:
-                if self._chunks():
-                    raise ValueError(f"{self.dir} has chunks without meta; give it no meta or use a new directory")
-                tmp = self.dir / f".store-{uuid.uuid4().hex[:8]}.json.tmp"
-                tmp.write_text(json.dumps(given, indent=1, sort_keys=True))
-                os.replace(tmp, path)
-            return given or {}
-        if given is not None and given != saved:
+            if given is None:
+                return {}
+            if self._chunks():
+                raise ValueError(f"{self.dir} has chunks without meta; give it no meta or use a new directory")
+            tmp = self.dir / f".store-{uuid.uuid4().hex[:8]}.json.tmp"
+            tmp.write_text(json.dumps(given, indent=1, sort_keys=True))
+            try:
+                os.link(tmp, path)  # created only if absent: of two stores starting at once, one meta wins
+                saved = given
+            except FileExistsError:
+                saved = json.loads(path.read_text())
+            finally:
+                tmp.unlink()
+        if given is None:
+            self.read_only = True
+        elif given != saved:
             diff = sorted(k for k in saved.keys() | given.keys() if saved.get(k) != given.get(k))
             raise ValueError(f"{self.dir} holds features from another setup: meta differs in {diff}")
         return dict(saved)
@@ -757,6 +803,9 @@ class HeadFeatureStore:
     def add(self, ids: Sequence[Any], table: pd.DataFrame) -> None:
         """Buffer a batch's rows (in the table's order), skipping rows already stored or repeated; writes full chunks."""
         assert len(ids) == len(table), f"{len(ids)} ids for {len(table)} rows"
+        if self.read_only:
+            raise ValueError(f"{self.dir} has a meta: open it with that meta to add rows")
+        self._check_schema(table)
         keys = [_key(i) for i in ids]
         keep, seen = [], set()
         for k in keys:
@@ -774,11 +823,27 @@ class HeadFeatureStore:
         while self._buffered >= self.chunk_rows:
             self._write(self.chunk_rows)
 
+    def _check_schema(self, table: pd.DataFrame) -> None:
+        """Refuse a batch whose feature columns or types differ from the stored ones (or from the first batch)."""
+        got = [(f.name, str(f.type)) for f in pa.Schema.from_pandas(table, preserve_index=False)]
+        if self._schema is None:
+            parts = self._chunks()
+            if parts:
+                stored = pq.read_schema(parts[0])
+                self._schema = [(f.name, str(f.type)) for f in stored if f.name not in ("row_key", "row_id")]
+            else:
+                self._schema = got
+        if got != self._schema:
+            want, have = dict(self._schema), dict(got)
+            diff = sorted(c for c in want.keys() | have.keys() if want.get(c) != have.get(c))
+            raise ValueError(f"batch columns differ from the stored ones in {diff[:5]}")
+
     def _write(self, n: int) -> None:
         """Write the first n buffered rows as a new chunk: to a temporary file first, then renamed."""
         buffered = pd.concat(self._buffer, ignore_index=True)
         head, rest = buffered.iloc[:n], buffered.iloc[n:]
-        name = f"chunk-{time.time_ns():020d}-{os.getpid()}-{uuid.uuid4().hex[:8]}.parquet"
+        self._written += 1  # orders this store's chunks when the clock does not (microseconds on macOS)
+        name = f"chunk-{time.time_ns():020d}-{os.getpid()}-{self._written:06d}-{uuid.uuid4().hex[:8]}.parquet"
         tmp = self.dir / f".{name}.tmp"
         head.to_parquet(tmp, index=False)
         os.replace(tmp, self.dir / name)
@@ -797,6 +862,7 @@ class HeadFeatureStore:
         entities: pd.DataFrame,
         timestamp_field: str = "event_timestamp",
         columns: Sequence[str] | None = None,
+        sql_names: bool = False,
     ) -> Path:
         """Write the rows `ids` as a Feast offline source: entity columns, timestamps and features, chunk by chunk.
 
@@ -804,15 +870,30 @@ class HeadFeatureStore:
         and the time the features were known in `timestamp_field`, so that get_historical_features joins them point in
         time. A created_timestamp column records the export time. Each stored chunk gives one parquet
         file, written whole and renamed, so the memory follows one chunk; read the directory with a FileSource, or
-        load it into the offline store (Redshift, BigQuery) as one table. feature_view builds the matching view.
+        load it into the offline store (Redshift, BigQuery) as one table. feature_view builds the matching view, with
+        the same columns. The export is written to a directory of its own and renamed into place when complete, so it
+        replaces an earlier export whole, and a stopped or concurrent export never leaves a mix of parts.
+
+        sql_names=True writes the feature names as plain SQL identifiers (see sql_names), as a Redshift source needs:
+        Redshift folds names to lower case and Feast's Redshift SQL leaves them unquoted. Give the same flag to
+        redshift_table and feature_view.
         """
         assert len(entities) == len(ids), f"{len(entities)} entity rows for {len(ids)} ids"
         assert timestamp_field in entities.columns, f"entities has no {timestamp_field!r} column"
         clash = {"row_key", "row_id", "created_timestamp"} & set(entities.columns)
         assert not clash, f"entity columns {sorted(clash)} are reserved"
         self.flush()
+        feature_names = self.columns() if columns is None else list(columns)
+        if sql_names:
+            feature_names = to_sql_names(feature_names)
+        taken_names = set(feature_names) & ({"created_timestamp"} | set(entities.columns))
+        assert not taken_names, f"feature columns {sorted(taken_names)} clash with the entity or timestamp columns"
         out = Path(directory)
-        out.mkdir(parents=True, exist_ok=True)
+        if out.exists() and any(not p.name.startswith("part-") for p in out.iterdir()):
+            raise ValueError(f"{out} holds files other than an export's parts; give an empty or new directory")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        stage = out.parent / f".{out.name}.tmp-{uuid.uuid4().hex[:8]}"  # this export's own, renamed into place at the end
+        stage.mkdir()
         ent = entities.reset_index(drop=True).copy()
         ent[timestamp_field] = pd.to_datetime(ent[timestamp_field], utc=True)
         where: dict[str, int] = {}
@@ -830,15 +911,21 @@ class HeadFeatureStore:
                 continue
             rows, pos = [j for j, _ in take], [i for _, i in take]
             feats = t.drop(columns=[id_col]).iloc[rows].reset_index(drop=True)
+            if sql_names:
+                feats.columns = to_sql_names(list(feats.columns))
             table = pd.concat([ent.iloc[pos].reset_index(drop=True), feats], axis=1)
             table["created_timestamp"] = created
-            name = f"part-{part.stem.removeprefix('chunk-')}.parquet"
-            tmp = out / f".{name}.tmp"
-            table.to_parquet(tmp, index=False)
-            os.replace(tmp, out / name)
+            table.to_parquet(stage / f"part-{part.stem.removeprefix('chunk-')}.parquet", index=False)
             written.update(keys[j] for j in rows)
         missing = [r for r in ids if _key(r) not in written]
-        assert not missing, f"{len(missing)} ids not stored, e.g. {missing[:3]}"
+        if missing:
+            shutil.rmtree(stage)
+            raise AssertionError(f"{len(missing)} ids not stored, e.g. {missing[:3]}")
+        old = out.parent / f".{out.name}.old-{uuid.uuid4().hex[:8]}"
+        if out.exists():
+            os.replace(out, old)  # an earlier export of this directory goes whole, none of its parts stay
+        os.replace(stage, out)
+        shutil.rmtree(old, ignore_errors=True)
         return out
 
     def columns(self) -> list[str]:

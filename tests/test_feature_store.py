@@ -238,3 +238,14 @@ def test_store_reads_chunks_from_the_earlier_format(tmp_path: Path) -> None:
     store.add([1, 2], pd.DataFrame({"x": [9.0, 3.0]}))  # 1 is stored already
     assert store.read([2, 1, 0])["x"].tolist() == [3.0, 2.0, 1.0]
     assert store.columns() == ["x"]
+
+
+def test_chunks_of_one_store_sort_in_writing_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chunks written within one clock tick still sort oldest first, so a row stored twice is read from its first chunk."""
+    monkeypatch.setattr("eventgpt.feature_engineering.attention_heads.time.time_ns", lambda: 1_000)
+    store = HeadFeatureStore(tmp_path, chunk_rows=1)
+    for i in range(12):
+        store.add([i], pd.DataFrame({"x": [float(i)]}))
+    store.flush()
+    order = [int(pd.read_parquet(p)["x"].iat[0]) for p in store._chunks()]
+    assert order == list(range(12))
