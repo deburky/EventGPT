@@ -790,6 +790,57 @@ class HeadFeatureStore:
         while self._buffered:
             self._write(min(self.chunk_rows, self._buffered))
 
+    def export_feast(
+        self,
+        directory: str | Path,
+        ids: Sequence[Any],
+        entities: pd.DataFrame,
+        timestamp_field: str = "event_timestamp",
+        columns: Sequence[str] | None = None,
+    ) -> Path:
+        """Write the rows `ids` as a Feast offline source: entity columns, timestamps and features, chunk by chunk.
+
+        `entities` gives, for each id in order, the join keys of its Feast entity (one column each, such as client_id)
+        and the time the features were known in `timestamp_field`, so that get_historical_features joins them point in
+        time. A created_timestamp column records the export time. Each stored chunk gives one parquet
+        file, written whole and renamed, so the memory follows one chunk; read the directory with a FileSource, or
+        load it into the offline store (Redshift, BigQuery) as one table. feature_view builds the matching view.
+        """
+        assert len(entities) == len(ids), f"{len(entities)} entity rows for {len(ids)} ids"
+        assert timestamp_field in entities.columns, f"entities has no {timestamp_field!r} column"
+        clash = {"row_key", "row_id", "created_timestamp"} & set(entities.columns)
+        assert not clash, f"entity columns {sorted(clash)} are reserved"
+        self.flush()
+        out = Path(directory)
+        out.mkdir(parents=True, exist_ok=True)
+        ent = entities.reset_index(drop=True).copy()
+        ent[timestamp_field] = pd.to_datetime(ent[timestamp_field], utc=True)
+        where: dict[str, int] = {}
+        for i, k in enumerate(_key(r) for r in ids):
+            assert k not in where, f"id {ids[i]!r} given twice"
+            where[k] = i
+        created = pd.Timestamp.now(tz="UTC")
+        written: set[str] = set()
+        for part in self._chunks():
+            id_col = "row_key" if "row_key" in pq.read_schema(part).names else "row_id"
+            t = pd.read_parquet(part, columns=None if columns is None else [id_col, *columns])
+            keys = self._keys(part, t)
+            take = [(j, where[k]) for j, k in enumerate(keys) if k in where and k not in written]
+            if not take:
+                continue
+            rows, pos = [j for j, _ in take], [i for _, i in take]
+            feats = t.drop(columns=[id_col]).iloc[rows].reset_index(drop=True)
+            table = pd.concat([ent.iloc[pos].reset_index(drop=True), feats], axis=1)
+            table["created_timestamp"] = created
+            name = f"part-{part.stem.removeprefix('chunk-')}.parquet"
+            tmp = out / f".{name}.tmp"
+            table.to_parquet(tmp, index=False)
+            os.replace(tmp, out / name)
+            written.update(keys[j] for j in rows)
+        missing = [r for r in ids if _key(r) not in written]
+        assert not missing, f"{len(missing)} ids not stored, e.g. {missing[:3]}"
+        return out
+
     def columns(self) -> list[str]:
         """The stored feature columns, without the row id."""
         parts = self._chunks()
