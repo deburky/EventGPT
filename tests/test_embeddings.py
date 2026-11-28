@@ -237,3 +237,13 @@ def test_batches_with_other_columns_or_types_are_refused(tmp_path: Path) -> None
     store.flush()
     with pytest.raises(ValueError, match=r"\['x'\]"):
         HeadFeatureStore(tmp_path).add([3], pd.DataFrame({"x": np.float64([3.0]), "y": np.float32([3.0])}))
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="needs an Apple GPU")
+def test_hidden_states_on_mps_pool_like_the_cpu() -> None:
+    """Hidden states on MPS, which has no float64, pool to the same embeddings as on the CPU."""
+    h = torch.randn(2, 5, 3)
+    valid = np.array([[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]], dtype=bool)
+    emb = EmbeddingFeatures(pool="mean")
+    on_gpu = emb.pool(h.to("mps"), valid=valid)
+    np.testing.assert_allclose(on_gpu, emb.pool(h, valid=valid))
